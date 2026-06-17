@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
@@ -1371,7 +1372,66 @@ function togglePW(id,btn){
   else{inp.type='password';btn.textContent='Show';}
 }
 
-function doPatLogin(){
+async function doPatLogin() {
+  const name = document.getElementById("pat-name").value.trim();
+  const email = document.getElementById("pat-email").value.trim();
+  const password = document.getElementById("pat-pw").value.trim();
+  const err = document.getElementById("pat-err");
+
+  err.textContent = "";
+
+  if (!name || !email || !password) {
+    err.textContent = "Please enter your name, email, and password.";
+    return;
+  }
+
+  const patientCode = generatePatientCode();
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password
+  });
+
+  if (error) {
+    err.textContent = error.message;
+    return;
+  }
+
+  const user = data.user;
+
+  if (!user) {
+    err.textContent = "Account created. Please check your email to confirm.";
+    return;
+  }
+
+  const { error: profileError } = await supabase.from("profiles").insert({
+    id: user.id,
+    email: email,
+    full_name: name,
+    role: "patient",
+    patient_code: patientCode
+  });
+
+  if (profileError) {
+    err.textContent = profileError.message;
+    return;
+  }
+
+  const { error: patientProfileError } = await supabase
+    .from("patient_profiles")
+    .insert({
+      user_id: user.id
+    });
+
+  if (patientProfileError) {
+    err.textContent = patientProfileError.message;
+    return;
+  }
+
+  alert("Account created! Your Patient ID is: " + patientCode);
+
+  go("s-pat-app");
+}
   var nameEl=document.getElementById('pat-name');
   var emailEl=document.getElementById('pat-email');
   var nm=(nameEl&&nameEl.value.trim())||'';
@@ -3508,7 +3568,24 @@ initPat=function(){
   var dot=document.getElementById('bn-ex-dot');
   if(dot)dot.style.display='flex';
 };
+const SUPABASE_URL = "https://kxhmrfgolttrofpumqpy.supabase.co";
+const SUPABASE_ANON_KEY = sb_publishable_zo1aCIr_drM18by2trO8xg_lQo2wZDo;
 
+const supabase = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
+
+function generatePatientCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "PTPAL-";
+
+  for (let i = 0; i < 8; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+
+  return code;
+}
 </script>
 </body>
 </html>
