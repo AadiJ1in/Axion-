@@ -1432,24 +1432,6 @@ async function doPatLogin() {
 
   go("s-pat-app");
 }
-  var nameEl=document.getElementById('pat-name');
-  var emailEl=document.getElementById('pat-email');
-  var nm=(nameEl&&nameEl.value.trim())||'';
-  if(!nm){
-    var err=document.getElementById('pat-err');
-    if(err)err.textContent='Please enter your name to continue.';
-    if(nameEl)nameEl.focus();
-    return;
-  }
-  patientName=nm;
-  patientEmail=(emailEl&&emailEl.value.trim())||'';
-  var b=document.getElementById('pat-btn'),t=document.getElementById('pat-txt'),s=document.getElementById('pat-spin');
-  if(t)t.textContent='Loading quest...';if(s)s.style.display='inline-block';if(b)b.disabled=true;
-  setTimeout(function(){
-    if(t)t.textContent='Begin Quest';if(s)s.style.display='none';if(b)b.disabled=false;
-    go('s-pat-app');
-  },1000);
-}
 
 function doPTLogin(){
   var b=document.getElementById('pt-btn'),t=document.getElementById('pt-txt'),s=document.getElementById('pt-spin');
@@ -3569,7 +3551,7 @@ initPat=function(){
   if(dot)dot.style.display='flex';
 };
 const SUPABASE_URL = "https://kxhmrfgolttrofpumqpy.supabase.co";
-const SUPABASE_ANON_KEY = sb_publishable_zo1aCIr_drM18by2trO8xg_lQo2wZDo;
+const SUPABASE_ANON_KEY = "sb_publishable_zo1aCIr_drM18by2trO8xg_lQo2wZDo";
 
 const supabase = window.supabase.createClient(
   SUPABASE_URL,
