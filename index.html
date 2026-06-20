@@ -1387,7 +1387,7 @@ async function doPatLogin() {
 
   const patientCode = generatePatientCode();
 
-  const { data, error } = await supabase.auth.signUp({
+  const { data, error } = await supabaseClient.auth.signUp({
     email,
     password
   });
@@ -1404,7 +1404,7 @@ async function doPatLogin() {
     return;
   }
 
-  const { error: profileError } = await supabase.from("profiles").insert({
+  const { error: profileError } = await supabaseClient.from("profiles").insert({
     id: user.id,
     email: email,
     full_name: name,
@@ -1417,7 +1417,7 @@ async function doPatLogin() {
     return;
   }
 
-  const { error: patientProfileError } = await supabase
+  const { error: patientProfileError } = await supabaseClient
     .from("patient_profiles")
     .insert({
       user_id: user.id
@@ -3553,7 +3553,7 @@ initPat=function(){
 const SUPABASE_URL = "https://kxhmrfgolttrofpumqpy.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_zo1aCIr_drM18by2trO8xg_lQo2wZDo";
 
-const supabase = window.supabase.createClient(
+const supabaseClient = window.supabase.createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY
 );
