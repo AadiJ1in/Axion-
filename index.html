@@ -1404,13 +1404,20 @@ async function doPatLogin() {
     return;
   }
 
-  const { error: profileError } = await supabaseClient.from("profiles").insert({
-    id: user.id,
-    email: email,
-    full_name: name,
-    role: "patient",
-    patient_code: patientCode
-  });
+const { error: profileError } = await supabaseClient
+  .from("profiles")
+  .upsert(
+    {
+      id: user.id,
+      email: email,
+      full_name: name,
+      role: "patient",
+      patient_code: patientCode
+    },
+    {
+      onConflict: "id"
+    }
+  );
 
   if (profileError) {
     err.textContent = profileError.message;
@@ -1418,10 +1425,15 @@ async function doPatLogin() {
   }
 
   const { error: patientProfileError } = await supabaseClient
-    .from("patient_profiles")
-    .insert({
+  .from("patient_profiles")
+  .upsert(
+    {
       user_id: user.id
-    });
+    },
+    {
+      onConflict: "user_id"
+    }
+  );
 
   if (patientProfileError) {
     err.textContent = patientProfileError.message;
