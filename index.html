@@ -1481,7 +1481,7 @@ function doMFA(){
 // ================================================================
 function initPT(){
   var h=new Date().getHours();
-  var ge=document.getElementById('pt-greet');if(ge)ge.textContent=(h<12?'Good morning':h<17?'Good afternoon':'Good evening')+', Dr. Kim';
+  var ge=document.getElementById('pt-greet');if(ge)ge.textContent=(h<12?'Good morning':h<17?'Good afternoon':'Good afternoon')+', Dr. Jain';
   var de=document.getElementById('pt-date');if(de)de.textContent=new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   renderPatTable();renderAlerts();renderOvCi();renderOvRisk();renderCiList();renderRmPanel();renderAuditLog();
   setTimeout(initCharts,120);
