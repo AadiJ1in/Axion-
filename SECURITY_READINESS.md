@@ -1,35 +1,19 @@
-# Security and HIPAA Readiness Checklist
+# Security and privacy readiness
 
-This checklist is planning material, not certification.
+Axion is currently a nonclinical proof of concept for synthetic data.
 
-## Implemented in this proof of concept
+## Current technical boundaries
 
-- Fresh environment variables rather than embedded project credentials
-- Supabase Auth for email/password authentication
-- Server-controlled role assignment
-- RLS enabled on application tables
-- Least-privilege table grants
-- No anonymous table access
-- Browser-side camera processing
-- No raw video persistence
-- Input constraints on session data
-- Explicit synthetic/nonclinical labeling
+- Camera frames are processed in the browser.
+- The prototype does not upload or store raw camera video.
+- The database stores a minimal session summary only after an authenticated patient submits it.
+- Public signup creates only a patient role.
+- Therapist role assignment is server-controlled.
+- Row Level Security restricts patient access to their own profile and sessions.
+- The synthetic demo is explicitly labeled and does not require an account.
 
-## Required before real-world use
+## Required before real healthcare use
 
-- Independent HIPAA applicability analysis and legal review
-- Signed BAAs with every relevant vendor
-- Complete data inventory and data-flow diagram
-- Formal risk analysis and risk-management plan
-- Secure software development lifecycle
-- Dependency and secret scanning in CI
-- Content Security Policy and hardened HTTP headers
-- MFA or phishing-resistant authentication for workforce users
-- Administrative user lifecycle and access reviews
-- Append-only security audit logging
-- Rate limiting, abuse detection, and alerting
-- Incident response and breach-notification procedures
-- Retention, deletion, backup, and disaster-recovery testing
-- Penetration test and remediation
-- Clinical safety case and model validation
-- Accessibility and human-factors validation
+Independent review must cover HIPAA applicability, BAAs, privacy notices and consent, retention and deletion, security risk analysis, threat modeling, penetration testing, auditability, incident response, backup and disaster recovery, accessibility, clinical validation, human factors, model bias and failure modes, regulatory classification, monitoring, and change control.
+
+No person should interpret Axion's current movement metrics, heatmap, coaching text, or Recovery Pulse as diagnosis, risk classification, prognosis, or autonomous treatment guidance.

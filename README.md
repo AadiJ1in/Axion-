@@ -1,75 +1,50 @@
-# Axion Nonclinical MVP
+# Axion Movement Intelligence POC
 
-A runnable UI prototype and technical proof of concept for a gamified rehabilitation platform.
+Axion turns a prescribed movement into an understandable session for the patient and a concise movement report for the therapist.
 
-## Scope
+## Product demo
 
-This project intentionally represents itself as:
+The public synthetic demo works without configuration:
 
-- a UI prototype;
-- a technical proof of concept;
-- a nonclinical MVP using synthetic data;
-- a HIPAA-readiness starting point subject to independent legal, privacy, security, operational, and clinical review.
+1. Open **Motion Lab**.
+2. Choose **Run pitch demo**.
+3. Watch calibration, the Movement Twin, contextual coaching, energy progression, and rep metrics.
+4. Finish the session, answer two reflection questions, and open the Movement Report.
+5. Use **Therapist** to show the attention queue and Recovery Pulse workflow.
 
-It does **not** claim HIPAA compliance, medical-device status, clinical accuracy, diagnostic capability, treatment efficacy, or immunity from security vulnerabilities.
+## What is implemented
 
-## Included
+- three-second session calibration using locally estimated pose landmarks;
+- live Movement Twin reconstructed from MediaPipe coordinates;
+- bodyweight squat state tracking and rep-level depth, tempo, and symmetry-delta summaries;
+- sequence-aware coaching messages;
+- one-click synthetic pitch mode that does not depend on camera conditions;
+- post-session difficulty and discomfort reflection;
+- best-rep and performance-shift identification;
+- coordinate-based skeleton replay;
+- Movement Signature and descriptive joint-consistency map;
+- therapist dashboard, Recovery Pulse, and therapist-review suggestion;
+- optional Supabase authentication, database roles, RLS, and minimal session-summary storage;
+- no raw camera upload or storage.
 
-- Supabase email/password authentication
-- Public signup restricted to the `patient` role
-- Therapist role assigned only by an administrator
-- Postgres Row Level Security policies
-- Synthetic therapist dashboard
-- Browser-side MediaPipe Pose Landmarker
-- One exercise: bodyweight squat repetition counting
-- Minimal session result storage: exercise key, repetition count, source, timestamp
-- No raw camera upload or storage
-
-## Local setup
-
-1. Create a **new** Supabase project.
-2. Open the Supabase SQL Editor and run `supabase/schema.sql`.
-3. Open `src/config.js` and add the new project URL and publishable/anon key.
-4. Serve the folder locally:
+## Run locally
 
 ```bash
 python3 -m http.server 4173
 ```
 
-Open `http://localhost:4173`. Camera access generally requires `localhost` or HTTPS.
+Open `http://localhost:4173`.
 
-## Create a therapist account
+## Optional Supabase setup
 
-1. Create the account through Supabase Auth or the app.
-2. In the SQL Editor, run the promotion query at the bottom of `supabase/schema.sql`.
-3. Sign out and sign in again.
+1. Create a new Supabase project.
+2. Run `supabase/schema.sql`.
+3. Add the new URL and publishable/anon key to `src/config.js`.
+4. Create accounts through Supabase Auth.
+5. Promote therapist accounts only through the administrative SQL shown at the end of the schema.
 
-The browser cannot choose or modify the therapist role.
+## Scope and boundaries
 
-## Computer vision logic
+This repository is a UI prototype, technical proof of concept, nonclinical MVP using synthetic data, and HIPAA-readiness starting point subject to independent legal, privacy, security, operational, regulatory, accessibility, human-factors, and clinical review.
 
-The MediaPipe model estimates pose landmarks locally. The counter:
-
-- calculates left and/or right knee angles;
-- enters the `down` state after multiple frames below 105°;
-- counts one repetition after returning above 155° for multiple frames;
-- requires landmark visibility above 0.55.
-
-These thresholds are heuristic and are not clinically validated. Accuracy varies with camera angle, lighting, clothing, mobility, anatomy, occlusion, assistive devices, and movement style.
-
-## Before any real healthcare deployment
-
-At minimum, obtain independent review covering:
-
-- HIPAA applicability and organizational compliance;
-- Business Associate Agreements and cloud configuration;
-- formal security risk analysis;
-- threat modeling and penetration testing;
-- privacy notices, consent, retention, deletion, and incident response;
-- accessibility;
-- clinical validation and human-factors testing;
-- medical-device regulatory analysis;
-- model bias, failure modes, monitoring, and change control;
-- backup, disaster recovery, audit logging, and operational ownership.
-
-Do not upload real patient information to this proof of concept.
+It does not claim HIPAA compliance, medical-device status, clinical accuracy, diagnostic capability, treatment efficacy, or security certification. Thresholds and derived movement metrics are heuristic and unvalidated. The Recovery Pulse is an engagement/performance summary, not a prognosis. Do not use real patient information with this proof of concept.
