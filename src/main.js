@@ -3,6 +3,7 @@ import { isConfigured, supabase } from "./supabase.js";
 import { createSquatTracker } from "./pose.js";
 
 const app = document.querySelector("#app");
+const uiScenario = new URLSearchParams(window.location.search).get("state");
 
 const previousSession = [
   { index: 1, depthAngle: 108, tempo: 3.2, symmetryDelta: 8.1, consistency: 76 },
@@ -34,12 +35,23 @@ const patients = [
   { initials: "SR", name: "Sam Rivera", plan: "Balance practice", pulse: 61, trend: "-6", state: "Check in", color: "orange" },
 ];
 
+const mayaHistory = [
+  { label: "Baseline", week: "Week 1", pulse: 58, adherence: 60, depth: 116, symmetry: 10.8, tempo: 3.8, consistency: 61, discomfort: 2 },
+  { label: "Session 5", week: "Week 2", pulse: 67, adherence: 72, depth: 110, symmetry: 8.9, tempo: 3.5, consistency: 70, discomfort: 2 },
+  { label: "Session 10", week: "Week 3", pulse: 77, adherence: 84, depth: 105, symmetry: 7.2, tempo: 3.2, consistency: 79, discomfort: 1 },
+  { label: "Today", week: "Today", pulse: 89, adherence: 92, depth: 101, symmetry: 5.9, tempo: 2.9, consistency: 86, discomfort: 1 },
+];
+
 let currentView = "home";
 let currentSession = null;
 let currentProfile = null;
 let tracker = null;
 let demoTimer = null;
 let calibrationTimer = null;
+let demoTimeouts = [];
+let demoScriptActive = false;
+let demoDashboardUpdated = false;
+let demoStageIndex = 0;
 let sessionReps = [];
 let reportReps = [...todaySeed];
 let selectedRep = 4;
@@ -89,6 +101,13 @@ function layout(content, { full = false } = {}) {
         </nav>
         <button class="avatar-button" data-nav="auth" aria-label="Account"><span>AU</span><span class="presence-dot"></span></button>
       </header>
+      ${demoScriptActive ? `
+        <div class="demo-director" role="status" aria-live="polite">
+          <span class="demo-director__live"><i></i> DEMO MODE</span>
+          <div><b id="demo-director-step">Scripted experience running</b><span><i id="demo-director-progress"></i></span></div>
+          <button id="skip-demo-step">Next step</button>
+          <button id="reset-demo">Reset demo</button>
+        </div>` : ""}
       ${content}
       <footer class="footer"><span>Axion v0.2 • nonclinical proof of concept</span><span>No raw camera video is stored by this prototype.</span></footer>
     </div>
@@ -111,6 +130,13 @@ function signatureSvg({ compact = false, id = "signature" } = {}) {
       <path class="signature-secondary" d="M0 168 C26 92 48 79 70 166 S114 196 140 122 S185 83 210 165 S254 195 280 119 S327 86 350 165 S397 192 420 127 S468 101 490 165 S535 188 560 137"/>
       <g class="signature-dots"><circle cx="70" cy="151" r="4"/><circle cx="140" cy="94" r="4"/><circle cx="210" cy="151" r="4"/><circle cx="280" cy="87" r="5"/><circle cx="350" cy="153" r="4"/><circle cx="420" cy="102" r="4"/><circle cx="490" cy="151" r="4"/></g>
     </svg>`;
+}
+
+function comparisonSignature({ improved = false } = {}) {
+  const path = improved
+    ? "M5 80 C22 22 42 23 60 80 S98 124 118 53 S156 25 176 82 S214 116 234 48 S272 29 292 80"
+    : "M5 82 C18 12 48 42 61 91 S94 131 116 41 S151 9 176 94 S207 126 232 35 S267 51 292 75";
+  return `<svg class="comparison-signature" viewBox="0 0 300 140" aria-hidden="true"><path class="ghost" d="M0 82H300"/><path class="trace ${improved ? "improved" : "baseline"}" d="${path}"/><circle cx="292" cy="${improved ? 80 : 75}" r="4"/></svg>`;
 }
 
 function twinSvg() {
@@ -181,16 +207,23 @@ function labView() {
       </div>
       <section class="motion-workspace container-wide">
         <div class="capture-panel">
-          <div class="panel-topline"><div><span class="status-dot"></span><b id="capture-status">READY TO CALIBRATE</b></div><span>Processing on this device</span></div>
+          <div class="panel-topline">
+            <div><span class="status-dot"></span><b id="capture-status" aria-live="polite">READY TO CALIBRATE</b></div>
+            <div class="tracking-chips">
+              <span id="body-state"><i></i> Waiting for body</span>
+              <span id="quality-state">Tracking quality: —</span>
+              <span>${icon("shield", 12)} On-device</span>
+            </div>
+          </div>
           <div class="motion-stage">
-            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera preview</b><small>Full body · front or ¾ view</small></div><span class="pane-label">YOU</span></div>
+            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera preview</b><small>Full body · front or ¾ view</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button><button id="recovery-demo">Use Demo Mode</button></div></div><span class="pane-label">YOU</span></div>
             <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> Target range</div></div>
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
-          <div class="live-metrics"><div><span>REPS</span><b><i id="live-reps">0</i><small>/ 10</small></b></div><div><span>DEPTH</span><b id="live-depth">—</b></div><div><span>RHYTHM</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
-          <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>AXION COACH</small><p id="coach-message">Stand naturally for three seconds. Axion will learn your baseline for this session.</p></div><span id="coach-state">READY</span></div>
-          <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: 10 }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
-          <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Use camera</button><button class="button button--primary" id="run-demo">${icon("play", 17)} Run pitch demo</button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
+          <div class="live-metrics"><div><span>REPS</span><b><i id="live-reps">0</i><small>/ ${demoScriptActive ? 5 : 10}</small></b></div><div><span>DEPTH</span><b id="live-depth">—</b></div><div><span>RHYTHM</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
+          <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>AXION COACH</small><p id="coach-message" aria-live="polite">Stand naturally for three seconds. Axion will learn your baseline for this session.</p></div><span id="coach-state">READY</span></div>
+          <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: demoScriptActive ? 5 : 10 }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
+          <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Use camera</button><button class="button button--primary" id="run-demo">${icon("play", 17)} Demo Mode <small>70 sec</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
         </div>
         <aside class="journey-panel">
           <div class="journey-head"><span class="section-kicker">RECOVERY JOURNEY</span><span>Week 3</span></div>
@@ -222,11 +255,21 @@ function repScore(rep) {
 
 function reportView() {
   currentView = "report";
-  stopDemo();
+  if (!demoScriptActive) stopDemo();
+  if (uiScenario === "error") {
+    app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("activity", 26)}</span><h2>Movement Report could not load</h2><p>Your session summary is still safe. Check the connection and try again, or return to the therapist dashboard.</p><div><button class="button button--primary" onclick="window.location.href=window.location.pathname">Try again</button><button class="button button--ghost" data-nav="therapist">Therapist dashboard</button></div></div></main>`);
+    bindEvents();
+    return;
+  }
   const reps = reportReps.length ? reportReps : todaySeed;
   const stats = summaryFor(reps);
   const best = [...reps].sort((a, b) => repScore(b) - repScore(a))[0];
   const weakest = [...reps].sort((a, b) => repScore(a) - repScore(b))[0];
+  const reportTarget = reps.length <= 5 ? 5 : 10;
+  const reportPulse = demoScriptActive ? 89 : 86;
+  const patternText = reps.length <= 5
+    ? "Reps 3–5 formed Maya’s most consistent sequence, with rep 4 showing the best combined depth, tempo, and symmetry delta."
+    : "Reps 3–5 were most consistent. Depth decreased and tempo slowed across reps 7–9, then partially recovered on rep 10.";
   selectedRep = Math.min(selectedRep, reps.length);
   const selected = reps.find((r) => r.index === selectedRep) || best;
   app.innerHTML = layout(`
@@ -236,16 +279,35 @@ function reportView() {
         <div class="report-actions"><button class="button button--ghost">Export summary</button><button class="button button--primary">Add therapist note</button></div>
       </div>
       <section class="pulse-banner">
-        <div class="pulse-score"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle cx="50" cy="50" r="42"/></svg><span><b>86</b><small>RECOVERY PULSE</small></span></div>
-        <div class="pulse-copy"><span class="positive-pill">↑ 9 since last week</span><h2>Movement is becoming more consistent.</h2><p>Performance summary based on completion, recent movement consistency, range trend, and Maya’s reported difficulty. Not a medical prognosis.</p></div>
-        <div class="pulse-factors"><div><span>COMPLETION</span><b>10 / 10</b></div><div><span>DIFFICULTY</span><b>3 / 5</b></div><div><span>DISCOMFORT</span><b>None</b></div></div>
+        <div class="pulse-score"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle cx="50" cy="50" r="42"/></svg><span><b>${reportPulse}</b><small>RECOVERY PULSE</small></span></div>
+        <div class="pulse-copy"><span class="positive-pill">↑ ${demoScriptActive ? 12 : 9} since last week</span><h2>Movement is becoming more consistent.</h2><p>Performance summary based on completion, recent movement consistency, range trend, and Maya’s reported difficulty. Not a medical prognosis.</p></div>
+        <div class="pulse-factors"><div><span>COMPLETION</span><b>${reps.length} / ${reportTarget}</b></div><div><span>DIFFICULTY</span><b>3 / 5</b></div><div><span>DISCOMFORT</span><b>None</b></div></div>
       </section>
       <section class="report-metrics">
-        <article><span>REPETITIONS</span><b>${reps.length}<small>/10</small></b><em>Completed</em></article>
+        <article><span>REPETITIONS</span><b>${reps.length}<small>/${reportTarget}</small></b><em>Completed</em></article>
         <article><span>AVG. DEPTH ANGLE</span><b>${stats.depth}°</b><em class="up">↓ ${Math.max(1, 108 - stats.depth)}° vs last</em></article>
         <article><span>AVG. TEMPO</span><b>${stats.tempo}<small>s</small></b><em class="up">More consistent</em></article>
         <article><span>MOVEMENT CONSISTENCY</span><b>${stats.consistency}</b><em class="up">↑ 12%</em></article>
         <article><span>SYMMETRY DELTA</span><b>${stats.symmetry}°</b><em class="up">↓ 2.1°</em></article>
+      </section>
+      <section class="progress-comparison">
+        <div class="comparison-head">
+          <div><span class="section-kicker">BASELINE VS TODAY</span><h2>Movement changed measurably.</h2><p>Maya’s trajectory is tighter, her depth is more consistent, and left/right variation has decreased since Week 1.</p></div>
+          <span class="comparison-window">4-WEEK VIEW</span>
+        </div>
+        <div class="comparison-visuals">
+          <article class="comparison-session baseline">
+            <div><span>WEEK 1 · BASELINE</span><b>Consistency 61</b></div>
+            ${comparisonSignature({ improved: false })}
+            <div class="mini-metrics"><span>Depth <b>116°</b></span><span>Symmetry Δ <b>10.8°</b></span><span>Tempo <b>3.8s</b></span></div>
+          </article>
+          <div class="comparison-arrow">${icon("arrow", 22)}<span>4 weeks</span></div>
+          <article class="comparison-session today">
+            <div><span>TODAY · SESSION 15</span><b>Consistency ${stats.consistency}</b></div>
+            ${comparisonSignature({ improved: true })}
+            <div class="mini-metrics"><span>Depth <b>${stats.depth}°</b><em>↓ ${116 - stats.depth}°</em></span><span>Symmetry Δ <b>${stats.symmetry}°</b><em>↓ ${(10.8 - Number(stats.symmetry)).toFixed(1)}°</em></span><span>Tempo <b>${stats.tempo}s</b><em>↓ ${(3.8 - Number(stats.tempo)).toFixed(1)}s</em></span></div>
+          </article>
+        </div>
       </section>
       <section class="report-grid">
         <aside class="session-rail">
@@ -260,34 +322,57 @@ function reportView() {
         <aside class="insight-column">
           <article class="rep-highlight best"><span>${icon("spark", 17)} BEST REP</span><h3>#${best.index}</h3><div><span>Depth <b>${best.depthAngle}°</b></span><span>Consistency <b>${repScore(best)}</b></span><span>Tempo <b>${best.tempo}s</b></span></div></article>
           <article class="rep-highlight weak"><span>PERFORMANCE SHIFT</span><h3>#${weakest.index}</h3><p>Depth and tempo varied most here. Review the sequence before changing the plan.</p><div><span>Depth <b>${weakest.depthAngle}°</b></span><span>Consistency <b>${repScore(weakest)}</b></span></div></article>
-          <article class="ai-note"><span class="coach-orb">${icon("spark", 17)}</span><div><span class="section-kicker">SESSION PATTERN</span><p><b>Reps 3–5 were most consistent.</b> Depth decreased and tempo slowed across reps 7–9, then partially recovered on rep 10.</p></div></article>
+          <article class="ai-note"><span class="coach-orb">${icon("spark", 17)}</span><div><span class="section-kicker">SESSION PATTERN</span><p>${patternText}</p></div></article>
         </aside>
+      </section>
+
+      <section class="longitudinal-card">
+        <div class="analysis-head"><div><span class="section-kicker">THERAPIST DRILL-DOWN</span><h3>Four-week movement timeline</h3><p>One coherent view of adherence, Recovery Pulse, Motion Signature, and progression context.</p></div><span class="info-pill">SYNTHETIC STORY</span></div>
+        <div class="progress-timeline">
+          ${mayaHistory.map((point, index) => `
+            <article class="${index === mayaHistory.length - 1 ? "current" : ""}">
+              <span class="timeline-node">${index + 1}</span>
+              <div class="timeline-label"><small>${point.week}</small><b>${point.label}</b></div>
+              ${comparisonSignature({ improved: index >= 2 })}
+              <div class="timeline-stats"><span>Pulse <b>${point.pulse}</b></span><span>Adherence <b>${point.adherence}%</b></span><span>Consistency <b>${point.consistency}</b></span></div>
+              <p>${index === 0 ? "Variable baseline; target range established." : index === 1 ? "Completion increased; tempo still variable." : index === 2 ? "Tighter middle-set movement pattern." : "Best rep #4; progression review suggested."}</p>
+            </article>`).join("")}
+        </div>
+        <div class="why-flagged">
+          <span class="coach-orb">${icon("spark", 17)}</span>
+          <div><span class="section-kicker">WHY AXION FLAGGED THIS</span><p><b>Progression review suggested:</b> adherence increased 60% → 92%, movement consistency increased 61 → 86, symmetry delta decreased 10.8° → 5.9°, and discomfort decreased 2 → 1.</p></div>
+        </div>
       </section>
       <section class="analysis-grid">
         <article class="signature-panel report-signature"><div class="analysis-head"><div><span class="section-kicker">AXION MOTION SIGNATURE</span><h3>Today vs. last session</h3></div><div class="compare-switch"><span class="today"></span>Today <span class="previous"></span>Last session</div></div>${signatureSvg({ id: "report" })}<div class="signature-insight"><b>What changed</b><span>Trajectory tightened through the middle of the set, with late-session variability still visible.</span></div></article>
         <article class="heatmap-card"><div class="analysis-head"><div><span class="section-kicker">MOVEMENT MAP</span><h3>Observed joint consistency</h3></div><span class="info-pill">DESCRIPTIVE</span></div><div class="heatmap-body"><svg viewBox="0 0 180 300" aria-label="Movement metric body map"><circle cx="90" cy="28" r="20"/><path d="M90 48v85M52 70l38 18 38-18M52 70 34 130M128 70l18 60M90 133 58 202M90 133 42 202M58 201l-11 70M121 201l12 70"/><circle class="joint cool" cx="52" cy="70" r="13"/><circle class="joint cool" cx="128" cy="70" r="13"/><circle class="joint warm" cx="90" cy="133" r="18"/><circle class="joint hot" cx="58" cy="201" r="20"/><circle class="joint warm" cx="121" cy="201" r="18"/></svg><div class="heatmap-list"><span><i class="cool"></i>Shoulders <b>Stable</b></span><span><i class="warm"></i>Hips <b>Moderate variation</b></span><span><i class="hot"></i>Left knee <b>Review variation</b></span><span><i class="warm"></i>Right knee <b>Moderate variation</b></span></div></div><p class="fine-print">Colors summarize observed motion consistency in this session. They do not identify injury, pain, or clinical risk.</p></article>
-        <article class="review-card"><span class="section-kicker">SUGGESTED FOR THERAPIST REVIEW</span><h3>Maintain 10 reps</h3><p>Maya completed the set, but late-session variability increased. Keep the current target for one more session before considering progression.</p><div class="review-reason"><b>Why this appeared</b><span>3 sessions completed</span><span>Consistency trend +12%</span><span>Late-set shift detected</span></div><div class="review-actions"><button class="button button--primary">${icon("check", 16)} Keep current plan</button><button class="button button--ghost">Dismiss</button></div><small>Axion does not autonomously prescribe or change a care plan.</small></article>
+        <article class="review-card"><span class="section-kicker">SUGGESTED FOR THERAPIST REVIEW</span><h3>${reportTarget === 5 ? "Consider 5 → 6 reps" : "Maintain 10 reps"}</h3><p>${reportTarget === 5 ? "Maya completed the scripted set with improved consistency and lower symmetry variation than baseline. Review a one-rep progression for the next session." : "Maya completed the set, but late-session variability increased. Keep the current target for one more session before considering progression."}</p><div class="review-reason"><b>Why this appeared</b><span>4-week adherence 60% → 92%</span><span>Consistency 61 → ${stats.consistency}</span><span>Discomfort 2 → 1</span></div><div class="review-actions"><button class="button button--primary">${icon("check", 16)} Approve for next session</button><button class="button button--ghost">Keep current plan</button></div><small>Axion does not autonomously prescribe or change a care plan.</small></article>
       </section>
     </main>
   `);
   bindEvents();
   updateSyntheticTwin(selected.index > 6 ? 0.58 : 0.42);
+  animateNumber(document.querySelector(".pulse-score b"), reportPulse);
 }
 
 function therapistView() {
   currentView = "therapist";
-  stopDemo();
+  if (!demoScriptActive) stopDemo();
+  const dashboardPatients = patients.map((patient) => patient.name === "Maya Chen" && demoDashboardUpdated
+    ? { ...patient, pulse: 89, trend: "+12", state: "Review" }
+    : patient);
   app.innerHTML = layout(`
     <main class="therapist-page container-wide">
-      <div class="dashboard-head"><div><span class="section-kicker">THERAPIST WORKSPACE · SYNTHETIC</span><h1>Good afternoon, Dr. Reed.</h1><p>Three people have new movement sessions ready for review.</p></div><div class="date-card"><span>FRIDAY</span><b>AUG 14</b></div></div>
+      ${demoDashboardUpdated ? `<div class="dashboard-update" role="status">${icon("check", 16)} <b>Maya’s new session was analyzed.</b><span>Recovery Pulse 86 → 89 · Motion Signature and progression context added to her timeline.</span><button data-nav="report">Review now ${icon("arrow", 14)}</button></div>` : ""}
+      <div class="dashboard-head"><div><span class="section-kicker">THERAPIST WORKSPACE · SYNTHETIC</span><h1>Good afternoon, Dr. Reed.</h1><p>${demoDashboardUpdated ? "Maya’s completed session is now ready for an interpretable progression review." : "Three people have new movement sessions ready for review."}</p></div><div class="date-card"><span>FRIDAY</span><b>AUG 14</b></div></div>
       <section class="dashboard-stats">
         <article><span class="stat-icon">${icon("activity", 20)}</span><div><small>SESSIONS THIS WEEK</small><b>18</b><em>↑ 12% vs last week</em></div></article>
         <article><span class="stat-icon violet">${icon("users", 20)}</span><div><small>ACTIVE PATIENTS</small><b>12</b><em>9 on track</em></div></article>
         <article><span class="stat-icon orange">${icon("report", 20)}</span><div><small>NEEDS REVIEW</small><b>3</b><em>Movement shift detected</em></div></article>
       </section>
       <section class="dashboard-grid">
-        <div class="patients-card"><div class="card-title"><div><span class="section-kicker">PATIENT OVERVIEW</span><h2>Recent activity</h2></div><button class="filter-button">All patients ▾</button></div><div class="patient-table"><div class="table-head"><span>PATIENT</span><span>PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${patients.map((patient) => `<button class="patient-row" data-nav="report"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${patient.initials}</i><b>${patient.name}</b></span><span>${patient.plan}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulse}</b></span><span class="${patient.trend.startsWith("+") ? "trend-up" : "trend-down"}">${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replace(" ", "-")}">${patient.state}</em></span><span>${icon("arrow", 16)}</span></button>`).join("")}</div></div>
-        <aside class="attention-card"><div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Review next</h2></div><span>3</span></div><button data-nav="report"><span class="patient-avatar mint">MC</span><div><b>Maya Chen</b><small>Late-set consistency shift</small><em>Session completed 34m ago</em></div>${icon("arrow", 16)}</button><button><span class="patient-avatar violet">JL</span><div><b>Jordan Lee</b><small>Reported moderate discomfort</small><em>Session completed 2h ago</em></div>${icon("arrow", 16)}</button><button><span class="patient-avatar orange">SR</span><div><b>Sam Rivera</b><small>Two sessions missed</small><em>Last active 4 days ago</em></div>${icon("arrow", 16)}</button></aside>
+        <div class="patients-card"><div class="card-title"><div><span class="section-kicker">PATIENT OVERVIEW</span><h2>Recent activity</h2></div><button class="filter-button">All patients ▾</button></div>${uiScenario === "empty" ? emptyMarkup() : `<div class="patient-table"><div class="table-head"><span>PATIENT</span><span>PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${dashboardPatients.map((patient) => `<button class="patient-row" data-nav="report"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${patient.initials}</i><b>${patient.name}</b></span><span>${patient.plan}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulse}</b></span><span class="${patient.trend.startsWith("+") ? "trend-up" : "trend-down"}">${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replace(" ", "-")}">${patient.state}</em></span><span>${icon("arrow", 16)}</span></button>`).join("")}</div>`}</div>
+        <aside class="attention-card"><div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Review next</h2></div><span>3</span></div><button data-nav="report"><span class="patient-avatar mint">MC</span><div><b>Maya Chen</b><small>${demoDashboardUpdated ? "Progression review suggested" : "Late-set consistency shift"}</small><em>${demoDashboardUpdated ? "Session analyzed just now" : "Session completed 34m ago"}</em></div>${icon("arrow", 16)}</button><div class="flag-explanation"><b>Why Axion flagged this</b><p>${demoDashboardUpdated ? "Consistency improved across 4 weeks, adherence reached 92%, and discomfort decreased. Review whether the current plan should progress." : "Late-set depth variability increased across the last three reps while overall weekly consistency improved."}</p></div><button><span class="patient-avatar violet">JL</span><div><b>Jordan Lee</b><small>Reported moderate discomfort</small><em>Session completed 2h ago</em></div>${icon("arrow", 16)}</button><button><span class="patient-avatar orange">SR</span><div><b>Sam Rivera</b><small>Two sessions missed</small><em>Last active 4 days ago</em></div>${icon("arrow", 16)}</button></aside>
       </section>
       <section class="dashboard-bottom">
         <article class="trend-card"><div class="card-title"><div><span class="section-kicker">COHORT SIGNAL</span><h2>Weekly completion</h2></div><b>78%</b></div><div class="bar-chart">${[58,66,61,74,69,83,78].map((v,i) => `<span><i style="height:${v}%"></i><small>${["M","T","W","T","F","S","S"][i]}</small></span>`).join("")}</div></article>
@@ -296,6 +381,7 @@ function therapistView() {
     </main>
   `);
   bindEvents();
+  document.querySelectorAll(".dashboard-stats article > div > b").forEach((element) => animateNumber(element, Number(element.textContent)));
 }
 
 function authView() {
@@ -318,6 +404,7 @@ async function initializeLab() {
     video, canvas,
     onCalibration: ({ progress, status }) => updateCalibration(progress, status),
     onPose: updateTwinFromLandmarks,
+    onTrackingState: handleTrackingState,
     onRep: (rep) => {
       const consistency = Math.max(45, Math.round(100 - Math.abs(rep.depthAngle - 98) * 2 - (rep.symmetryDelta ?? 5)));
       sessionReps.push({ ...rep, consistency });
@@ -326,12 +413,59 @@ async function initializeLab() {
     onUpdate: ({ reps, angle, symmetryDelta, message, stage }) => {
       setText("#live-reps", reps); setText("#live-depth", angle === null ? "—" : `${angle}°`); setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}°`); setText("#coach-message", message); setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "down" ? "IN MOTION" : "READY");
     },
-    onError: (message) => { setText("#capture-status", "CAMERA UNAVAILABLE"); setText("#coach-message", `${message} Use “Run pitch demo” to show the full experience.`); },
+    onError: (message) => {
+      setText("#capture-status", "CAMERA NEEDS ATTENTION");
+      setText("#coach-message", message);
+      showCameraRecovery("Camera needs attention", message);
+    },
   });
   document.querySelector("#start-camera")?.addEventListener("click", async () => { stopDemo(); document.querySelector(".camera-pane")?.classList.add("camera-on"); setText("#capture-status", "CAMERA ACTIVE"); await tracker.start(); });
   document.querySelector("#run-demo")?.addEventListener("click", runPitchDemo);
+  document.querySelector("#retry-camera")?.addEventListener("click", async () => {
+    hideCameraRecovery();
+    await tracker.start();
+  });
+  document.querySelector("#recovery-demo")?.addEventListener("click", runPitchDemo);
   document.querySelector("#reset-session")?.addEventListener("click", resetLab);
   document.querySelector("#finish-session")?.addEventListener("click", finishSession);
+}
+
+function handleTrackingState({ code, label, quality, confidence }) {
+  const bodyState = document.querySelector("#body-state");
+  const qualityState = document.querySelector("#quality-state");
+  if (bodyState) {
+    bodyState.className = code === "body_detected" ? "detected" : code.includes("loading") || code.includes("starting") ? "loading" : "warning";
+    bodyState.innerHTML = code === "body_detected" ? `<i></i> Body detected ✓` : `<i></i> ${escapeHtml(label)}`;
+  }
+  if (qualityState) {
+    qualityState.className = quality ? quality.toLowerCase() : "";
+    qualityState.textContent = quality ? `Tracking quality: ${quality}${confidence ? ` · ${confidence}%` : ""}` : "Tracking quality: —";
+  }
+
+  const guidance = {
+    out_of_frame: "Step back so your full body is visible.",
+    low_confidence: "Improve the lighting and keep your ankles in frame.",
+    multiple_people: "Only one person should be visible during the session.",
+  };
+  if (guidance[code]) setText("#coach-message", guidance[code]);
+
+  if (["permission_denied", "no_camera", "camera_busy", "camera_disconnected", "camera_error"].includes(code)) {
+    showCameraRecovery("Camera unavailable", label);
+  } else if (code === "body_detected") {
+    hideCameraRecovery();
+  }
+}
+
+function showCameraRecovery(title, copy) {
+  const panel = document.querySelector("#camera-recovery");
+  if (!panel) return;
+  setText("#camera-recovery-title", title);
+  setText("#camera-recovery-copy", copy);
+  panel.classList.remove("hidden");
+}
+
+function hideCameraRecovery() {
+  document.querySelector("#camera-recovery")?.classList.add("hidden");
 }
 
 function updateCalibration(progress, status) {
@@ -349,41 +483,135 @@ function updateCalibration(progress, status) {
 function runPitchDemo() {
   stopDemo();
   tracker?.stop?.();
+  demoScriptActive = true;
+  demoDashboardUpdated = false;
+  demoStageIndex = 0;
   sessionReps = [];
-  document.querySelector(".camera-placeholder")?.classList.add("demo-active");
-  setText("#capture-status", "SYNTHETIC LIVE DEMO");
-  setText("#coach-message", "Stand naturally while Axion learns your session baseline.");
-  let calibrationStep = 0;
-  calibrationTimer = setInterval(() => {
-    calibrationStep += 1;
-    updateCalibration(calibrationStep / 4, calibrationStep === 4 ? "Session baseline ready" : "Learning your session baseline");
-    updateSyntheticTwin(0.03 * calibrationStep);
-    if (calibrationStep === 4) {
-      clearInterval(calibrationTimer);
-      let index = 0;
-      demoTimer = setInterval(() => {
-        const rep = { ...todaySeed[index] };
-        sessionReps.push(rep);
-        updateSyntheticTwin(index % 2 ? 0.62 : 0.44, true);
-        updateLiveSession();
-        index += 1;
-        if (index >= todaySeed.length) {
-          stopDemo();
-          setText("#coach-message", "Set complete. Reps 3–5 were your most consistent; the late-set shift is ready to review.");
-          setText("#coach-state", "COMPLETE"); setText("#capture-status", "SESSION COMPLETE");
-          document.querySelectorAll(".session-steps span").forEach((step, i) => step.classList.toggle("active", i === 2));
-        }
-      }, 620);
-    }
-  }, 320);
+  labView();
+  scheduleDemo(() => runDemoStage(0), 250);
+}
+
+function demoStages() {
+  const repStage = (index) => ({
+    label: `Capturing simulated rep ${index + 1} of 5`,
+    duration: 8000,
+    progress: 14 + (index + 1) * 11,
+    run: () => {
+      const rep = { ...todaySeed[index] };
+      sessionReps.push(rep);
+      updateSyntheticTwin(index % 2 ? .62 : .48, true);
+      scheduleDemo(() => updateSyntheticTwin(.06), 1300);
+      updateLiveSession();
+      if (navigator.vibrate) navigator.vibrate(index === 4 ? [30, 35, 50] : 24);
+      if (index === 4) celebrateMilestone();
+    },
+  });
+  return [
+    {
+      label: "Calibrating Maya’s session baseline",
+      duration: 7000,
+      progress: 14,
+      run: () => {
+        document.querySelector(".camera-placeholder")?.classList.add("demo-active");
+        setText("#capture-status", "SYNTHETIC DEMO · CALIBRATING");
+        setText("#coach-message", "Stand naturally while Axion learns your session baseline.");
+        handleTrackingState({ code: "body_detected", label: "Body detected", quality: "High", confidence: 96 });
+        [0.25, .5, .75, 1].forEach((progress, index) => scheduleDemo(() => updateCalibration(progress, progress === 1 ? "Session baseline ready" : "Learning Maya’s baseline"), 1400 * (index + 1)));
+      },
+    },
+    ...Array.from({ length: 5 }, (_, index) => repStage(index)),
+    {
+      label: "Session complete · generating Movement Signature",
+      duration: 5000,
+      progress: 76,
+      run: () => {
+        reportReps = sessionReps.map((rep, index) => ({ ...rep, index: index + 1 }));
+        setText("#coach-message", "Five reps captured. Rep 4 was most consistent; Maya improved from baseline.");
+        setText("#coach-state", "COMPLETE");
+        setText("#capture-status", "SESSION COMPLETE");
+        document.querySelectorAll(".session-steps span").forEach((step, index) => step.classList.toggle("active", index === 2));
+      },
+    },
+    {
+      label: "Comparing Baseline vs Today",
+      duration: 10000,
+      progress: 89,
+      run: () => reportView(),
+    },
+    {
+      label: "Updating therapist dashboard",
+      duration: 8000,
+      progress: 100,
+      run: () => {
+        demoDashboardUpdated = true;
+        therapistView();
+      },
+    },
+    {
+      label: "Demo complete · Maya’s improvement is ready for review",
+      duration: 0,
+      progress: 100,
+      run: () => {
+        setText("#demo-director-step", "Demo complete · Maya’s improvement is ready for review");
+        const progress = document.querySelector("#demo-director-progress");
+        if (progress) progress.style.width = "100%";
+      },
+    },
+  ];
+}
+
+function runDemoStage(index) {
+  stopDemo();
+  demoStageIndex = index;
+  const stages = demoStages();
+  const stage = stages[index];
+  if (!stage) return;
+  if (index > 0 && currentView === "lab") updateCalibration(1, "Session baseline ready");
+  const renderDirector = () => {
+    setText("#demo-director-step", stage.label);
+    const progress = document.querySelector("#demo-director-progress");
+    if (progress) progress.style.width = `${stage.progress}%`;
+  };
+  renderDirector();
+  stage.run();
+  requestAnimationFrame(renderDirector);
+  if (stage.duration) scheduleDemo(() => runDemoStage(index + 1), stage.duration);
+}
+
+function runNextDemoStage() {
+  runDemoStage(Math.min(demoStageIndex + 1, demoStages().length - 1));
+}
+
+function scheduleDemo(callback, delay) {
+  const timeout = setTimeout(callback, delay);
+  demoTimeouts.push(timeout);
+  return timeout;
+}
+
+function resetDemoExperience() {
+  stopDemo();
+  demoScriptActive = false;
+  demoDashboardUpdated = false;
+  reportReps = [...todaySeed];
+  homeView();
+}
+
+function celebrateMilestone() {
+  const layer = document.createElement("div");
+  layer.className = "milestone-burst";
+  layer.setAttribute("aria-hidden", "true");
+  layer.innerHTML = Array.from({ length: 18 }, (_, index) => `<i style="--i:${index}"></i>`).join("");
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 1400);
 }
 
 function updateLiveSession() {
   const last = sessionReps.at(-1);
   const stats = summaryFor(sessionReps);
   setText("#live-reps", sessionReps.length); setText("#live-depth", last ? `${last.depthAngle}°` : "—"); setText("#live-tempo", last ? `${last.tempo}s` : "—"); setText("#live-symmetry", last ? `${last.symmetryDelta ?? "—"}°` : "—");
-  setText("#energy-value", `${Math.min(100, sessionReps.length * 10)}%`);
-  const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / 10));
+  const targetReps = demoScriptActive ? 5 : 10;
+  setText("#energy-value", `${Math.min(100, Math.round((sessionReps.length / targetReps) * 100))}%`);
+  const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
   if (last) {
     let message = `Rep ${last.index} captured at ${last.depthAngle}°. Keep that rhythm.`;
@@ -489,23 +717,62 @@ async function submitSignIn(event) {
 }
 
 function setText(selector, text) { const element = document.querySelector(selector); if (element) element.textContent = text; }
+function animateNumber(element, target, duration = 650) {
+  if (!element || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const start = performance.now();
+  const frame = (now) => {
+    const progress = Math.min(1, (now - start) / duration);
+    element.textContent = String(Math.round(target * (1 - Math.pow(1 - progress, 3))));
+    if (progress < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+function loadingMarkup(label = "Loading Axion") {
+  return `<main class="loading-page container-wide" role="status" aria-live="polite"><span class="section-kicker">${label.toUpperCase()}</span><div class="skeleton-card"><i></i><i></i><i></i></div><div class="skeleton-grid"><span></span><span></span><span></span></div></main>`;
+}
+
+function emptyMarkup() {
+  return `<div class="empty-state"><span>${icon("report", 24)}</span><h3>No sessions yet</h3><p>Completed movement sessions will appear here with signatures, rep summaries, and progression context.</p><button class="button button--primary" data-nav="lab">Start a synthetic session</button></div>`;
+}
+
+function navigateTo(target) {
+  tracker?.stop?.();
+  if (demoScriptActive) { stopDemo(); demoScriptActive = false; }
+  currentView = target;
+  app.innerHTML = layout(loadingMarkup(`Loading ${target}`));
+  setTimeout(() => {
+    if (target === "home") homeView(); if (target === "lab") labView(); if (target === "report") reportView(); if (target === "therapist") therapistView(); if (target === "auth") authView();
+  }, 180);
+}
 function stopDemo() {
   if (demoTimer) clearInterval(demoTimer);
   if (calibrationTimer) clearInterval(calibrationTimer);
+  demoTimeouts.forEach((timeout) => clearTimeout(timeout));
+  demoTimeouts = [];
   demoTimer = null;
   calibrationTimer = null;
 }
 
 function bindEvents() {
   document.querySelectorAll("[data-nav]").forEach((element) => element.addEventListener("click", () => {
-    tracker?.stop?.();
-    const target = element.dataset.nav;
-    if (target === "home") homeView(); if (target === "lab") labView(); if (target === "report") reportView(); if (target === "therapist") therapistView(); if (target === "auth") authView();
+    navigateTo(element.dataset.nav);
   }));
   document.querySelectorAll("[data-select-rep]").forEach((element) => element.addEventListener("click", () => { selectedRep = Number(element.dataset.selectRep); reportView(); }));
   document.querySelector("#replay-button")?.addEventListener("click", replaySelectedRep);
   document.querySelector("#auth-form")?.addEventListener("submit", submitSignIn);
+  document.querySelector("#skip-demo-step")?.addEventListener("click", runNextDemoStage);
+  document.querySelector("#reset-demo")?.addEventListener("click", resetDemoExperience);
 }
+
+document.addEventListener("keydown", (event) => {
+  const modal = document.querySelector(".modal-layer");
+  if (event.key === "Escape" && modal) modal.remove();
+  if (currentView === "report" && !event.target.matches("input, button, textarea")) {
+    const maxRep = reportReps.length;
+    if (event.key === "ArrowRight") { selectedRep = Math.min(maxRep, selectedRep + 1); reportView(); }
+    if (event.key === "ArrowLeft") { selectedRep = Math.max(1, selectedRep - 1); reportView(); }
+  }
+});
 
 async function bootstrap() {
   if (supabase) {
@@ -516,4 +783,6 @@ async function bootstrap() {
   homeView();
 }
 
-bootstrap().catch((error) => { app.innerHTML = `<main class="fatal"><h1>Axion could not start.</h1><p>${escapeHtml(error.message)}</p></main>`; });
+bootstrap().catch((error) => {
+  app.innerHTML = `<main class="fatal container-wide"><span>${icon("activity", 28)}</span><h1>Axion could not start.</h1><p>${escapeHtml(error.message)}</p><button class="button button--primary" onclick="window.location.reload()">Try again</button><button class="button button--ghost" onclick="window.location.href=window.location.pathname">Open synthetic demo</button></main>`;
+});

@@ -37,6 +37,7 @@ export async function createSquatTracker({
   onPose = () => {},
   onRep = () => {},
   onCalibration = () => {},
+  onTrackingState = () => {},
   onError = () => {},
 }) {
   let landmarker;
@@ -57,9 +58,11 @@ export async function createSquatTracker({
   let calibrated = false;
   let baselineAngle = null;
   let calibrationSamples = [];
+  let noPoseFrames = 0;
   const repHistory = [];
 
   async function initialize() {
+    onTrackingState({ code: "model_loading", label: "Loading movement model", quality: null });
     const { DrawingUtils, FilesetResolver, PoseLandmarker } = await import(
       /* @vite-ignore */
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/+esm"
@@ -72,11 +75,20 @@ export async function createSquatTracker({
     landmarker = await PoseLandmarker.createFromOptions(vision, {
       baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
       runningMode: "VIDEO",
-      numPoses: 1,
+      numPoses: 2,
       minPoseDetectionConfidence: 0.55,
       minPosePresenceConfidence: 0.55,
       minTrackingConfidence: 0.55,
     });
+    onTrackingState({ code: "model_ready", label: "Movement model ready", quality: null });
+  }
+
+  function trackingQuality(landmarks) {
+    const keyIndices = [0, 11, 12, 23, 24, 25, 26, 27, 28];
+    const score = keyIndices.reduce((sum, index) => sum + (landmarks[index]?.visibility ?? 0), 0) / keyIndices.length;
+    if (score >= 0.78) return { label: "High", score };
+    if (score >= 0.62) return { label: "Moderate", score };
+    return { label: "Low", score };
   }
 
   function draw(result) {
@@ -196,7 +208,28 @@ export async function createSquatTracker({
       const now = performance.now();
       const result = landmarker.detectForVideo(video, now);
       draw(result);
+      if ((result.landmarks?.length ?? 0) > 1) {
+        onTrackingState({ code: "multiple_people", label: "Multiple people detected", quality: "Low" });
+        onUpdate({ reps, stage, angle: null, symmetryDelta: null, message: "Only one person should be visible during the session." });
+        rafId = requestAnimationFrame(frame);
+        return;
+      }
       const landmarks = result.landmarks?.[0];
+      if (!landmarks) {
+        noPoseFrames += 1;
+        if (noPoseFrames > 12) {
+          onTrackingState({ code: "out_of_frame", label: "Body not fully visible", quality: "Low" });
+        }
+      } else {
+        noPoseFrames = 0;
+        const quality = trackingQuality(landmarks);
+        onTrackingState({
+          code: quality.label === "Low" ? "low_confidence" : "body_detected",
+          label: quality.label === "Low" ? "Improve camera position" : "Body detected",
+          quality: quality.label,
+          confidence: Math.round(quality.score * 100),
+        });
+      }
       if (landmarks) onPose(landmarks);
       updateState(landmarks ? movementMetrics(landmarks) : { angle: null, symmetryDelta: null }, now);
     }
@@ -205,12 +238,24 @@ export async function createSquatTracker({
 
   async function start() {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        onTrackingState({ code: "no_camera", label: "No compatible camera found", quality: null });
+        throw new Error("This browser does not expose a compatible camera.");
+      }
       if (!landmarker) await initialize();
+      onTrackingState({ code: "camera_starting", label: "Starting camera", quality: null });
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } },
         audio: false,
       });
       video.srcObject = stream;
+      stream.getVideoTracks().forEach((track) => {
+        track.addEventListener("ended", () => {
+          running = false;
+          onTrackingState({ code: "camera_disconnected", label: "Camera disconnected", quality: null });
+          onError("Camera disconnected. Reconnect it or use Demo Mode.");
+        }, { once: true });
+      });
       await video.play();
       running = true;
       sessionStart = performance.now();
@@ -218,7 +263,21 @@ export async function createSquatTracker({
       calibrated = false;
       frame();
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Camera initialization failed.");
+      const code = error?.name === "NotAllowedError"
+        ? "permission_denied"
+        : error?.name === "NotFoundError"
+          ? "no_camera"
+          : error?.name === "NotReadableError"
+            ? "camera_busy"
+            : "camera_error";
+      const messages = {
+        permission_denied: "Camera permission was denied. Allow access in browser settings or use Demo Mode.",
+        no_camera: "No camera was found. Connect a camera or use Demo Mode.",
+        camera_busy: "The camera is being used by another application. Close it there and try again.",
+        camera_error: error instanceof Error ? error.message : "Camera initialization failed.",
+      };
+      onTrackingState({ code, label: messages[code], quality: null });
+      onError(messages[code]);
     }
   }
 
@@ -230,6 +289,7 @@ export async function createSquatTracker({
     repStart = null;
     minAngle = 180;
     symmetrySamples = [];
+    noPoseFrames = 0;
     repHistory.length = 0;
     onUpdate({ reps, stage, angle: null, symmetryDelta: null, message: "Session reset." });
   }

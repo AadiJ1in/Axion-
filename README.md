@@ -7,10 +7,10 @@ Axion turns a prescribed movement into an understandable session for the patient
 The public synthetic demo works without configuration:
 
 1. Open **Motion Lab**.
-2. Choose **Run pitch demo**.
-3. Watch calibration, the Movement Twin, contextual coaching, energy progression, and rep metrics.
-4. Finish the session, answer two reflection questions, and open the Movement Report.
-5. Use **Therapist** to show the attention queue and Recovery Pulse workflow.
+2. Choose **Demo Mode · 70 sec**.
+3. Watch the scripted flow advance through calibration, five reps, live coaching, session completion, Motion Signature, Baseline vs Today, and the updated therapist dashboard.
+4. Use **Next step** to advance faster or **Reset demo** to restore the original seeded state.
+5. See [`DEMO.md`](DEMO.md) for the exact presenter script, expected outputs, QA routes, and fallback behavior.
 
 ## What is implemented
 
@@ -18,12 +18,17 @@ The public synthetic demo works without configuration:
 - live Movement Twin reconstructed from MediaPipe coordinates;
 - bodyweight squat state tracking and rep-level depth, tempo, and symmetry-delta summaries;
 - sequence-aware coaching messages;
-- one-click synthetic pitch mode that does not depend on camera conditions;
+- one-click 70-second synthetic pitch mode that does not depend on camera conditions;
+- visible body-detection, confidence-quality, and real-camera recovery states;
 - post-session difficulty and discomfort reflection;
 - best-rep and performance-shift identification;
 - coordinate-based skeleton replay;
 - Movement Signature and descriptive joint-consistency map;
 - therapist dashboard, Recovery Pulse, and therapist-review suggestion;
+- Baseline vs Today comparison and four-week therapist drill-down;
+- explainable “Why Axion flagged this” attention-queue rationale;
+- loading, empty, and error states with recovery actions;
+- keyboard rep navigation, mobile haptics, milestone feedback, reduced-motion support, and reset-demo control;
 - optional Supabase authentication, database roles, RLS, and minimal session-summary storage;
 - no raw camera upload or storage.
 
@@ -34,6 +39,12 @@ python3 -m http.server 4173
 ```
 
 Open `http://localhost:4173`.
+
+Run the zero-dependency validation:
+
+```bash
+npm run check
+```
 
 ## Optional Supabase setup
 
