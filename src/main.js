@@ -45,6 +45,7 @@ const mayaHistory = [
 let currentView = "home";
 let currentSession = null;
 let currentProfile = null;
+let assignedPatients = [];
 let tracker = null;
 let demoTimer = null;
 let calibrationTimer = null;
