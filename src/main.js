@@ -772,7 +772,12 @@ async function submitSignIn(event) {
   currentSession = data.session;
   const { data: profile } = await supabase.from("profiles").select("id, display_name, role").eq("id", currentSession.user.id).single();
   currentProfile = profile;
-  profile?.role === "therapist" ? therapistView() : labView();
+if (profile?.role === "therapist") {
+  await loadAssignedPatients();
+  therapistView();
+} else {
+  labView();
+}
 }
 
 function setText(selector, text) { const element = document.querySelector(selector); if (element) element.textContent = text; }
