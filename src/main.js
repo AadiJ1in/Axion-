@@ -356,6 +356,45 @@ function reportView() {
   animateNumber(document.querySelector(".pulse-score b"), reportPulse);
 }
 
+async function loadAssignedPatients() {
+  if (!supabase || !currentSession?.user) {
+    assignedPatients = [];
+    return;
+  }
+
+  const { data: assignments, error: assignmentError } = await supabase
+    .from("therapist_patients")
+    .select("patient_id")
+    .eq("therapist_id", currentSession.user.id)
+    .eq("status", "active");
+
+  if (assignmentError) {
+    console.error("Failed to load therapist assignments:", assignmentError);
+    assignedPatients = [];
+    return;
+  }
+
+  const patientIds = assignments.map((assignment) => assignment.patient_id);
+
+  if (!patientIds.length) {
+    assignedPatients = [];
+    return;
+  }
+
+  const { data: profiles, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, display_name, role")
+    .in("id", patientIds);
+
+  if (profileError) {
+    console.error("Failed to load assigned patients:", profileError);
+    assignedPatients = [];
+    return;
+  }
+
+  assignedPatients = profiles || [];
+}
+
 function therapistView() {
   currentView = "therapist";
   if (!demoScriptActive) stopDemo();
