@@ -419,29 +419,242 @@ function therapistView() {
     color: ["mint", "violet", "orange"][index % 3]
   };
 });
-  app.innerHTML = layout(`
-    <main class="therapist-page container-wide">
-      ${demoDashboardUpdated ? `<div class="dashboard-update" role="status">${icon("check", 16)} <b>Maya’s new session was analyzed.</b><span>Recovery Pulse 86 → 89 · Motion Signature and progression context added to her timeline.</span><button data-nav="report">Review now ${icon("arrow", 14)}</button></div>` : ""}
-      <div class="dashboard-head"><div><span class="section-kicker">THERAPIST WORKSPACE · SYNTHETIC</span><h1>Good afternoon, ${currentProfile?.display_name || "Therapist"}.</h1><p>${demoDashboardUpdated ? "Maya’s completed session is now ready for an interpretable progression review." : "Three people have new movement sessions ready for review."}</p></div><div class="date-card"><span>FRIDAY</span><b>AUG 14</b></div></div>
-      <section class="dashboard-stats">
-        <article><span class="stat-icon">${icon("activity", 20)}</span><div><small>SESSIONS THIS WEEK</small><b>18</b><em>↑ 12% vs last week</em></div></article>
-        <article><span class="stat-icon violet">${icon("users", 20)}</span><div><small>ACTIVE PATIENTS</small><b>12</b><em>9 on track</em></div></article>
-        <article><span class="stat-icon orange">${icon("report", 20)}</span><div><small>NEEDS REVIEW</small><b>3</b><em>Movement shift detected</em></div></article>
-      </section>
-      <section class="dashboard-grid">
-        <div class="patients-card"><div class="card-title"><div><span class="section-kicker">PATIENT OVERVIEW</span><h2>Recent activity</h2></div><button class="filter-button">All patients ▾</button></div>${uiScenario === "empty" ? emptyMarkup() : `<div class="patient-table"><div class="table-head"><span>PATIENT</span><span>PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${dashboardPatients.map((patient) => `<button class="patient-row" data-nav="report"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${patient.initials}</i><b>${patient.name}</b></span><span>${patient.plan}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulse}</b></span><span class="${patient.trend.startsWith("+") ? "trend-up" : "trend-down"}">${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replace(" ", "-")}">${patient.state}</em></span><span>${icon("arrow", 16)}</span></button>`).join("")}</div>`}</div>
-        <aside class="attention-card"><div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Review next</h2></div><span>3</span></div><button data-nav="report"><span class="patient-avatar mint">MC</span><div><b>Maya Chen</b><small>${demoDashboardUpdated ? "Progression review suggested" : "Late-set consistency shift"}</small><em>${demoDashboardUpdated ? "Session analyzed just now" : "Session completed 34m ago"}</em></div>${icon("arrow", 16)}</button><div class="flag-explanation"><b>Why Axion flagged this</b><p>${demoDashboardUpdated ? "Consistency improved across 4 weeks, adherence reached 92%, and discomfort decreased. Review whether the current plan should progress." : "Late-set depth variability increased across the last three reps while overall weekly consistency improved."}</p></div><button><span class="patient-avatar violet">JL</span><div><b>Jordan Lee</b><small>Reported moderate discomfort</small><em>Session completed 2h ago</em></div>${icon("arrow", 16)}</button><button><span class="patient-avatar orange">SR</span><div><b>Sam Rivera</b><small>Two sessions missed</small><em>Last active 4 days ago</em></div>${icon("arrow", 16)}</button></aside>
-      </section>
-      <section class="dashboard-bottom">
-        <article class="trend-card"><div class="card-title"><div><span class="section-kicker">COHORT SIGNAL</span><h2>Weekly completion</h2></div><b>78%</b></div><div class="bar-chart">${[58,66,61,74,69,83,78].map((v,i) => `<span><i style="height:${v}%"></i><small>${["M","T","W","T","F","S","S"][i]}</small></span>`).join("")}</div></article>
-        <article class="privacy-dashboard">${icon("shield", 26)}<div><span class="section-kicker">MINIMAL DATA</span><h3>Review movement, not recordings.</h3><p>Axion reconstructs skeleton replay from pose coordinates and session metrics. Raw camera video is not required for this prototype’s therapist workflow.</p></div></article>
-      </section>
-    </main>
-  `);
-  bindEvents();
-  document.querySelectorAll(".dashboard-stats article > div > b").forEach((element) => animateNumber(element, Number(element.textContent)));
-}
+  const today = new Date();
 
+const dayName = today
+  .toLocaleDateString("en-US", { weekday: "long" })
+  .toUpperCase();
+
+const dateLabel = today
+  .toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric"
+  })
+  .toUpperCase();
+
+app.innerHTML = layout(`
+  <main class="therapist-page container-wide">
+
+    <div class="dashboard-head">
+      <div>
+        <span class="section-kicker">THERAPIST WORKSPACE</span>
+
+        <h1>
+          Good afternoon,
+          ${escapeHtml(currentProfile?.display_name || "Therapist")}.
+        </h1>
+
+        <p>
+          ${assignedPatients.length}
+          assigned patient${assignedPatients.length === 1 ? "" : "s"}.
+        </p>
+      </div>
+
+      <div class="date-card">
+        <span>${dayName}</span>
+        <b>${dateLabel}</b>
+      </div>
+    </div>
+
+    <section class="dashboard-stats">
+
+      <article>
+        <span class="stat-icon">
+          ${icon("activity", 20)}
+        </span>
+
+        <div>
+          <small>SESSIONS THIS WEEK</small>
+          <b>—</b>
+          <em>Session history not loaded yet</em>
+        </div>
+      </article>
+
+      <article>
+        <span class="stat-icon violet">
+          ${icon("users", 20)}
+        </span>
+
+        <div>
+          <small>ASSIGNED PATIENTS</small>
+          <b>${assignedPatients.length}</b>
+          <em>Active therapist assignments</em>
+        </div>
+      </article>
+
+      <article>
+        <span class="stat-icon orange">
+          ${icon("report", 20)}
+        </span>
+
+        <div>
+          <small>NEEDS REVIEW</small>
+          <b>—</b>
+          <em>Review logic not connected yet</em>
+        </div>
+      </article>
+
+    </section>
+
+    <section class="dashboard-grid">
+
+      <div class="patients-card">
+
+        <div class="card-title">
+          <div>
+            <span class="section-kicker">PATIENT OVERVIEW</span>
+            <h2>Assigned patients</h2>
+          </div>
+        </div>
+
+        ${
+          dashboardPatients.length === 0
+            ? `
+              <div class="empty-state">
+                <h3>No assigned patients</h3>
+                <p>
+                  Patients assigned to this therapist will appear here.
+                </p>
+              </div>
+            `
+            : `
+              <div class="patient-table">
+
+                <div class="table-head">
+                  <span>PATIENT</span>
+                  <span>ASSIGNMENT</span>
+                  <span>PLAN</span>
+                  <span>SESSION DATA</span>
+                  <span>STATUS</span>
+                  <span></span>
+                </div>
+
+                ${dashboardPatients
+                  .map(
+                    (patient) => `
+                      <div
+                        class="patient-row"
+                        data-patient-id="${patient.id}"
+                      >
+
+                        <span class="patient-cell">
+                          <i class="patient-avatar ${patient.color}">
+                            ${escapeHtml(patient.initials)}
+                          </i>
+
+                          <b>
+                            ${escapeHtml(patient.name)}
+                          </b>
+                        </span>
+
+                        <span>Assigned</span>
+
+                        <span>Not loaded yet</span>
+
+                        <span>Not loaded yet</span>
+
+                        <span>
+                          <em class="state active">
+                            Active
+                          </em>
+                        </span>
+
+                        <span>
+                          ${icon("arrow", 16)}
+                        </span>
+
+                      </div>
+                    `
+                  )
+                  .join("")}
+
+              </div>
+            `
+        }
+
+      </div>
+
+      <aside class="attention-card">
+
+        <div class="card-title">
+          <div>
+            <span class="section-kicker">REVIEW QUEUE</span>
+            <h2>Patient activity</h2>
+          </div>
+
+          <span>—</span>
+        </div>
+
+        <div class="flag-explanation">
+          <b>No review data yet</b>
+
+          <p>
+            Once exercise sessions are connected, this area can show
+            assigned patients whose recent movement sessions need review.
+          </p>
+        </div>
+
+      </aside>
+
+    </section>
+
+    <section class="dashboard-bottom">
+
+      <article class="trend-card">
+
+        <div class="card-title">
+          <div>
+            <span class="section-kicker">SESSION ACTIVITY</span>
+            <h2>Weekly completion</h2>
+          </div>
+
+          <b>—</b>
+        </div>
+
+        <p>
+          Weekly session statistics will appear here after
+          exercise session history is connected.
+        </p>
+
+      </article>
+
+      <article class="privacy-dashboard">
+
+        ${icon("shield", 26)}
+
+        <div>
+          <span class="section-kicker">MINIMAL DATA</span>
+
+          <h3>
+            Review movement, not recordings.
+          </h3>
+
+          <p>
+            Axion reconstructs movement from pose coordinates and
+            session metrics. Raw camera video is not required for
+            the therapist workflow.
+          </p>
+        </div>
+
+      </article>
+
+    </section>
+
+  </main>
+`);
+
+bindEvents();
+
+document
+  .querySelectorAll(".dashboard-stats article > div > b")
+  .forEach((element) => {
+    const value = Number(element.textContent);
+
+    if (!Number.isNaN(value)) {
+      animateNumber(element, value);
+    }
+  });
+}
 function authView() {
   currentView = "auth";
   stopDemo();
