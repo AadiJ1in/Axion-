@@ -398,9 +398,27 @@ async function loadAssignedPatients() {
 function therapistView() {
   currentView = "therapist";
   if (!demoScriptActive) stopDemo();
-  const dashboardPatients = patients.map((patient) => patient.name === "Maya Chen" && demoDashboardUpdated
-    ? { ...patient, pulse: 89, trend: "+12", state: "Review" }
-    : patient);
+  const dashboardPatients = assignedPatients.map((patient, index) => {
+  const name = patient.display_name || "Axion Patient";
+
+  const initials = name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  return {
+    id: patient.id,
+    initials,
+    name,
+    plan: "No active plan",
+    pulse: 0,
+    trend: "—",
+    state: "Active",
+    color: ["mint", "violet", "orange"][index % 3]
+  };
+});
   app.innerHTML = layout(`
     <main class="therapist-page container-wide">
       ${demoDashboardUpdated ? `<div class="dashboard-update" role="status">${icon("check", 16)} <b>Maya’s new session was analyzed.</b><span>Recovery Pulse 86 → 89 · Motion Signature and progression context added to her timeline.</span><button data-nav="report">Review now ${icon("arrow", 14)}</button></div>` : ""}
