@@ -656,8 +656,27 @@ function showReflection() {
 
 async function saveSessionSummary(reps) {
   if (!supabase || !currentSession?.user || !reps.length) return;
+
   const stats = summaryFor(reps);
-  await supabase.from("exercise_sessions").insert({ user_id: currentSession.user.id, exercise_key: "bodyweight_squat_poc", repetitions: reps.length, source: "mediapipe_browser_poc", movement_summary: { average_depth_angle: stats.depth, average_tempo_seconds: Number(stats.tempo), average_symmetry_delta: Number(stats.symmetry), movement_consistency: stats.consistency, pose_coordinate_replay: reps } });
+
+  const { error } = await supabase
+    .from("exercise_sessions")
+    .insert({
+      patient_id: currentSession.user.id,
+      exercise_key: "bodyweight_squat_poc",
+      repetitions: reps.length,
+      movement_summary: {
+        average_depth_angle: stats.depth,
+        average_tempo_seconds: Number(stats.tempo),
+        average_symmetry_delta: Number(stats.symmetry),
+        movement_consistency: stats.consistency,
+        pose_coordinate_replay: reps
+      }
+    });
+
+  if (error) {
+    console.error("Failed to save exercise session:", error);
+  }
 }
 
 function updateSyntheticTwin(depth = 0, pulse = false) {
