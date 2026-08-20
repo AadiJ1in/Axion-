@@ -422,7 +422,7 @@ function therapistView() {
   app.innerHTML = layout(`
     <main class="therapist-page container-wide">
       ${demoDashboardUpdated ? `<div class="dashboard-update" role="status">${icon("check", 16)} <b>Maya’s new session was analyzed.</b><span>Recovery Pulse 86 → 89 · Motion Signature and progression context added to her timeline.</span><button data-nav="report">Review now ${icon("arrow", 14)}</button></div>` : ""}
-      <div class="dashboard-head"><div><span class="section-kicker">THERAPIST WORKSPACE · SYNTHETIC</span><h1>Good afternoon, Dr. Reed.</h1><p>${demoDashboardUpdated ? "Maya’s completed session is now ready for an interpretable progression review." : "Three people have new movement sessions ready for review."}</p></div><div class="date-card"><span>FRIDAY</span><b>AUG 14</b></div></div>
+      <div class="dashboard-head"><div><span class="section-kicker">THERAPIST WORKSPACE · SYNTHETIC</span><h1>Good afternoon, ${currentProfile?.display_name || "Therapist"}.</h1><p>${demoDashboardUpdated ? "Maya’s completed session is now ready for an interpretable progression review." : "Three people have new movement sessions ready for review."}</p></div><div class="date-card"><span>FRIDAY</span><b>AUG 14</b></div></div>
       <section class="dashboard-stats">
         <article><span class="stat-icon">${icon("activity", 20)}</span><div><small>SESSIONS THIS WEEK</small><b>18</b><em>↑ 12% vs last week</em></div></article>
         <article><span class="stat-icon violet">${icon("users", 20)}</span><div><small>ACTIVE PATIENTS</small><b>12</b><em>9 on track</em></div></article>
