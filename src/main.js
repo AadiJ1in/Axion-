@@ -1,4 +1,3 @@
-import "./styles.css";
 import { isConfigured, supabase } from "./supabase.js";
 import { createSquatTracker } from "./pose.js";
 
