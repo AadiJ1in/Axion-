@@ -44,6 +44,7 @@ const mayaHistory = [
 let currentView = "home";
 let currentSession = null;
 let currentProfile = null;
+let demoRole = null;
 let assignedPatients = [];
 let tracker = null;
 let demoTimer = null;
@@ -78,28 +79,34 @@ function icon(name, size = 18) {
     spark: '<path d="m12 3 1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/>',
     lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
     back: '<path d="m15 18-6-6 6-6"/>',
+    trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H4v2a4 4 0 0 0 4 4M16 6h4v2a4 4 0 0 1-4 4M12 13v4M8 21h8M9 17h6"/>',
+    map: '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
   };
   return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ""}</svg>`;
 }
 
 function layout(content, { full = false } = {}) {
-  const nav = [
-    ["home", "Overview", "home"],
-    ["lab", "Motion Lab", "activity"],
-    ["report", "Movement Report", "report"],
-    ["therapist", "Therapist", "users"],
-  ];
+  const activeRole = currentProfile?.role || demoRole;
+  const nav = activeRole === "patient"
+    ? [["patient", "My recovery", "map"], ["lab", "Motion Lab", "activity"], ["report", "Progress", "report"]]
+    : activeRole === "therapist"
+      ? [["therapist", "Overview", "home"], ["report", "Movement reports", "report"]]
+      : [["home", "Overview", "home"], ["lab", "Motion Lab", "activity"], ["report", "Movement Report", "report"], ["therapist", "Therapist", "users"]];
+  const initials = activeRole === "therapist" ? "DR" : activeRole === "patient" ? "MC" : "AU";
+  const brandTarget = activeRole === "therapist" ? "therapist" : activeRole === "patient" ? "patient" : "home";
   return `
     <div class="app-shell ${full ? "app-shell--full" : ""}">
       <div class="prototype-strip">
         <span>NONCLINICAL PRODUCT PROTOTYPE</span><span>•</span><span>SYNTHETIC DATA</span><span>•</span><span>DESCRIPTIVE MOVEMENT METRICS ONLY</span>
       </div>
       <header class="topbar">
-        <button class="brand" data-nav="home" aria-label="Axion home"><span class="brand-symbol"><i></i><i></i></span><span>AXION</span></button>
+        <button class="brand" data-nav="${brandTarget}" aria-label="Axion home"><span class="brand-symbol"><i></i><i></i></span><span>AXION</span></button>
         <nav class="nav" aria-label="Primary navigation">
           ${nav.map(([view, label, symbol]) => `<button data-nav="${view}" class="${currentView === view ? "active" : ""}">${icon(symbol, 16)}<span>${label}</span></button>`).join("")}
         </nav>
-        <button class="avatar-button" data-nav="auth" aria-label="Account"><span>AU</span><span class="presence-dot"></span></button>
+        <button class="avatar-button" data-nav="auth" aria-label="Account"><span>${initials}</span><span class="presence-dot"></span></button>
       </header>
       ${demoScriptActive ? `
         <div class="demo-director" role="status" aria-live="polite">
@@ -196,13 +203,78 @@ function homeView() {
   requestAnimationFrame(() => updateSyntheticTwin(0.38));
 }
 
+function patientView() {
+  currentView = "patient";
+  stopDemo();
+  const patientName = currentProfile?.display_name || "Maya Chen";
+  app.innerHTML = layout(`
+    <main class="patient-portal container-wide">
+      <section class="patient-welcome">
+        <div>
+          <span class="section-kicker">WEEK 3 · ACL RECOVERY</span>
+          <h1>Welcome back, ${escapeHtml(patientName.split(" ")[0])}.</h1>
+          <p>Your next recovery session is ready. Complete today’s movement mission to keep your four-day streak alive.</p>
+        </div>
+        <div class="patient-scoreboard" aria-label="Recovery game statistics">
+          <article><span>${icon("trophy", 18)}</span><div><small>RECOVERY XP</small><b>4,390</b></div></article>
+          <article><span>${icon("spark", 18)}</span><div><small>LEVEL</small><b>7</b></div></article>
+          <article><span>${icon("calendar", 18)}</span><div><small>STREAK</small><b>4 days</b></div></article>
+        </div>
+      </section>
+
+      <section class="patient-grid">
+        <article class="recovery-map-card">
+          <div class="card-title">
+            <div><span class="section-kicker">YOUR RECOVERY PATH</span><h2>Back to the trail</h2></div>
+            <span class="journey-percent">62% complete</span>
+          </div>
+          <div class="recovery-route" aria-label="Recovery journey milestones">
+            <div class="route-line"></div>
+            <div class="route-node complete" style="--x:9%;--y:76%"><span>${icon("check", 15)}</span><b>Foundation</b><small>Complete</small></div>
+            <div class="route-node complete" style="--x:31%;--y:50%"><span>${icon("check", 15)}</span><b>Control</b><small>Complete</small></div>
+            <div class="route-node current" style="--x:55%;--y:68%"><span>3</span><b>Strength</b><small>You are here</small></div>
+            <div class="route-node" style="--x:76%;--y:35%"><span>4</span><b>Balance</b><small>Locked</small></div>
+            <div class="route-node" style="--x:91%;--y:17%"><span>${icon("trophy", 16)}</span><b>Return</b><small>Final stage</small></div>
+          </div>
+          <div class="next-unlock"><span>${icon("spark", 17)}</span><div><b>Next milestone: Controlled strength</b><small>Complete 2 more sessions to unlock the Balance Bridge.</small></div><strong>2 left</strong></div>
+        </article>
+
+        <aside class="patient-side-stack">
+          <article class="daily-goal-card">
+            <div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32"/></svg><b>2/3</b></div>
+            <div><span class="section-kicker">WEEKLY GOAL</span><h3>One session from your streak.</h3><p>Finish today’s prescribed exercise to reach this week’s target.</p></div>
+          </article>
+          <article class="reward-card"><span>${icon("trophy", 24)}</span><div><small>NEXT REWARD</small><h3>Trailblazer badge</h3><p>Earn 160 XP in today’s Motion Lab.</p></div></article>
+        </aside>
+      </section>
+
+      <section class="today-plan">
+        <div class="section-heading compact"><div><span class="section-kicker">TODAY’S PRESCRIPTION</span><h2>Three focused exercises.</h2></div><p>Prescribed by Dr. Ava Patel · Estimated time 14 minutes</p></div>
+        <div class="exercise-list">
+          <article class="exercise-card exercise-card--primary">
+            <div class="exercise-order">01</div>
+            <div class="exercise-visual">${twinSvg()}</div>
+            <div class="exercise-copy"><span class="live-pill">READY NOW</span><h3>Bodyweight Squat</h3><p>3 sets · 10 repetitions · movement tracking enabled</p><div><span>Depth</span><span>Tempo</span><span>Symmetry</span></div></div>
+            <button class="button button--primary" data-nav="lab">Start in Motion Lab ${icon("arrow", 16)}</button>
+          </article>
+          <article class="exercise-card"><div class="exercise-order">02</div><span class="exercise-icon">${icon("activity", 24)}</span><div class="exercise-copy"><h3>Wall Sit</h3><p>3 sets · 30 second hold</p><small>Complete after Bodyweight Squat</small></div><button class="button button--ghost" disabled>Locked</button></article>
+          <article class="exercise-card complete"><div class="exercise-order">03</div><span class="exercise-icon">${icon("check", 24)}</span><div class="exercise-copy"><h3>Heel Raises</h3><p>2 sets · 12 repetitions</p><small>Completed yesterday · +90 XP</small></div><span class="complete-label">COMPLETED</span></article>
+        </div>
+      </section>
+    </main>
+  `, { full: true });
+  bindEvents();
+  requestAnimationFrame(() => updateSyntheticTwin(0.25));
+}
+
 function labView() {
   currentView = "lab";
   sessionReps = [];
+  const backTarget = currentProfile?.role === "patient" || demoRole === "patient" ? "patient" : "home";
   app.innerHTML = layout(`
     <main class="lab-page">
       <div class="lab-header container-wide">
-        <div><button class="back-link" data-nav="home">${icon("back", 16)} Back</button><div class="eyebrow"><span></span> Today’s session · Exercise 1 of 1</div><h1>Bodyweight Squat</h1></div>
+        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to recovery plan</button><div class="eyebrow"><span></span> Today’s prescription · Exercise 1 of 3</div><h1>Bodyweight Squat</h1></div>
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
       </div>
       <section class="motion-workspace container-wide">
@@ -397,272 +469,105 @@ async function loadAssignedPatients() {
 function therapistView() {
   currentView = "therapist";
   if (!demoScriptActive) stopDemo();
-  const dashboardPatients = assignedPatients.map((patient, index) => {
-  const name = patient.display_name || "Axion Patient";
-
-  const initials = name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  return {
-    id: patient.id,
-    initials,
-    name,
-    plan: "No active plan",
-    pulse: 0,
-    trend: "—",
-    state: "Active",
-    color: ["mint", "violet", "orange"][index % 3]
-  };
-});
+  const isDemoTherapist = currentSession?.demo || demoRole === "therapist";
+  const dashboardPatients = assignedPatients.length
+    ? assignedPatients.map((patient, index) => {
+        const name = patient.display_name || "Axion Patient";
+        return {
+          id: patient.id,
+          initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+          name,
+          plan: "Active recovery plan",
+          pulse: 74,
+          trend: "+3",
+          state: "On track",
+          color: ["mint", "violet", "orange"][index % 3]
+        };
+      })
+    : isDemoTherapist
+      ? [...patients, { initials: "AP", name: "Amara Patel", plan: "Shoulder mobility", pulse: 78, trend: "+5", state: "On track", color: "mint" }]
+      : [];
   const today = new Date();
-
-const dayName = today
-  .toLocaleDateString("en-US", { weekday: "long" })
-  .toUpperCase();
-
-const dateLabel = today
-  .toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric"
-  })
-  .toUpperCase();
-
-app.innerHTML = layout(`
-  <main class="therapist-page container-wide">
-
-    <div class="dashboard-head">
-      <div>
-        <span class="section-kicker">THERAPIST WORKSPACE</span>
-
-        <h1>
-          Good afternoon,
-          ${escapeHtml(currentProfile?.display_name || "Therapist")}.
-        </h1>
-
-        <p>
-          ${assignedPatients.length}
-          assigned patient${assignedPatients.length === 1 ? "" : "s"}.
-        </p>
+  const dayName = today.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
+  const dateLabel = today.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
+  const patientCount = dashboardPatients.length;
+  app.innerHTML = layout(`
+    <main class="therapist-page container-wide">
+      <section class="pt-workspace-nav">
+        <div><span>${icon("activity", 17)}</span><b>Clinical command center</b></div>
+        <nav><button class="active">Overview</button><button>Patients</button><button>Recovery roadmaps</button><button>Check-ins</button><button>Alerts <i>2</i></button><button>Exercise library</button></nav>
+        <button data-portal-signout>Sign out</button>
+      </section>
+      <div class="dashboard-head">
+        <div><span class="section-kicker">THERAPIST WORKSPACE</span><h1>Good afternoon, ${escapeHtml(currentProfile?.display_name || "Dr. Ava Patel")}.</h1><p>Here is what changed across your patient panel since your last review.</p></div>
+        <div class="date-card"><span>${dayName}</span><b>${dateLabel}</b></div>
       </div>
-
-      <div class="date-card">
-        <span>${dayName}</span>
-        <b>${dateLabel}</b>
-      </div>
-    </div>
-
-    <section class="dashboard-stats">
-
-      <article>
-        <span class="stat-icon">
-          ${icon("activity", 20)}
-        </span>
-
-        <div>
-          <small>SESSIONS THIS WEEK</small>
-          <b>—</b>
-          <em>Session history not loaded yet</em>
+      <section class="dashboard-stats">
+        <article><span class="stat-icon">${icon("activity", 20)}</span><div><small>SESSIONS THIS WEEK</small><b>${isDemoTherapist ? 24 : "—"}</b><em>${isDemoTherapist ? "+18% from last week" : "Connect session history"}</em></div></article>
+        <article><span class="stat-icon violet">${icon("users", 20)}</span><div><small>ACTIVE PATIENTS</small><b>${patientCount}</b><em>Across ${isDemoTherapist ? 3 : 1} recovery programs</em></div></article>
+        <article><span class="stat-icon orange">${icon("bell", 20)}</span><div><small>NEEDS ATTENTION</small><b>${isDemoTherapist ? 2 : "—"}</b><em>Movement or adherence changes</em></div></article>
+      </section>
+      <section class="dashboard-grid">
+        <div class="patients-card">
+          <div class="card-title"><div><span class="section-kicker">PATIENT OVERVIEW</span><h2>Recovery panel</h2></div><button class="filter-button">All patients</button></div>
+          ${dashboardPatients.length === 0 ? emptyMarkup() : `<div class="patient-table"><div class="table-head"><span>PATIENT</span><span>RECOVERY PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${dashboardPatients.map((patient) => `<button class="patient-row" data-nav="report"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><b>${escapeHtml(patient.name)}</b></span><span>${escapeHtml(patient.plan)}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulse}</b></span><span class="${String(patient.trend).startsWith("-") ? "trend-down" : "trend-up"}">${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></span><span>${icon("arrow", 16)}</span></button>`).join("")}</div>`}
         </div>
-      </article>
-
-      <article>
-        <span class="stat-icon violet">
-          ${icon("users", 20)}
-        </span>
-
-        <div>
-          <small>ASSIGNED PATIENTS</small>
-          <b>${assignedPatients.length}</b>
-          <em>Active therapist assignments</em>
-        </div>
-      </article>
-
-      <article>
-        <span class="stat-icon orange">
-          ${icon("report", 20)}
-        </span>
-
-        <div>
-          <small>NEEDS REVIEW</small>
-          <b>—</b>
-          <em>Review logic not connected yet</em>
-        </div>
-      </article>
-
-    </section>
-
-    <section class="dashboard-grid">
-
-      <div class="patients-card">
-
-        <div class="card-title">
-          <div>
-            <span class="section-kicker">PATIENT OVERVIEW</span>
-            <h2>Assigned patients</h2>
-          </div>
-        </div>
-
-        ${
-          dashboardPatients.length === 0
-            ? `
-              <div class="empty-state">
-                <h3>No assigned patients</h3>
-                <p>
-                  Patients assigned to this therapist will appear here.
-                </p>
-              </div>
-            `
-            : `
-              <div class="patient-table">
-
-                <div class="table-head">
-                  <span>PATIENT</span>
-                  <span>ASSIGNMENT</span>
-                  <span>PLAN</span>
-                  <span>SESSION DATA</span>
-                  <span>STATUS</span>
-                  <span></span>
-                </div>
-
-                ${dashboardPatients
-                  .map(
-                    (patient) => `
-                      <div
-                        class="patient-row"
-                        data-patient-id="${patient.id}"
-                      >
-
-                        <span class="patient-cell">
-                          <i class="patient-avatar ${patient.color}">
-                            ${escapeHtml(patient.initials)}
-                          </i>
-
-                          <b>
-                            ${escapeHtml(patient.name)}
-                          </b>
-                        </span>
-
-                        <span>Assigned</span>
-
-                        <span>Not loaded yet</span>
-
-                        <span>Not loaded yet</span>
-
-                        <span>
-                          <em class="state active">
-                            Active
-                          </em>
-                        </span>
-
-                        <span>
-                          ${icon("arrow", 16)}
-                        </span>
-
-                      </div>
-                    `
-                  )
-                  .join("")}
-
-              </div>
-            `
-        }
-
-      </div>
-
-      <aside class="attention-card">
-
-        <div class="card-title">
-          <div>
-            <span class="section-kicker">REVIEW QUEUE</span>
-            <h2>Patient activity</h2>
-          </div>
-
-          <span>—</span>
-        </div>
-
-        <div class="flag-explanation">
-          <b>No review data yet</b>
-
-          <p>
-            Once exercise sessions are connected, this area can show
-            assigned patients whose recent movement sessions need review.
-          </p>
-        </div>
-
-      </aside>
-
-    </section>
-
-    <section class="dashboard-bottom">
-
-      <article class="trend-card">
-
-        <div class="card-title">
-          <div>
-            <span class="section-kicker">SESSION ACTIVITY</span>
-            <h2>Weekly completion</h2>
-          </div>
-
-          <b>—</b>
-        </div>
-
-        <p>
-          Weekly session statistics will appear here after
-          exercise session history is connected.
-        </p>
-
-      </article>
-
-      <article class="privacy-dashboard">
-
-        ${icon("shield", 26)}
-
-        <div>
-          <span class="section-kicker">MINIMAL DATA</span>
-
-          <h3>
-            Review movement, not recordings.
-          </h3>
-
-          <p>
-            Axion reconstructs movement from pose coordinates and
-            session metrics. Raw camera video is not required for
-            the therapist workflow.
-          </p>
-        </div>
-
-      </article>
-
-    </section>
-
-  </main>
-`);
-
-bindEvents();
-
-document
-  .querySelectorAll(".dashboard-stats article > div > b")
-  .forEach((element) => {
+        <aside class="attention-card">
+          <div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Review next</h2></div><span>${isDemoTherapist ? 2 : 0}</span></div>
+          ${isDemoTherapist ? `<button data-nav="report"><i class="patient-avatar orange">SR</i><div><b>Sam Rivera</b><small>Adherence dropped 22%</small><em>Last session · yesterday</em></div>${icon("arrow", 15)}</button><button data-nav="report"><i class="patient-avatar violet">JL</i><div><b>Jordan Lee</b><small>Late-set symmetry changed</small><em>3 sessions flagged</em></div>${icon("arrow", 15)}</button><div class="flag-explanation"><b>WHY AXION FLAGGED THIS</b><p>Flags summarize changes in movement and participation. They do not diagnose injury or modify treatment.</p></div>` : `<div class="flag-explanation"><b>No review data yet</b><p>Patient movement and adherence changes will appear here.</p></div>`}
+        </aside>
+      </section>
+      <section class="dashboard-bottom">
+        <article class="trend-card"><div class="card-title"><div><span class="section-kicker">SESSION ACTIVITY</span><h2>Weekly completion</h2></div><b>${isDemoTherapist ? "82%" : "—"}</b></div><div class="bar-chart">${[58,72,65,88,93,76,82].map((value, index) => `<span><i style="height:${value}%"></i><small>${["M","T","W","T","F","S","S"][index]}</small></span>`).join("")}</div></article>
+        <article class="privacy-dashboard">${icon("shield", 26)}<div><span class="section-kicker">THERAPIST CONTROL</span><h3>Review movement, not recordings.</h3><p>Axion surfaces session summaries, adherence, and movement changes while keeping raw camera video on the patient’s device.</p></div></article>
+      </section>
+    </main>
+  `, { full: true });
+  bindEvents();
+  document.querySelectorAll(".dashboard-stats article > div > b").forEach((element) => {
     const value = Number(element.textContent);
-
-    if (!Number.isNaN(value)) {
-      animateNumber(element, value);
-    }
+    if (!Number.isNaN(value)) animateNumber(element, value);
   });
 }
 function authView() {
   currentView = "auth";
   stopDemo();
   app.innerHTML = layout(`
-    <main class="auth-page container-wide"><section class="auth-card"><div class="auth-brand"><span class="brand-symbol"><i></i><i></i></span><b>AXION</b></div><span class="section-kicker">${isConfigured ? "SECURE PROTOTYPE ACCESS" : "DEMO MODE AVAILABLE"}</span><h1>${isConfigured ? "Welcome back." : "Supabase is not connected."}</h1><p>${isConfigured ? "Sign in to test database-enforced patient and therapist roles." : "The full synthetic product demo works now. Connect a new Supabase project when you are ready to test authentication and session storage."}</p>
-      ${isConfigured ? `<form id="auth-form"><label>Email<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="password" type="password" minlength="8" required autocomplete="current-password"/></label><div id="auth-message" class="form-message"></div><button class="button button--primary" type="submit">Sign in ${icon("arrow", 16)}</button></form>` : `<div class="config-note"><code>src/config.js</code><span>Add a fresh project URL and publishable anon key after running <code>supabase/schema.sql</code>.</span></div><button class="button button--primary" data-nav="lab">Continue with synthetic demo ${icon("arrow", 16)}</button>`}
-    </section></main>
+    <main class="auth-page container-wide">
+      <section class="auth-card auth-card--portal">
+        <div class="auth-brand"><span class="brand-symbol"><i></i><i></i></span><b>AXION</b></div>
+        <span class="section-kicker">RECOVERY PLATFORM ACCESS</span><h1>Welcome back.</h1><p>Sign in to your Axion workspace, or enter either guided demo to see the complete patient-to-therapist story.</p>
+        ${isConfigured ? `<form id="auth-form"><label>Email<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="password" type="password" minlength="8" required autocomplete="current-password"/></label><div id="auth-message" class="form-message"></div><button class="button button--primary" type="submit">Sign in securely ${icon("arrow", 16)}</button></form>` : `<div class="config-note"><span>Authentication is unavailable, but both synthetic demo roles are ready below.</span></div>`}
+        <div class="demo-divider"><span>OR EXPLORE A SYNTHETIC ROLE</span></div>
+        <div class="role-demo-grid">
+          <button data-demo-role="patient"><span class="role-demo-icon">${icon("map", 22)}</span><div><small>PATIENT EXPERIENCE</small><b>Enter Maya’s recovery</b><p>Recovery path, daily prescription, rewards, and Motion Lab.</p></div>${icon("arrow", 17)}</button>
+          <button data-demo-role="therapist"><span class="role-demo-icon violet">${icon("users", 22)}</span><div><small>PHYSICAL THERAPIST</small><b>Enter Dr. Patel’s workspace</b><p>Patient panel, Recovery Pulse, alerts, and movement reports.</p></div>${icon("arrow", 17)}</button>
+        </div>
+        <small class="auth-disclaimer">Synthetic profiles and movement data · nonclinical product demonstration</small>
+      </section>
+    </main>
   `);
   bindEvents();
+}
+
+function enterDemoPortal(role) {
+  demoRole = role;
+  currentSession = { demo: true, user: { id: `demo-${role}` } };
+  currentProfile = role === "therapist"
+    ? { id: "demo-therapist", display_name: "Dr. Ava Patel", role: "therapist" }
+    : { id: "demo-patient", display_name: "Maya Chen", role: "patient" };
+  if (role === "therapist") therapistView();
+  else patientView();
+}
+
+async function signOutPortal() {
+  if (supabase && !currentSession?.demo) await supabase.auth.signOut();
+  tracker?.stop?.();
+  currentSession = null;
+  currentProfile = null;
+  demoRole = null;
+  assignedPatients = [];
+  homeView();
 }
 
 async function initializeLab() {
@@ -1011,7 +916,7 @@ if (profile?.role === "therapist") {
   await loadAssignedPatients();
   therapistView();
 } else {
-  labView();
+  patientView();
 }
 }
 
@@ -1040,7 +945,7 @@ function navigateTo(target) {
   currentView = target;
   app.innerHTML = layout(loadingMarkup(`Loading ${target}`));
   setTimeout(() => {
-    if (target === "home") homeView(); if (target === "lab") labView(); if (target === "report") reportView(); if (target === "therapist") therapistView(); if (target === "auth") authView();
+    if (target === "home") homeView(); if (target === "patient") patientView(); if (target === "lab") labView(); if (target === "report") reportView(); if (target === "therapist") therapistView(); if (target === "auth") authView();
   }, 180);
 }
 function stopDemo() {
@@ -1059,6 +964,8 @@ function bindEvents() {
   document.querySelectorAll("[data-select-rep]").forEach((element) => element.addEventListener("click", () => { selectedRep = Number(element.dataset.selectRep); reportView(); }));
   document.querySelector("#replay-button")?.addEventListener("click", replaySelectedRep);
   document.querySelector("#auth-form")?.addEventListener("submit", submitSignIn);
+  document.querySelectorAll("[data-demo-role]").forEach((element) => element.addEventListener("click", () => enterDemoPortal(element.dataset.demoRole)));
+  document.querySelectorAll("[data-portal-signout]").forEach((element) => element.addEventListener("click", signOutPortal));
   document.querySelector("#skip-demo-step")?.addEventListener("click", runNextDemoStage);
   document.querySelector("#reset-demo")?.addEventListener("click", resetDemoExperience);
 }
@@ -1078,6 +985,19 @@ async function bootstrap() {
     const { data } = await supabase.auth.getSession();
     currentSession = data.session;
     supabase.auth.onAuthStateChange((_event, session) => { currentSession = session; if (!session) currentProfile = null; });
+    if (currentSession?.user) {
+      const { data: profile } = await supabase.from("profiles").select("id, display_name, role").eq("id", currentSession.user.id).single();
+      currentProfile = profile;
+      if (profile?.role === "therapist") {
+        await loadAssignedPatients();
+        therapistView();
+        return;
+      }
+      if (profile?.role === "patient") {
+        patientView();
+        return;
+      }
+    }
   }
   homeView();
 }
