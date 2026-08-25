@@ -215,7 +215,7 @@ function homeView() {
         </div>
       </section>
       <section class="signature-feature container-wide">
-        <div class="signature-copy"><span class="section-kicker">AXION MOTION SIGNATURE</span><h2>See movement become more consistent.</h2><p>Every session creates a recognizable movement artifact from joint trajectories, tempo, and repetition consistency. Compare weeks without replaying raw video.</p><button class="text-link" data-nav="report">Explore Maya’s signature ${icon("arrow", 16)}</button></div>
+        <div class="signature-copy"><span class="section-kicker">AXION MOTION SIGNATURE</span><h2>See movement become more consistent.</h2><p>Every session creates a recognizable movement artifact from joint trajectories, tempo, and repetition consistency. Compare weeks without replaying raw video.</p><button class="text-link" data-nav="report">Explore a synthetic signature ${icon("arrow", 16)}</button></div>
         <div class="signature-panel"><div class="signature-panel-head"><span>TODAY · SESSION 15</span><span class="live-pill">SYNTHETIC</span></div>${signatureSvg({ id: "feature" })}<div class="signature-legend"><span><i class="hip"></i> Hip trajectory</span><span><i class="knee"></i> Knee trajectory</span><b>Consistency ↑ 12%</b></div></div>
       </section>
     </main>
@@ -587,10 +587,10 @@ function therapistView() {
           id: patient.id,
           initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
           name,
-          plan: "Active recovery plan",
-          pulse: 74,
-          trend: "+3",
-          state: "On track",
+          plan: "Patient-specific plan",
+          pulse: 0,
+          trend: "New",
+          state: "Plan setup",
           color: ["mint", "violet", "orange"][index % 3]
         };
       })
