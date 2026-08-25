@@ -10,6 +10,7 @@ import {
   createPersonalPlan,
   exerciseCatalog,
   loadPatientWorkspace,
+  loadMovementReport,
   loadTherapistConnections,
 } from "./portal.js";
 
@@ -73,6 +74,7 @@ let demoDashboardUpdated = false;
 let demoStageIndex = 0;
 let sessionReps = [];
 let reportReps = [...todaySeed];
+let reportSessions = [];
 let selectedRep = 4;
 let sessionStartedAt = null;
 let sessionClientId = null;
@@ -458,6 +460,10 @@ function repScore(rep) {
 function reportView() {
   currentView = "report";
   if (!demoScriptActive) stopDemo();
+  if (currentSession?.user && !currentSession.demo) {
+    realReportView();
+    return;
+  }
   const reportPatientName = currentProfile?.role === "patient" ? currentProfile.display_name : (selectedPatient?.display_name || "Selected patient");
   const reportFirstName = reportPatientName.split(" ")[0];
   const reportInitials = reportPatientName.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
@@ -561,6 +567,90 @@ function reportView() {
   animateNumber(document.querySelector(".pulse-score b"), reportPulse);
 }
 
+function sessionSummary(session) {
+  const summary = session?.movement_summary || {};
+  return {
+    kneeBend: Number(summary.average_knee_bend_degrees ?? 0),
+    tempo: Number(summary.average_tempo_seconds ?? 0),
+    symmetry: Number(summary.average_symmetry_delta ?? 0),
+    consistency: Number(summary.movement_consistency ?? session?.quality_score ?? 0),
+  };
+}
+
+function realReportView() {
+  const patient = currentProfile?.role === "patient" ? currentProfile : selectedPatient;
+  const patientName = patient?.display_name || "Selected patient";
+  const initials = patientName.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const backTarget = currentProfile?.role === "patient" ? "patient" : "therapist";
+  const latest = reportSessions[0] || null;
+
+  if (!latest) {
+    app.innerHTML = layout(`
+      <main class="state-page container-wide">
+        <div class="empty-state">
+          <span>${icon("report", 24)}</span>
+          <span class="section-kicker">PRIVATE MOVEMENT REPORT</span>
+          <h2>No completed sessions for ${escapeHtml(patientName)} yet</h2>
+          <p>Axion will show measured session summaries here after this patient completes an assigned exercise. Demo measurements are never mixed into a real patient record.</p>
+          <button class="button button--ghost" data-nav="${backTarget}">${icon("back", 16)} Back to ${currentProfile?.role === "patient" ? "my recovery" : "patient overview"}</button>
+        </div>
+      </main>
+    `);
+    bindEvents();
+    return;
+  }
+
+  const stats = sessionSummary(latest);
+  const exercise = assignmentDetails({ exercise_key: latest.exercise_key }).display_name;
+  const completedAt = new Date(latest.completed_at || latest.created_at);
+  const duration = latest.duration_seconds ? `${Math.floor(latest.duration_seconds / 60)}m ${latest.duration_seconds % 60}s` : "Not recorded";
+  const metric = (value, suffix = "") => value > 0 ? `${Number(value).toFixed(suffix ? 1 : 0)}${suffix}` : "—";
+
+  app.innerHTML = layout(`
+    <main class="report-page container-wide">
+      <div class="report-header">
+        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} ${currentProfile?.role === "patient" ? "My recovery" : "Patient overview"}</button><div class="patient-title"><span class="patient-avatar mint">${escapeHtml(initials)}</span><div><span class="section-kicker">PRIVATE MOVEMENT REPORT</span><h1>${escapeHtml(patientName)}</h1><p>${escapeHtml(exercise)} · ${completedAt.toLocaleString()}</p></div></div></div>
+      </div>
+      <section class="pulse-banner">
+        <div class="pulse-score"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle cx="50" cy="50" r="42"/></svg><span><b>${stats.consistency || "—"}</b><small>CONSISTENCY</small></span></div>
+        <div class="pulse-copy"><span class="positive-pill">MEASURED SESSION</span><h2>Session summary at a glance.</h2><p>These descriptive measurements come only from ${escapeHtml(patientName)}’s completed session. They do not diagnose injury or automatically change treatment.</p></div>
+        <div class="pulse-factors"><div><span>COMPLETED</span><b>${completedAt.toLocaleDateString()}</b></div><div><span>DURATION</span><b>${duration}</b></div><div><span>DISCOMFORT</span><b>${escapeHtml(latest.discomfort || "Not reported")}</b></div></div>
+      </section>
+      <section class="report-metrics">
+        <article><span>REPETITIONS</span><b>${latest.repetitions ?? 0}</b><em>Completed</em></article>
+        <article><span>AVG. KNEE BEND</span><b>${metric(stats.kneeBend, "°")}</b><em>Descriptive range</em></article>
+        <article><span>AVG. TEMPO</span><b>${metric(stats.tempo, "s")}</b><em>Measured average</em></article>
+        <article><span>MOVEMENT CONSISTENCY</span><b>${stats.consistency || "—"}</b><em>Session value</em></article>
+        <article><span>SYMMETRY DELTA</span><b>${metric(stats.symmetry, "°")}</b><em>Measured difference</em></article>
+      </section>
+      <section class="longitudinal-card">
+        <div class="analysis-head"><div><span class="section-kicker">SESSION HISTORY</span><h3>${reportSessions.length} private session${reportSessions.length === 1 ? "" : "s"}</h3><p>Only sessions authorized by the patient–therapist relationship are returned by row-level security.</p></div><span class="info-pill">LIVE DATA</span></div>
+        <div class="progress-timeline">
+          ${reportSessions.slice(0, 8).reverse().map((session, index) => {
+            const itemStats = sessionSummary(session);
+            const itemDate = new Date(session.completed_at || session.created_at);
+            return `<article class="${session.id === latest.id ? "current" : ""}"><span class="timeline-node">${index + 1}</span><div class="timeline-label"><small>${itemDate.toLocaleDateString()}</small><b>${escapeHtml(assignmentDetails({ exercise_key: session.exercise_key }).display_name)}</b></div><div class="timeline-stats"><span>Reps <b>${session.repetitions ?? 0}</b></span><span>Consistency <b>${itemStats.consistency || "—"}</b></span><span>Duration <b>${session.duration_seconds ? `${session.duration_seconds}s` : "—"}</b></span></div><p>${session.discomfort ? `Patient-reported discomfort: ${escapeHtml(session.discomfort)}.` : "No patient discomfort response was recorded for this session."}</p></article>`;
+          }).join("")}
+        </div>
+      </section>
+      <section class="privacy-dashboard">${icon("shield", 26)}<div><span class="section-kicker">PATIENT-SCOPED DATA</span><h3>No synthetic values in live records.</h3><p>Raw camera video is not stored. Axion displays only the authorized session summaries returned for this patient.</p></div></section>
+    </main>
+  `);
+  bindEvents();
+  if (stats.consistency) animateNumber(document.querySelector(".pulse-score b"), stats.consistency);
+}
+
+async function openRealReport(patient = null) {
+  const target = patient || (currentProfile?.role === "patient" ? currentProfile : (selectedPatient || assignedPatients[0]));
+  if (!target?.id) throw new Error("Choose a connected patient before opening a report.");
+  selectedPatient = target;
+  currentView = "report";
+  app.innerHTML = layout(loadingMarkup(`Loading ${target.display_name || "patient"} report`));
+  reportSessions = await loadMovementReport(supabase, target.id);
+  reportReps = [];
+  reportView();
+}
+
 async function loadAssignedPatients() {
   if (!supabase || !currentSession?.user) {
     assignedPatients = [];
@@ -633,7 +723,7 @@ function therapistView() {
       <section class="dashboard-grid">
         <div class="patients-card">
           <div class="card-title"><div><span class="section-kicker">PATIENT OVERVIEW</span><h2>Recovery panel</h2></div><button class="filter-button">All patients</button></div>
-          ${dashboardPatients.length === 0 ? emptyMarkup() : `<div class="patient-table"><div class="table-head"><span>PATIENT</span><span>RECOVERY PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${dashboardPatients.map((patient) => `<button class="patient-row" data-report-patient="${escapeHtml(patient.name)}"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><b>${escapeHtml(patient.name)}</b></span><span>${escapeHtml(patient.plan)}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulse}</b></span><span class="${String(patient.trend).startsWith("-") ? "trend-down" : "trend-up"}">${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></span><span>${icon("arrow", 16)}</span></button>`).join("")}</div>`}
+          ${dashboardPatients.length === 0 ? emptyMarkup() : `<div class="patient-table"><div class="table-head"><span>PATIENT</span><span>RECOVERY PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${dashboardPatients.map((patient) => `<button class="patient-row" data-report-patient-id="${escapeHtml(patient.id || "demo")}" data-report-patient-name="${escapeHtml(patient.name)}"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><b>${escapeHtml(patient.name)}</b></span><span>${escapeHtml(patient.plan)}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulse}</b></span><span class="${String(patient.trend).startsWith("-") ? "trend-down" : "trend-up"}">${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></span><span>${icon("arrow", 16)}</span></button>`).join("")}</div>`}
         </div>
         <aside class="attention-card">
           <div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Review next</h2></div><span>${isDemoTherapist ? 2 : 0}</span></div>
@@ -740,6 +830,8 @@ async function signOutPortal() {
   patientWorkspace = null;
   currentAssignment = null;
   selectedPatient = null;
+  reportSessions = [];
+  reportReps = [];
   homeView();
 }
 
@@ -1001,7 +1093,6 @@ async function finishSession() {
   const liveMetrics = tracker?.getMetrics?.();
   if (!sessionReps.length && liveMetrics?.reps?.length) sessionReps = liveMetrics.reps;
   if (sessionReps.length) reportReps = sessionReps.map((rep, i) => ({ ...rep, index: i + 1 }));
-  await saveSessionSummary(reportReps);
   showReflection();
 }
 
@@ -1012,10 +1103,24 @@ function showReflection() {
   document.body.appendChild(modal);
   modal.querySelectorAll(".feedback-group div button").forEach((button) => button.addEventListener("click", () => { [...button.parentElement.children].forEach((item) => item.classList.remove("selected")); button.classList.add("selected"); }));
   modal.querySelector("[data-close-modal]")?.addEventListener("click", () => modal.remove());
-  modal.querySelector("[data-open-report]")?.addEventListener("click", () => { modal.remove(); reportView(); });
+  modal.querySelector("[data-open-report]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Saving private summary…";
+    const difficulty = Number(modal.querySelector("[data-difficulty].selected")?.dataset.difficulty || 3);
+    const discomfort = modal.querySelector(".feedback-options .selected")?.textContent?.trim().toLowerCase() || "none";
+    const saved = await saveSessionSummary(reportReps, { difficulty, discomfort });
+    if (currentSession?.user && !currentSession.demo && !saved) {
+      button.disabled = false;
+      button.textContent = "Could not save — try again";
+      return;
+    }
+    modal.remove();
+    reportView();
+  });
 }
 
-async function saveSessionSummary(reps) {
+async function saveSessionSummary(reps, feedback = {}) {
   if (!supabase || !currentSession?.user || currentSession.demo || !reps.length) return null;
 
   const stats = summaryFor(reps);
@@ -1038,9 +1143,11 @@ async function saveSessionSummary(reps) {
         average_symmetry_delta: Number(stats.symmetry),
         movement_consistency: stats.consistency
       },
+      difficulty: Number(feedback.difficulty) || null,
+      discomfort: ["none", "mild", "moderate", "stop"].includes(feedback.discomfort) ? feedback.discomfort : null,
       completed_at: new Date().toISOString()
     })
-    .select("id")
+    .select("id, patient_id, assignment_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, started_at, completed_at, created_at")
     .single();
 
   if (error) {
@@ -1054,6 +1161,7 @@ async function saveSessionSummary(reps) {
     return null;
   }
 
+  reportSessions = [data, ...reportSessions.filter((session) => session.id !== data.id)];
   return data;
 }
 
@@ -1230,6 +1338,9 @@ function loadingMarkup(label = "Loading Axion") {
 }
 
 function emptyMarkup() {
+  if (currentProfile?.role === "therapist" && !currentSession?.demo) {
+    return `<div class="empty-state"><span>${icon("users", 24)}</span><h3>No connected patients yet</h3><p>Create a private invitation above. The patient must claim it, then you verify the connection before any care data is shared.</p></div>`;
+  }
   return `<div class="empty-state"><span>${icon("report", 24)}</span><h3>No sessions yet</h3><p>Completed movement sessions will appear here with signatures, rep summaries, and progression context.</p><button class="button button--primary" data-nav="lab">Start a synthetic session</button></div>`;
 }
 
@@ -1238,14 +1349,19 @@ function navigateTo(target) {
   if (demoScriptActive) { stopDemo(); demoScriptActive = false; }
   currentView = target;
   app.innerHTML = layout(loadingMarkup(`Loading ${target}`));
-  setTimeout(() => {
+  setTimeout(async () => {
     if (target === "home") homeView();
     if (target === "patient") routePatientPortal().catch(showPortalError);
     if (target === "lab") {
       if ((currentProfile?.role === "patient" || demoRole === "patient") && !patientWorkspace?.assignments?.length) routePatientPortal().catch(showPortalError);
       else { currentAssignment = currentAssignment || patientWorkspace?.assignments?.[0] || null; labView(); }
     }
-    if (target === "report") reportView();
+    if (target === "report") {
+      if (currentSession?.user && !currentSession.demo) {
+        try { await openRealReport(); }
+        catch (error) { showPortalError(error); }
+      } else reportView();
+    }
     if (target === "therapist") therapistView();
     if (target === "auth") authView();
   }, 180);
@@ -1268,8 +1384,13 @@ function bindEvents() {
     navigateTo(element.dataset.nav);
   }));
   document.querySelectorAll("[data-select-rep]").forEach((element) => element.addEventListener("click", () => { selectedRep = Number(element.dataset.selectRep); reportView(); }));
-  document.querySelectorAll("[data-report-patient]").forEach((element) => element.addEventListener("click", () => {
-    selectedPatient = { display_name: element.dataset.reportPatient };
+  document.querySelectorAll("[data-report-patient-id]").forEach((element) => element.addEventListener("click", () => {
+    if (currentSession?.user && !currentSession.demo) {
+      const patient = assignedPatients.find((item) => item.id === element.dataset.reportPatientId);
+      openRealReport(patient).catch(showPortalError);
+      return;
+    }
+    selectedPatient = { display_name: element.dataset.reportPatientName || "Demo patient" };
     reportView();
   }));
   document.querySelector("#replay-button")?.addEventListener("click", replaySelectedRep);

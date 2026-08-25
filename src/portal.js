@@ -115,6 +115,18 @@ export async function loadTherapistConnections(client, therapistId) {
   return relationships.map((relationship) => ({ ...relationship, profile: byId.get(relationship.patient_id) })).filter((item) => item.profile);
 }
 
+export async function loadMovementReport(client, patientId) {
+  if (!patientId) throw new Error("Choose a patient before opening a movement report.");
+  return throwIfError(
+    await client.from("exercise_sessions")
+      .select("id, patient_id, assignment_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, started_at, completed_at, created_at")
+      .eq("patient_id", patientId)
+      .order("completed_at", { ascending: false })
+      .limit(50),
+    "Could not load the movement report"
+  ) || [];
+}
+
 export async function approvePatientConnection(client, therapistId, patientId, invitationId) {
   return throwIfError(
     await client.rpc("approve_patient_connection", {
