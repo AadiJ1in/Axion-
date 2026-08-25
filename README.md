@@ -27,6 +27,9 @@ The public synthetic demo works without configuration:
 - therapist dashboard, Recovery Pulse, and therapist-review suggestion;
 - role-aware patient recovery portal with XP, streaks, milestones, daily prescriptions, momentum, and achievements;
 - functional therapist workspace sections for patients, recovery roadmaps, check-ins, attention alerts, and the exercise library;
+- live therapist statistics, patient filtering, actionable check-ins, and descriptive review alerts derived from authorized session data;
+- working session-summary export, replay/trajectory switching, and private therapist notes;
+- a signed-in account workspace for display-name updates, password recovery, and secure sign-out;
 - patient account creation with patient-only public role assignment;
 - cryptographically random, email-bound, single-use therapist invitations that expire after 48 hours;
 - real patient XP, streak, completion, and therapist panel summaries derived from protected session rows;

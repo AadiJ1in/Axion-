@@ -166,6 +166,68 @@ insert into public.exercise_sessions (
   '11111111-1111-4111-8111-111111111111'::uuid
 );
 
+select set_config('axion.session_b', es.id::text, true)
+from public.exercise_sessions es
+where es.client_session_id = '11111111-1111-4111-8111-111111111111'::uuid;
+
+-- A patient cannot impersonate a therapist and create a therapist note.
+do $test$
+begin
+  begin
+    insert into public.therapist_notes (therapist_id, patient_id, session_id, note)
+    values (
+      '10000000-0000-4000-8000-000000000001'::uuid,
+      '10000000-0000-4000-8000-000000000003'::uuid,
+      current_setting('axion.session_b')::uuid,
+      'Patient-authored spoofed therapist note'
+    );
+  exception when sqlstate '42501' then
+    return;
+  end;
+  raise exception 'Patient was allowed to create a therapist note';
+end
+$test$;
+
+-- The connected therapist can add a session note.
+reset role;
+select set_config('request.jwt.claims', jsonb_build_object(
+  'sub','10000000-0000-4000-8000-000000000001',
+  'email','security-therapist@axion.invalid', 'role','authenticated'
+)::text, true);
+set local role authenticated;
+
+insert into public.therapist_notes (therapist_id, patient_id, session_id, note)
+values (
+  '10000000-0000-4000-8000-000000000001'::uuid,
+  '10000000-0000-4000-8000-000000000003'::uuid,
+  current_setting('axion.session_b')::uuid,
+  'Synthetic authorization test note'
+);
+
+do $test$
+begin
+  if (select count(*) from public.therapist_notes where patient_id = '10000000-0000-4000-8000-000000000003'::uuid) <> 1 then
+    raise exception 'Connected therapist could not read the authorized note';
+  end if;
+end
+$test$;
+
+-- Therapist notes remain hidden from the patient account.
+reset role;
+select set_config('request.jwt.claims', jsonb_build_object(
+  'sub','10000000-0000-4000-8000-000000000003',
+  'email','security-patient-b@axion.invalid', 'role','authenticated'
+)::text, true);
+set local role authenticated;
+
+do $test$
+begin
+  if (select count(*) from public.therapist_notes) <> 0 then
+    raise exception 'Patient could read private therapist notes';
+  end if;
+end
+$test$;
+
 -- A cross-patient assignment injection must fail.
 do $test$
 begin
@@ -226,6 +288,7 @@ select
   true as claim_stays_pending,
   true as therapist_approval_required,
   true as own_assignment_session_allowed,
+  true as therapist_note_authorization_enforced,
   true as cross_patient_assignment_blocked,
   true as duplicate_session_blocked,
   true as patient_isolation;

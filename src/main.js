@@ -8,10 +8,12 @@ import {
   completePatientOnboarding,
   createCareInvitation,
   createPersonalPlan,
+  createTherapistNote,
   exerciseCatalog,
   exerciseCatalogSource,
   loadPatientWorkspace,
   loadMovementReport,
+  loadTherapistNotes,
   loadTherapistConnections,
   loadTherapistWorkspace,
 } from "./portal.js";
@@ -71,6 +73,7 @@ let assignedPatients = [];
 let therapistConnections = [];
 let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
 let therapistSection = "overview";
+let patientFilter = "all";
 let exerciseLibraryQuery = "";
 let roadmapExpanded = false;
 let patientWorkspace = null;
@@ -87,7 +90,9 @@ let demoStageIndex = 0;
 let sessionReps = [];
 let reportReps = [...todaySeed];
 let reportSessions = [];
+let therapistNotes = [];
 let selectedRep = 4;
+let replayMode = "replay";
 let sessionStartedAt = null;
 let sessionClientId = null;
 let lastTwinPoints = null;
@@ -127,12 +132,14 @@ function icon(name, size = 18) {
     calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
     bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+    filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
   };
   return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ""}</svg>`;
 }
 
 function layout(content, { full = false } = {}) {
   const activeRole = currentProfile?.role || demoRole;
+  const accountTarget = currentSession?.user ? "account" : "auth";
   const nav = activeRole === "patient"
     ? [["patient", "My recovery", "map"], ["lab", "My Movement Lab", "activity"], ["report", "Progress", "report"]]
     : activeRole === "therapist"
@@ -151,7 +158,7 @@ function layout(content, { full = false } = {}) {
         <nav class="nav" aria-label="Primary navigation">
           ${nav.map(([view, label, symbol]) => `<button data-nav="${view}" class="${currentView === view ? "active" : ""}">${icon(symbol, 16)}<span>${label}</span></button>`).join("")}
         </nav>
-        <button class="avatar-button" data-nav="auth" aria-label="Account"><span>${initials}</span><span class="presence-dot"></span></button>
+        <button class="avatar-button" data-nav="${accountTarget}" aria-label="Account"><span>${initials}</span><span class="presence-dot"></span></button>
       </header>
       ${demoScriptActive ? `
         <div class="demo-director" role="status" aria-live="polite">
@@ -495,6 +502,7 @@ function reportView() {
   const reportFirstName = reportPatientName.split(" ")[0];
   const reportInitials = reportPatientName.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const reportExercise = currentAssignment?.display_name || "Bodyweight Squat";
+  const canWriteTherapistNote = currentProfile?.role === "therapist" || demoRole === "therapist";
   if (uiScenario === "error") {
     app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("activity", 26)}</span><h2>Movement Report could not load</h2><p>Your session summary is still safe. Check the connection and try again, or return to the therapist dashboard.</p><div><button class="button button--primary" data-reload>Try again</button><button class="button button--ghost" data-nav="therapist">Therapist dashboard</button></div></div></main>`);
     bindEvents();
@@ -515,7 +523,7 @@ function reportView() {
     <main class="report-page container-wide">
       <div class="report-header">
         <div><button class="back-link" data-nav="${currentProfile?.role === "patient" ? "patient" : "therapist"}">${icon("back", 16)} ${currentProfile?.role === "patient" ? "My recovery" : "Patient overview"}</button><div class="patient-title"><span class="patient-avatar mint">${escapeHtml(reportInitials)}</span><div><span class="section-kicker">MOVEMENT REPORT</span><h1>${escapeHtml(reportPatientName)}</h1><p>${escapeHtml(reportExercise)} · Latest completed session</p></div></div></div>
-        <div class="report-actions"><button class="button button--ghost">Export summary</button><button class="button button--primary">Add therapist note</button></div>
+        <div class="report-actions"><button class="button button--ghost" data-export-report>Export summary</button>${canWriteTherapistNote ? `<button class="button button--primary" data-add-therapist-note>Add therapist note</button>` : ""}</div>
       </div>
       <section class="pulse-banner">
         <div class="pulse-score"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle cx="50" cy="50" r="42"/></svg><span><b>${reportPulse}</b><small>RECOVERY PULSE</small></span></div>
@@ -554,9 +562,9 @@ function reportView() {
           <div class="rail-list">${reps.map((rep) => `<button class="${selectedRep === rep.index ? "selected" : ""}" data-select-rep="${rep.index}"><span class="rep-number">${String(rep.index).padStart(2, "0")}</span><span><b>Rep ${rep.index}</b><small>${kneeBendDegrees(rep.depthAngle)}° bend · ${rep.tempo}s · Δ ${rep.symmetryDelta ?? "—"}°</small></span><i style="--score:${repScore(rep)}%"></i></button>`).join("")}</div>
         </aside>
         <div class="replay-card">
-          <div class="replay-head"><div><span class="section-kicker">SKELETON REPLAY</span><h3>Rep ${selected.index}</h3></div><div class="tab-pills"><button class="active">Replay</button><button>Trajectory</button></div></div>
-          <div class="replay-stage"><div class="floor-grid"></div>${twinSvg()}<div class="replay-badges"><span><small>KNEE BEND</small><b>${kneeBendDegrees(selected.depthAngle)}°</b></span><span><small>TEMPO</small><b>${selected.tempo}s</b></span><span><small>SYMMETRY Δ</small><b>${selected.symmetryDelta ?? "—"}°</b></span></div><span class="no-video-badge">${icon("shield", 13)} Reconstructed from pose coordinates</span></div>
-          <div class="replay-controls"><button id="replay-button" class="circle-button">${icon("play", 18)}</button><div><span style="width:${Math.round((selected.index / reps.length) * 100)}%"></span></div><small>REP ${selected.index} / ${reps.length}</small></div>
+          <div class="replay-head"><div><span class="section-kicker">${replayMode === "replay" ? "SKELETON REPLAY" : "JOINT TRAJECTORY"}</span><h3>Rep ${selected.index}</h3></div><div class="tab-pills"><button class="${replayMode === "replay" ? "active" : ""}" data-replay-mode="replay">Replay</button><button class="${replayMode === "trajectory" ? "active" : ""}" data-replay-mode="trajectory">Trajectory</button></div></div>
+          <div class="replay-stage ${replayMode === "trajectory" ? "trajectory-mode" : ""}"><div class="floor-grid"></div>${replayMode === "replay" ? twinSvg() : signatureSvg({ id: `trajectory-${selected.index}` })}<div class="replay-badges"><span><small>KNEE BEND</small><b>${kneeBendDegrees(selected.depthAngle)}°</b></span><span><small>TEMPO</small><b>${selected.tempo}s</b></span><span><small>SYMMETRY Δ</small><b>${selected.symmetryDelta ?? "—"}°</b></span></div><span class="no-video-badge">${icon("shield", 13)} ${replayMode === "replay" ? "Reconstructed from pose coordinates" : "Descriptive joint path · no raw video"}</span></div>
+          ${replayMode === "replay" ? `<div class="replay-controls"><button id="replay-button" class="circle-button" aria-label="Replay selected repetition">${icon("play", 18)}</button><div><span style="width:${Math.round((selected.index / reps.length) * 100)}%"></span></div><small>REP ${selected.index} / ${reps.length}</small></div>` : `<div class="trajectory-explainer">The trajectory view summarizes the selected repetition’s landmark path. It is descriptive and is not a clinical interpretation.</div>`}
         </div>
         <aside class="insight-column">
           <article class="rep-highlight best"><span>${icon("spark", 17)} BEST REP</span><h3>#${best.index}</h3><div><span>Depth <b>${best.depthAngle}°</b></span><span>Consistency <b>${repScore(best)}</b></span><span>Tempo <b>${best.tempo}s</b></span></div></article>
@@ -587,6 +595,7 @@ function reportView() {
         <article class="heatmap-card"><div class="analysis-head"><div><span class="section-kicker">MOVEMENT MAP</span><h3>Observed joint consistency</h3></div><span class="info-pill">DESCRIPTIVE</span></div><div class="heatmap-body"><svg viewBox="0 0 180 300" aria-label="Movement metric body map"><circle cx="90" cy="28" r="20"/><path d="M90 48v85M52 70l38 18 38-18M52 70 34 130M128 70l18 60M90 133 58 202M90 133 42 202M58 201l-11 70M121 201l12 70"/><circle class="joint cool" cx="52" cy="70" r="13"/><circle class="joint cool" cx="128" cy="70" r="13"/><circle class="joint warm" cx="90" cy="133" r="18"/><circle class="joint hot" cx="58" cy="201" r="20"/><circle class="joint warm" cx="121" cy="201" r="18"/></svg><div class="heatmap-list"><span><i class="cool"></i>Shoulders <b>Stable</b></span><span><i class="warm"></i>Hips <b>Moderate variation</b></span><span><i class="hot"></i>Left knee <b>Review variation</b></span><span><i class="warm"></i>Right knee <b>Moderate variation</b></span></div></div><p class="fine-print">Colors summarize observed motion consistency in this session. They do not identify injury, pain, or clinical risk.</p></article>
           <article class="review-card"><span class="section-kicker">SUGGESTED FOR THERAPIST REVIEW</span><h3>${reportTarget === 5 ? "Consider 5 → 6 reps" : `Maintain ${reportTarget} reps`}</h3><p>${escapeHtml(reportFirstName)} completed this set. Any progression remains a decision for the connected physical therapist.</p><div class="review-reason"><b>Why this appeared</b><span>Session completion ${reps.length}/${reportTarget}</span><span>Consistency ${stats.consistency}</span><span>Patient feedback is attached to the session</span></div><div class="review-actions"><button class="button button--ghost" data-nav="patient">Return to my plan</button></div><small>Axion does not autonomously prescribe or change a care plan.</small></article>
       </section>
+      ${canWriteTherapistNote && therapistNotes.length ? `<section class="therapist-notes-card"><div class="analysis-head"><div><span class="section-kicker">THERAPIST NOTES</span><h3>Demo note preview</h3></div><button class="button button--ghost" data-add-therapist-note>Add another note</button></div><div class="therapist-note-list">${therapistNotes.map((note) => `<article><p>${escapeHtml(note.note)}</p><small>${new Date(note.created_at).toLocaleString()} · Synthetic demo only</small></article>`).join("")}</div></section>` : ""}
     </main>
   `);
   bindEvents();
@@ -622,7 +631,8 @@ function realReportView() {
           <span class="section-kicker">PRIVATE MOVEMENT REPORT</span>
           <h2>No completed sessions for ${escapeHtml(patientName)} yet</h2>
           <p>Axion will show measured session summaries here after this patient completes an assigned exercise. Demo measurements are never mixed into a real patient record.</p>
-          <button class="button button--ghost" data-nav="${backTarget}">${icon("back", 16)} Back to ${currentProfile?.role === "patient" ? "my recovery" : "patient overview"}</button>
+          <div class="empty-actions"><button class="button button--ghost" data-nav="${backTarget}">${icon("back", 16)} Back to ${currentProfile?.role === "patient" ? "my recovery" : "patient overview"}</button>${currentProfile?.role === "therapist" ? `<button class="button button--primary" data-add-therapist-note>Add patient note</button>` : ""}</div>
+          ${currentProfile?.role === "therapist" && therapistNotes.length ? `<div class="therapist-note-list">${therapistNotes.map((note) => `<article><p>${escapeHtml(note.note)}</p><small>${new Date(note.created_at).toLocaleString()}</small></article>`).join("")}</div>` : ""}
         </div>
       </main>
     `);
@@ -642,6 +652,7 @@ function realReportView() {
     <main class="report-page container-wide">
       <div class="report-header">
         <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} ${currentProfile?.role === "patient" ? "My recovery" : "Patient overview"}</button><div class="patient-title"><span class="patient-avatar mint">${escapeHtml(initials)}</span><div><span class="section-kicker">PRIVATE MOVEMENT REPORT</span><h1>${escapeHtml(patientName)}</h1><p>${escapeHtml(exercise)} · ${completedAt.toLocaleString()}</p></div></div></div>
+        <div class="report-actions"><button class="button button--ghost" data-export-report>Export summary</button>${currentProfile?.role === "therapist" ? `<button class="button button--primary" data-add-therapist-note>Add therapist note</button>` : ""}</div>
       </div>
       <section class="pulse-banner">
         <div class="pulse-score"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle cx="50" cy="50" r="42"/></svg><span><b>${stats.consistency || "—"}</b><small>CONSISTENCY</small></span></div>
@@ -665,6 +676,7 @@ function realReportView() {
           }).join("")}
         </div>
       </section>
+      ${currentProfile?.role === "therapist" ? `<section class="therapist-notes-card"><div class="analysis-head"><div><span class="section-kicker">THERAPIST NOTES</span><h3>Private clinical context</h3><p>Notes are visible only to the connected therapist and are attached to this patient record.</p></div><button class="button button--ghost" data-add-therapist-note>Add note</button></div>${therapistNotes.length ? `<div class="therapist-note-list">${therapistNotes.map((note) => `<article><p>${escapeHtml(note.note)}</p><small>${new Date(note.created_at).toLocaleString()}${note.session_id === latest.id ? " · Attached to this session" : ""}</small></article>`).join("")}</div>` : `<div class="empty-state compact"><h3>No therapist notes yet</h3><p>Add context without changing the patient’s prescription automatically.</p></div>`}</section>` : ""}
       <section class="privacy-dashboard">${icon("shield", 26)}<div><span class="section-kicker">PATIENT-SCOPED DATA</span><h3>No synthetic values in live records.</h3><p>Raw camera video is not stored. Axion displays only the authorized session summaries returned for this patient.</p></div></section>
     </main>
   `);
@@ -678,7 +690,12 @@ async function openRealReport(patient = null) {
   selectedPatient = target;
   currentView = "report";
   app.innerHTML = layout(loadingMarkup(`Loading ${target.display_name || "patient"} report`));
-  reportSessions = await loadMovementReport(supabase, target.id);
+  const [sessions, notes] = await Promise.all([
+    loadMovementReport(supabase, target.id),
+    currentProfile?.role === "therapist" ? loadTherapistNotes(supabase, target.id) : Promise.resolve([]),
+  ]);
+  reportSessions = sessions;
+  therapistNotes = notes;
   reportReps = [];
   reportView();
 }
@@ -708,6 +725,69 @@ function therapistPanelClass(section) {
 
 function patientNameById(patientId) {
   return assignedPatients.find((patient) => patient.id === patientId)?.display_name || "Connected patient";
+}
+
+function sessionsForPatient(patientId) {
+  return therapistWorkspace.sessions
+    .filter((session) => session.patient_id === patientId)
+    .sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at));
+}
+
+function activePlanForPatient(patientId) {
+  return therapistWorkspace.plans.find((plan) => plan.patient_id === patientId && plan.status === "active")
+    || therapistWorkspace.plans.find((plan) => plan.patient_id === patientId)
+    || null;
+}
+
+function derivedTherapistAlerts() {
+  const persisted = therapistWorkspace.alerts || [];
+  const generated = [];
+  assignedPatients.forEach((patient) => {
+    const sessions = sessionsForPatient(patient.id);
+    const latest = sessions[0];
+    if (!latest && activePlanForPatient(patient.id)) {
+      generated.push({ id: `first-session-${patient.id}`, patient_id: patient.id, title: "Awaiting first session", explanation: "A roadmap is active, but this patient has not completed a movement session yet.", status: "open", derived: true });
+      return;
+    }
+    if (!latest) return;
+    const latestAt = new Date(latest.completed_at || latest.created_at);
+    const daysSince = Math.floor((Date.now() - latestAt.getTime()) / 86400000);
+    if (daysSince >= 7) generated.push({ id: `inactive-${patient.id}`, patient_id: patient.id, title: "Participation changed", explanation: `No completed session has been recorded for ${daysSince} days.`, status: "open", derived: true });
+    if (["moderate", "stop"].includes(String(latest.discomfort || "").toLowerCase())) generated.push({ id: `discomfort-${latest.id}`, patient_id: patient.id, title: "Patient response requires review", explanation: `The latest session was submitted with ${latest.discomfort} discomfort.`, status: "open", derived: true });
+    if (sessions.length > 1) {
+      const newest = sessionSummary(sessions[0]).consistency;
+      const previous = sessionSummary(sessions[1]).consistency;
+      if (newest > 0 && previous > 0 && newest <= previous - 12) generated.push({ id: `consistency-${latest.id}`, patient_id: patient.id, title: "Movement consistency changed", explanation: `Session consistency changed from ${previous} to ${newest}. Review the patient’s own session history before changing the plan.`, status: "open", derived: true });
+    }
+  });
+  const keys = new Set(persisted.map((alert) => `${alert.patient_id}:${alert.title}`));
+  return [...persisted, ...generated.filter((alert) => !keys.has(`${alert.patient_id}:${alert.title}`))];
+}
+
+function dashboardPatient(patient, index) {
+  const sessions = sessionsForPatient(patient.id);
+  const plan = activePlanForPatient(patient.id);
+  const latest = sessions[0];
+  const latestStats = latest ? sessionSummary(latest) : null;
+  const priorStats = sessions[1] ? sessionSummary(sessions[1]) : null;
+  const patientAlerts = derivedTherapistAlerts().filter((alert) => alert.patient_id === patient.id && alert.status === "open");
+  const pulse = latestStats?.consistency || 0;
+  const delta = latestStats?.consistency && priorStats?.consistency ? latestStats.consistency - priorStats.consistency : null;
+  const latestAt = latest ? new Date(latest.completed_at || latest.created_at) : null;
+  const stale = latestAt ? Date.now() - latestAt.getTime() >= 7 * 86400000 : false;
+  const state = patientAlerts.length ? "Review" : !plan ? "Plan setup" : !latest ? "Awaiting session" : stale ? "Check in" : "On track";
+  const name = patient.display_name || "Axion Patient";
+  return {
+    id: patient.id,
+    initials: name.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+    name,
+    plan: plan?.title || "No active roadmap",
+    pulse,
+    pulseLabel: pulse || "—",
+    trend: delta === null ? "New" : `${delta >= 0 ? "+" : ""}${delta}`,
+    state,
+    color: ["mint", "violet", "orange"][index % 3],
+  };
 }
 
 function planExercises(planId) {
@@ -775,7 +855,7 @@ function renderTherapistCheckins(isDemoTherapist) {
   return `<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">PATIENT CHECK-INS</span><h2>Completed movement sessions</h2></div><span>${sessions.length} records</span></div>${sessions.length ? `<div class="checkin-list">${sessions.map((session) => {
     const exercise = exerciseCatalog[session.exercise_key] || { name: session.exercise_key };
     const patient = isDemoTherapist ? "Maya Chen" : patientNameById(session.patient_id);
-    return `<article><span class="patient-avatar mint">${escapeHtml(patient.split(" ").map((part) => part[0]).join("").slice(0,2))}</span><div><b>${escapeHtml(patient)} · ${escapeHtml(exercise.name)}</b><small>${session.repetitions ? `${session.repetitions} reps` : `${session.duration_seconds || 0}s`} · ${new Date(session.completed_at || session.created_at).toLocaleString()}</small></div><span>Difficulty <b>${session.difficulty || "—"}/5</b></span><span>Discomfort <b>${escapeHtml(session.discomfort || "—")}</b></span></article>`;
+    return `<button class="checkin-row" data-report-patient-id="${escapeHtml(session.patient_id)}" data-report-patient-name="${escapeHtml(patient)}"><span class="patient-avatar mint">${escapeHtml(patient.split(" ").map((part) => part[0]).join("").slice(0,2))}</span><div><b>${escapeHtml(patient)} · ${escapeHtml(exercise.name)}</b><small>${session.repetitions ? `${session.repetitions} reps` : `${session.duration_seconds || 0}s`} · ${new Date(session.completed_at || session.created_at).toLocaleString()}</small></div><span>Difficulty <b>${session.difficulty || "—"}/5</b></span><span>Discomfort <b>${escapeHtml(session.discomfort || "—")}</b></span><em>Open report ${icon("arrow",14)}</em></button>`;
   }).join("")}</div>` : `<div class="empty-state"><span>${icon("activity",24)}</span><h3>No patient check-ins yet</h3><p>Completed private sessions will appear here without storing raw camera video.</p></div>`}</section>`;
 }
 
@@ -783,8 +863,8 @@ function renderTherapistAlerts(isDemoTherapist) {
   const alerts = isDemoTherapist ? [
     { id: "demo-a", title: "Adherence changed", explanation: "Sam completed fewer prescribed sessions this week.", status: "open", patient_id: "demo" },
     { id: "demo-b", title: "Movement consistency changed", explanation: "Jordan’s late-set consistency differs from their own recent sessions.", status: "open", patient_id: "demo" },
-  ] : therapistWorkspace.alerts;
-  return `<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Descriptive alerts</h2></div><span>${alerts.filter((alert) => alert.status === "open").length} open</span></div>${alerts.length ? `<div class="alert-list">${alerts.map((alert) => `<article><span>${icon("bell",18)}</span><div><small>${escapeHtml(isDemoTherapist ? "DEMO PATIENT" : patientNameById(alert.patient_id))}</small><b>${escapeHtml(alert.title)}</b><p>${escapeHtml(alert.explanation)}</p></div><em>${escapeHtml(alert.status)}</em></article>`).join("")}</div>` : `<div class="empty-state"><span>${icon("bell",24)}</span><h3>No alerts require review</h3><p>Axion flags descriptive participation or movement changes; it does not diagnose or alter treatment.</p></div>`}</section>`;
+  ] : derivedTherapistAlerts();
+  return `<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Descriptive alerts</h2></div><span>${alerts.filter((alert) => alert.status === "open").length} open</span></div>${alerts.length ? `<div class="alert-list">${alerts.map((alert) => `<article><span>${icon("bell",18)}</span><div><small>${escapeHtml(isDemoTherapist ? "DEMO PATIENT" : patientNameById(alert.patient_id))}</small><b>${escapeHtml(alert.title)}</b><p>${escapeHtml(alert.explanation)}</p></div><div class="alert-actions"><em>${escapeHtml(alert.status)}</em><button class="text-link" data-report-patient-id="${escapeHtml(alert.patient_id)}" data-report-patient-name="${escapeHtml(isDemoTherapist ? "Demo patient" : patientNameById(alert.patient_id))}">Review report ${icon("arrow",14)}</button></div></article>`).join("")}</div>` : `<div class="empty-state"><span>${icon("bell",24)}</span><h3>No alerts require review</h3><p>Axion flags descriptive participation or movement changes; it does not diagnose or alter treatment.</p></div>`}</section>`;
 }
 
 function renderExerciseLibrary() {
@@ -799,22 +879,18 @@ function therapistView() {
   const isDemoTherapist = currentSession?.demo || demoRole === "therapist";
   const pendingConnections = isDemoTherapist ? [] : therapistConnections.filter((item) => item.status === "pending_verification");
   const dashboardPatients = assignedPatients.length
-    ? assignedPatients.map((patient, index) => {
-        const name = patient.display_name || "Axion Patient";
-        return {
-          id: patient.id,
-          initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
-          name,
-          plan: "Patient-specific plan",
-          pulse: 0,
-          trend: "New",
-          state: "Plan setup",
-          color: ["mint", "violet", "orange"][index % 3]
-        };
-      })
+    ? assignedPatients.map(dashboardPatient)
     : isDemoTherapist
       ? [...patients, { initials: "AP", name: "Amara Patel", plan: "Shoulder mobility", pulse: 78, trend: "+5", state: "On track", color: "mint" }]
       : [];
+  const visiblePatients = patientFilter === "attention"
+    ? dashboardPatients.filter((patient) => ["Review", "Check in", "Awaiting session"].includes(patient.state))
+    : dashboardPatients;
+  const liveAlerts = isDemoTherapist ? [] : derivedTherapistAlerts();
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - 7);
+  const weeklySessionCount = therapistWorkspace.sessions.filter((session) => new Date(session.completed_at || session.created_at) >= weekStart).length;
+  const activeProgramCount = new Set(therapistWorkspace.plans.filter((plan) => plan.status === "active").map((plan) => plan.program_label || plan.title)).size;
   const today = new Date();
   const dayName = today.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
   const dateLabel = today.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
@@ -832,9 +908,9 @@ function therapistView() {
         <div class="date-card"><span>${dayName}</span><b>${dateLabel}</b></div>
       </div>
       <section class="dashboard-stats">
-        <article><span class="stat-icon">${icon("activity", 20)}</span><div><small>SESSIONS THIS WEEK</small><b>${isDemoTherapist ? 24 : "—"}</b><em>${isDemoTherapist ? "+18% from last week" : "Connect session history"}</em></div></article>
-        <article><span class="stat-icon violet">${icon("users", 20)}</span><div><small>ACTIVE PATIENTS</small><b>${patientCount}</b><em>Across ${isDemoTherapist ? 3 : 1} recovery programs</em></div></article>
-        <article><span class="stat-icon orange">${icon("bell", 20)}</span><div><small>NEEDS ATTENTION</small><b>${isDemoTherapist ? 2 : "—"}</b><em>Movement or adherence changes</em></div></article>
+        <article><span class="stat-icon">${icon("activity", 20)}</span><div><small>SESSIONS THIS WEEK</small><b>${isDemoTherapist ? 24 : weeklySessionCount}</b><em>${isDemoTherapist ? "+18% from last week" : "Authorized patient sessions"}</em></div></article>
+        <article><span class="stat-icon violet">${icon("users", 20)}</span><div><small>ACTIVE PATIENTS</small><b>${patientCount}</b><em>Across ${isDemoTherapist ? 3 : activeProgramCount} recovery program${(isDemoTherapist ? 3 : activeProgramCount) === 1 ? "" : "s"}</em></div></article>
+        <article><span class="stat-icon orange">${icon("bell", 20)}</span><div><small>NEEDS ATTENTION</small><b>${isDemoTherapist ? 2 : liveAlerts.filter((alert) => alert.status === "open").length}</b><em>Descriptive review cues</em></div></article>
       </section>
       </div>
       <div class="${therapistPanelClass("patients")}">
@@ -857,12 +933,12 @@ function therapistView() {
       <div class="${therapistPanelClass("overview")}">
       <section class="dashboard-grid">
         <div class="patients-card">
-          <div class="card-title"><div><span class="section-kicker">PATIENT OVERVIEW</span><h2>Recovery panel</h2></div><button class="filter-button">All patients</button></div>
-          ${dashboardPatients.length === 0 ? emptyMarkup() : `<div class="patient-table"><div class="table-head"><span>PATIENT</span><span>RECOVERY PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${dashboardPatients.map((patient) => `<button class="patient-row" data-report-patient-id="${escapeHtml(patient.id || "demo")}" data-report-patient-name="${escapeHtml(patient.name)}"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><b>${escapeHtml(patient.name)}</b></span><span>${escapeHtml(patient.plan)}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulse}</b></span><span class="${String(patient.trend).startsWith("-") ? "trend-down" : "trend-up"}">${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></span><span>${icon("arrow", 16)}</span></button>`).join("")}</div>`}
+          <div class="card-title"><div><span class="section-kicker">PATIENT OVERVIEW</span><h2>Recovery panel</h2></div><button class="filter-button" data-patient-filter>${patientFilter === "all" ? "All patients" : "Needs attention"} ${icon("filter",14)}</button></div>
+          ${visiblePatients.length === 0 ? (dashboardPatients.length ? `<div class="empty-state"><span>${icon("check",24)}</span><h3>No patients need attention</h3><p>Switch back to all patients to view the complete connected panel.</p></div>` : emptyMarkup()) : `<div class="patient-table"><div class="table-head"><span>PATIENT</span><span>RECOVERY PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${visiblePatients.map((patient) => `<button class="patient-row" data-report-patient-id="${escapeHtml(patient.id || "demo")}" data-report-patient-name="${escapeHtml(patient.name)}"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><b>${escapeHtml(patient.name)}</b></span><span>${escapeHtml(patient.plan)}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulseLabel ?? patient.pulse}</b></span><span class="${String(patient.trend).startsWith("-") ? "trend-down" : "trend-up"}">${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></span><span>${icon("arrow", 16)}</span></button>`).join("")}</div>`}
         </div>
         <aside class="attention-card">
-          <div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Review next</h2></div><span>${isDemoTherapist ? 2 : 0}</span></div>
-          ${isDemoTherapist ? `<button data-nav="report"><i class="patient-avatar orange">SR</i><div><b>Sam Rivera</b><small>Adherence dropped 22%</small><em>Last session · yesterday</em></div>${icon("arrow", 15)}</button><button data-nav="report"><i class="patient-avatar violet">JL</i><div><b>Jordan Lee</b><small>Late-set symmetry changed</small><em>3 sessions flagged</em></div>${icon("arrow", 15)}</button><div class="flag-explanation"><b>WHY AXION FLAGGED THIS</b><p>Flags summarize changes in movement and participation. They do not diagnose injury or modify treatment.</p></div>` : `<div class="flag-explanation"><b>No review data yet</b><p>Patient movement and adherence changes will appear here.</p></div>`}
+          <div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Review next</h2></div><span>${isDemoTherapist ? 2 : liveAlerts.filter((alert) => alert.status === "open").length}</span></div>
+          ${isDemoTherapist ? `<button data-nav="report"><i class="patient-avatar orange">SR</i><div><b>Sam Rivera</b><small>Adherence dropped 22%</small><em>Last session · yesterday</em></div>${icon("arrow", 15)}</button><button data-nav="report"><i class="patient-avatar violet">JL</i><div><b>Jordan Lee</b><small>Late-set symmetry changed</small><em>3 sessions flagged</em></div>${icon("arrow", 15)}</button><div class="flag-explanation"><b>WHY AXION FLAGGED THIS</b><p>Flags summarize changes in movement and participation. They do not diagnose injury or modify treatment.</p></div>` : liveAlerts.filter((alert) => alert.status === "open").slice(0, 3).map((alert) => `<button data-report-patient-id="${escapeHtml(alert.patient_id)}" data-report-patient-name="${escapeHtml(patientNameById(alert.patient_id))}"><i class="patient-avatar orange">${escapeHtml(patientNameById(alert.patient_id).split(" ").map((part) => part[0]).join("").slice(0,2))}</i><div><b>${escapeHtml(patientNameById(alert.patient_id))}</b><small>${escapeHtml(alert.title)}</small><em>${escapeHtml(alert.explanation)}</em></div>${icon("arrow", 15)}</button>`).join("") || `<div class="flag-explanation"><b>No review data yet</b><p>Patient movement and adherence changes will appear here.</p></div>`}
         </aside>
       </section>
       <section class="dashboard-bottom">
@@ -932,6 +1008,69 @@ async function submitPersonalPlan(event) {
   finally { button.disabled = false; }
 }
 
+function accountView() {
+  if (!currentSession?.user || !currentProfile) {
+    authView();
+    return;
+  }
+  currentView = "account";
+  stopDemo();
+  const roleLabel = currentProfile.role === "therapist" ? "Physical therapist" : "Patient";
+  const backTarget = currentProfile.role === "therapist" ? "therapist" : "patient";
+  const email = currentSession.user.email || (currentSession.demo ? "Synthetic demo account" : "Email unavailable");
+  app.innerHTML = layout(`
+    <main class="account-page container-wide">
+      <section class="account-card">
+        <div class="account-heading"><button class="back-link" data-nav="${backTarget}">${icon("back",16)} Back to ${currentProfile.role === "therapist" ? "therapist workspace" : "my recovery"}</button><span class="section-kicker">PRIVATE ACCOUNT</span><h1>Account and identity</h1><p>Your role is controlled by Axion’s trusted workflow. Changing your display name never changes your permissions or care-team connection.</p></div>
+        <div class="account-identity"><span class="patient-avatar mint">${escapeHtml(currentProfile.display_name.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0,2).toUpperCase())}</span><div><b>${escapeHtml(currentProfile.display_name)}</b><small>${escapeHtml(email)}</small></div><em>${escapeHtml(roleLabel)}</em></div>
+        <form id="account-profile-form">
+          <label>Display name<input id="account-display-name" minlength="2" maxlength="80" autocomplete="name" value="${escapeHtml(currentProfile.display_name)}" required/></label>
+          <div id="account-message" class="form-message"></div>
+          <button class="button button--primary" type="submit">Save account name ${icon("arrow",16)}</button>
+        </form>
+        <div class="account-security"><span>${icon("shield",22)}</span><div><b>Security controls</b><p>Passwords are handled by Supabase Auth. Patient and therapist authorization is enforced separately by database policies.</p></div>${currentSession.demo ? "" : `<button class="button button--ghost" type="button" data-send-account-reset>Send password-reset email</button>`}</div>
+        <button class="button button--quiet account-signout" data-portal-signout>Sign out of Axion</button>
+      </section>
+    </main>
+  `, { full: true });
+  bindEvents();
+}
+
+async function updateAccountProfile(event) {
+  event.preventDefault();
+  const input = document.querySelector("#account-display-name");
+  const message = document.querySelector("#account-message");
+  const button = event.currentTarget.querySelector('[type="submit"]');
+  const displayName = input.value.trim().replace(/\s+/g, " ");
+  if (displayName.length < 2 || displayName.length > 80) {
+    message.textContent = "Use a display name between 2 and 80 characters.";
+    return;
+  }
+  button.disabled = true;
+  message.textContent = "Saving…";
+  try {
+    if (currentSession.demo) currentProfile = { ...currentProfile, display_name: displayName };
+    else {
+      const { data, error } = await supabase.from("profiles").update({ display_name: displayName, updated_at: new Date().toISOString() }).eq("id", currentSession.user.id).select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").single();
+      if (error) throw error;
+      currentProfile = data;
+    }
+    accountView();
+    setText("#account-message", "Account name updated.");
+  } catch (error) {
+    button.disabled = false;
+    message.textContent = error.message;
+  }
+}
+
+async function sendAccountPasswordReset() {
+  const message = document.querySelector("#account-message");
+  if (!currentSession?.user?.email) return;
+  message.textContent = "Sending a secure reset email…";
+  const { error } = await supabase.auth.resetPasswordForEmail(currentSession.user.email, { redirectTo: `${window.location.origin}/reset-password` });
+  message.textContent = error ? error.message : "Password-reset email sent. Open the newest link in this browser.";
+}
+
 function authView() {
   currentView = "auth";
   stopDemo();
@@ -974,11 +1113,13 @@ async function signOutPortal() {
   therapistConnections = [];
   therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
   therapistSection = "overview";
+  patientFilter = "all";
   roadmapExpanded = false;
   patientWorkspace = null;
   currentAssignment = null;
   selectedPatient = null;
   reportSessions = [];
+  therapistNotes = [];
   reportReps = [];
   homeView();
 }
@@ -1418,6 +1559,75 @@ function replaySelectedRep() {
   const timer = setInterval(() => { phase += 0.08; updateSyntheticTwin(Math.sin(Math.min(1, phase) * Math.PI) * 0.68); if (phase >= 1) { clearInterval(timer); button?.classList.remove("playing"); } }, 40);
 }
 
+function exportMovementSummary() {
+  const patientName = currentProfile?.role === "patient"
+    ? currentProfile.display_name
+    : (selectedPatient?.display_name || "Demo patient");
+  const latest = reportSessions[0] || null;
+  const exercise = latest
+    ? assignmentDetails({ exercise_key: latest.exercise_key }).display_name
+    : (currentAssignment?.display_name || "Bodyweight Squat");
+  const stats = latest ? sessionSummary(latest) : summaryFor(reportReps.length ? reportReps : todaySeed);
+  const completedAt = latest?.completed_at || latest?.created_at || new Date().toISOString();
+  const lines = [
+    "AXION MOVEMENT SESSION SUMMARY",
+    "Descriptive metrics only · Nonclinical prototype",
+    "",
+    `Patient: ${patientName}`,
+    `Exercise: ${exercise}`,
+    `Completed: ${new Date(completedAt).toLocaleString()}`,
+    `Repetitions: ${latest?.repetitions ?? reportReps.length}`,
+    `Tracked joint: ${stats.joint || currentAssignment?.joint || "knee"}`,
+    `Average joint angle: ${stats.jointAngle || stats.depth || "Not recorded"}°`,
+    `Movement range: ${stats.movementRange || "Not recorded"}°`,
+    `Movement consistency: ${stats.consistency || "Not recorded"}`,
+    `Symmetry delta: ${stats.symmetry || "Not recorded"}°`,
+    `Difficulty: ${latest?.difficulty ?? "Not recorded"}`,
+    `Discomfort: ${latest?.discomfort || "Not recorded"}`,
+    "",
+    "This export does not contain raw camera video and is not a diagnosis or treatment recommendation.",
+  ];
+  const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `axion-session-summary-${new Date(completedAt).toISOString().slice(0, 10)}.txt`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function showTherapistNoteModal() {
+  if (!(currentProfile?.role === "therapist" || demoRole === "therapist")) return;
+  const patient = selectedPatient || assignedPatients[0] || { display_name: "Demo patient" };
+  const latest = reportSessions[0] || null;
+  const modal = document.createElement("div");
+  modal.className = "modal-layer";
+  modal.innerHTML = `<section class="reflection-card therapist-note-modal"><span class="section-kicker">PRIVATE THERAPIST NOTE</span><h2>Add context for ${escapeHtml(patient.display_name || "this patient")}</h2><p>This note does not change the patient’s roadmap or create a diagnosis.</p><form id="therapist-note-form"><label>Note<textarea id="therapist-note-text" rows="6" minlength="1" maxlength="4000" required placeholder="Document relevant session context, follow-up questions, or plan-review considerations."></textarea></label><div id="therapist-note-message" class="form-message"></div><div class="reflection-actions"><button class="button button--ghost" type="button" data-close-modal>Cancel</button><button class="button button--primary" type="submit">Save private note ${icon("arrow",16)}</button></div></form></section>`;
+  document.body.appendChild(modal);
+  modal.querySelector("[data-close-modal]")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("#therapist-note-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('[type="submit"]');
+    const message = modal.querySelector("#therapist-note-message");
+    const note = modal.querySelector("#therapist-note-text").value.trim();
+    button.disabled = true;
+    message.textContent = "Saving note…";
+    try {
+      if (currentSession?.demo) {
+        therapistNotes.unshift({ id: crypto.randomUUID(), patient_id: patient.id || "demo", session_id: latest?.id || null, note, created_at: new Date().toISOString() });
+      } else {
+        const saved = await createTherapistNote(supabase, currentSession.user.id, patient.id, latest?.id || null, note);
+        therapistNotes.unshift(saved);
+      }
+      modal.remove();
+      reportView();
+    } catch (error) {
+      button.disabled = false;
+      message.textContent = error.message;
+    }
+  });
+  modal.querySelector("#therapist-note-text")?.focus();
+}
+
 function passwordResetView() {
   currentView = "auth";
   app.innerHTML = layout(`
@@ -1593,6 +1803,7 @@ function navigateTo(target) {
       } else reportView();
     }
     if (target === "therapist") therapistView();
+    if (target === "account") accountView();
     if (target === "auth") authView();
   }, 180);
 }
@@ -1624,10 +1835,18 @@ function bindEvents() {
     reportView();
   }));
   document.querySelector("#replay-button")?.addEventListener("click", replaySelectedRep);
+  document.querySelectorAll("[data-replay-mode]").forEach((element) => element.addEventListener("click", () => {
+    replayMode = element.dataset.replayMode;
+    reportView();
+  }));
+  document.querySelectorAll("[data-export-report]").forEach((element) => element.addEventListener("click", exportMovementSummary));
+  document.querySelectorAll("[data-add-therapist-note]").forEach((element) => element.addEventListener("click", showTherapistNoteModal));
   document.querySelector("#auth-form")?.addEventListener("submit", submitSignIn);
   document.querySelector("[data-forgot-password]")?.addEventListener("click", requestPasswordReset);
   document.querySelector("#password-reset-form")?.addEventListener("submit", submitNewPassword);
   document.querySelector("#signup-form")?.addEventListener("submit", submitPatientSignUp);
+  document.querySelector("#account-profile-form")?.addEventListener("submit", updateAccountProfile);
+  document.querySelector("[data-send-account-reset]")?.addEventListener("click", sendAccountPasswordReset);
   document.querySelector("#connection-form")?.addEventListener("submit", submitConnectionCode);
   document.querySelector("#invite-patient-form")?.addEventListener("submit", submitPatientInvitation);
   document.querySelector("#plan-builder-form")?.addEventListener("submit", submitPersonalPlan);
@@ -1635,6 +1854,10 @@ function bindEvents() {
     therapistSection = element.dataset.therapistSection;
     therapistView();
   }));
+  document.querySelector("[data-patient-filter]")?.addEventListener("click", () => {
+    patientFilter = patientFilter === "all" ? "attention" : "all";
+    therapistView();
+  });
   document.querySelectorAll(".prescription-toggle").forEach((toggle) => toggle.addEventListener("change", () => {
     const selected = [...document.querySelectorAll(".prescription-toggle:checked")];
     if (selected.length > 12) {

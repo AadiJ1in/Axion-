@@ -162,7 +162,7 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
   const sessions = patientIds.length
     ? await throwIfError(
       await client.from("exercise_sessions")
-        .select("id, patient_id, assignment_id, exercise_key, repetitions, duration_seconds, difficulty, discomfort, completed_at, created_at")
+        .select("id, patient_id, assignment_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, completed_at, created_at")
         .in("patient_id", patientIds)
         .order("created_at", { ascending: false })
         .limit(100),
@@ -193,6 +193,33 @@ export async function loadMovementReport(client, patientId) {
       .limit(50),
     "Could not load the movement report"
   ) || [];
+}
+
+export async function loadTherapistNotes(client, patientId) {
+  if (!patientId) return [];
+  return throwIfError(
+    await client.from("therapist_notes")
+      .select("id, therapist_id, patient_id, session_id, note, created_at")
+      .eq("patient_id", patientId)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    "Could not load therapist notes"
+  ) || [];
+}
+
+export async function createTherapistNote(client, therapistId, patientId, sessionId, note) {
+  const cleanNote = note.trim().replace(/\s+/g, " ");
+  if (!patientId) throw new Error("Choose a connected patient before adding a note.");
+  if (cleanNote.length < 1 || cleanNote.length > 4000) throw new Error("Therapist notes must be 1–4,000 characters.");
+  return throwIfError(
+    await client.from("therapist_notes").insert({
+      therapist_id: therapistId,
+      patient_id: patientId,
+      session_id: sessionId || null,
+      note: cleanNote,
+    }).select("id, therapist_id, patient_id, session_id, note, created_at").single(),
+    "Could not save the therapist note"
+  );
 }
 
 export async function approvePatientConnection(client, therapistId, patientId, invitationId) {
