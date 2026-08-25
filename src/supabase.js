@@ -4,7 +4,7 @@ let createClient = null;
 
 try {
   ({ createClient } = await import(
-    "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+    "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm"
   ));
 } catch (error) {
   console.warn("Supabase is unavailable; continuing in synthetic demo mode.", error);

@@ -16,7 +16,7 @@ The public synthetic demo works without configuration:
 
 - three-second session calibration using locally estimated pose landmarks;
 - live Movement Twin reconstructed from MediaPipe coordinates;
-- bodyweight squat state tracking and rep-level depth, tempo, and symmetry-delta summaries;
+- bodyweight squat state tracking and rep-level 3D knee-bend, tempo, and symmetry-delta summaries;
 - sequence-aware coaching messages;
 - one-click 70-second synthetic pitch mode that does not depend on camera conditions;
 - visible body-detection, confidence-quality, and real-camera recovery states;

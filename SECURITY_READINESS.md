@@ -5,6 +5,7 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 ## Current technical boundaries
 
 - Camera frames are processed in the browser.
+- The movement model uses 3D world landmarks locally; only the derived summary is eligible for upload.
 - The prototype does not upload or store raw camera video.
 - The database stores a minimal session summary only after an authenticated patient submits it.
 - Public signup creates only a patient role.

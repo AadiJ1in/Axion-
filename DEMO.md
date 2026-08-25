@@ -18,7 +18,7 @@ The scripted demo does not require Supabase or camera permission. Camera mode re
 2. Click **Demo Mode · 70 sec**.
 3. Let the experience advance automatically:
    - 0–7 seconds: Maya's body/session baseline calibrates.
-   - 7–47 seconds: five deterministic synthetic repetitions run with depth, tempo, symmetry delta, confidence, coaching, and Recovery Journey progress.
+   - 7–47 seconds: five deterministic synthetic repetitions run with knee bend, tempo, symmetry delta, confidence, coaching, and Recovery Journey progress.
    - 47–52 seconds: the session completes and Axion generates a Motion Signature.
    - 52–62 seconds: the Movement Report opens with Baseline vs Today and a four-week drill-down.
    - 62–70 seconds: the therapist dashboard updates with an interpretable progression-review flag.
@@ -33,7 +33,7 @@ The scripted demo does not require Supabase or camera permission. Camera mode re
 
 **Five repetitions**
 
-> “The Movement Twin mirrors pose coordinates locally. Axion is not merely counting; it is building a rep sequence from depth, tempo, symmetry variation, and consistency.”
+> “The Movement Twin mirrors pose coordinates locally. Axion is not merely counting; it is building a rep sequence from bilateral 3D knee bend, tempo, symmetry variation, and consistency.”
 
 **Session completion**
 

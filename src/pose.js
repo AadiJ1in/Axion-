@@ -4,10 +4,10 @@ const MODEL_URL =
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 function angle(a, b, c) {
-  const ab = { x: a.x - b.x, y: a.y - b.y };
-  const cb = { x: c.x - b.x, y: c.y - b.y };
-  const dot = ab.x * cb.x + ab.y * cb.y;
-  const magnitude = Math.hypot(ab.x, ab.y) * Math.hypot(cb.x, cb.y);
+  const ab = { x: a.x - b.x, y: a.y - b.y, z: (a.z ?? 0) - (b.z ?? 0) };
+  const cb = { x: c.x - b.x, y: c.y - b.y, z: (c.z ?? 0) - (b.z ?? 0) };
+  const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
+  const magnitude = Math.hypot(ab.x, ab.y, ab.z) * Math.hypot(cb.x, cb.y, cb.z);
   if (!magnitude) return 180;
   return (Math.acos(clamp(dot / magnitude, -1, 1)) * 180) / Math.PI;
 }
@@ -131,6 +131,7 @@ export async function createSquatTracker({
     const rep = {
       index: reps,
       depthAngle: Math.round(minAngle),
+      kneeBendDegrees: Math.round(180 - minAngle),
       tempo: Number(duration.toFixed(1)),
       symmetryDelta: symmetryDelta === null ? null : Number(symmetryDelta.toFixed(1)),
       capturedAt: now,
@@ -145,14 +146,14 @@ export async function createSquatTracker({
   function updateState(metrics, now) {
     if (!calibrated) {
       calibrate(metrics, now);
-      onUpdate({ reps, stage: "calibrating", angle: metrics.angle, symmetryDelta: metrics.symmetryDelta, message: "Hold still while Axion calibrates." });
+      onUpdate({ reps, stage: "calibrating", angle: metrics.angle, kneeBend: metrics.angle === null ? null : Math.round(180 - metrics.angle), symmetryDelta: metrics.symmetryDelta, message: "Hold still while Axion calibrates." });
       return;
     }
 
     if (metrics.angle === null) {
       lowFrames = 0;
       highFrames = 0;
-      onUpdate({ reps, stage, angle: null, symmetryDelta: null, message: "Move your full body into frame." });
+      onUpdate({ reps, stage, angle: null, kneeBend: null, symmetryDelta: null, message: "Move your full body into frame." });
       return;
     }
 
@@ -196,6 +197,7 @@ export async function createSquatTracker({
       reps,
       stage,
       angle: Math.round(metrics.angle),
+      kneeBend: Math.round(180 - metrics.angle),
       symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)),
       message,
     });
@@ -210,7 +212,7 @@ export async function createSquatTracker({
       draw(result);
       if ((result.landmarks?.length ?? 0) > 1) {
         onTrackingState({ code: "multiple_people", label: "Multiple people detected", quality: "Low" });
-        onUpdate({ reps, stage, angle: null, symmetryDelta: null, message: "Only one person should be visible during the session." });
+        onUpdate({ reps, stage, angle: null, kneeBend: null, symmetryDelta: null, message: "Only one person should be visible during the session." });
         rafId = requestAnimationFrame(frame);
         return;
       }
@@ -231,7 +233,8 @@ export async function createSquatTracker({
         });
       }
       if (landmarks) onPose(landmarks);
-      updateState(landmarks ? movementMetrics(landmarks) : { angle: null, symmetryDelta: null }, now);
+      const measurementLandmarks = result.worldLandmarks?.[0] || landmarks;
+      updateState(measurementLandmarks ? movementMetrics(measurementLandmarks) : { angle: null, symmetryDelta: null }, now);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -291,7 +294,7 @@ export async function createSquatTracker({
     symmetrySamples = [];
     noPoseFrames = 0;
     repHistory.length = 0;
-    onUpdate({ reps, stage, angle: null, symmetryDelta: null, message: "Session reset." });
+    onUpdate({ reps, stage, angle: null, kneeBend: null, symmetryDelta: null, message: "Session reset." });
   }
 
   function stop() {

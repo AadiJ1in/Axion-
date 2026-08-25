@@ -7,6 +7,7 @@ const files = {
   demo: await readFile(new URL("../DEMO.md", import.meta.url), "utf8"),
   schema: await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
   securityMigration: await readFile(new URL("../supabase/migrations/20260825_secure_connections.sql", import.meta.url), "utf8"),
+  vercel: await readFile(new URL("../vercel.json", import.meta.url), "utf8"),
 };
 
 const requirements = [
@@ -36,6 +37,12 @@ const requirements = [
   [files.securityMigration, "target_email_hash", "email-bound invite"],
   [files.securityMigration, "interval '48 hours'", "48-hour invite expiry"],
   [files.securityMigration, "security_invoker = true", "RLS-respecting status view"],
+  [files.pose, "result.worldLandmarks", "3D world-landmark angle measurement"],
+  [files.main, "AVG. KNEE BEND", "human-readable knee-bend semantics"],
+  [files.main, "average_joint_angle_degrees", "backward-compatible joint-angle summary"],
+  [files.main, "average_knee_bend_degrees", "knee-bend summary"],
+  [files.vercel, "Content-Security-Policy", "production content security policy"],
+  [files.vercel, "Permissions-Policy", "camera permissions policy"],
 ];
 
 for (const [source, marker, label] of requirements) {
@@ -51,5 +58,7 @@ const cssBalance = [...files.css].reduce((balance, character) => {
   return balance;
 }, 0);
 if (cssBalance !== 0) throw new Error("Unbalanced CSS braces.");
+
+JSON.parse(files.vercel);
 
 console.log(`Axion smoke test passed: ${requirements.length} feature markers, 70-second script, balanced CSS.`);

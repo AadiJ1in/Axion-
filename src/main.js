@@ -42,7 +42,7 @@ const mayaHistory = [
 ];
 
 const exerciseCatalog = [
-  { key: "bodyweight_squat_poc", name: "Bodyweight Squat", focus: "Lower-body control", dosage: "3 sets · 10 repetitions", tracking: ["Depth", "Tempo", "Symmetry"], xp: 160, difficulty: "Foundational" },
+  { key: "bodyweight_squat_poc", name: "Bodyweight Squat", focus: "Lower-body control", dosage: "3 sets · 10 repetitions", tracking: ["Knee bend", "Tempo", "Symmetry"], xp: 160, difficulty: "Foundational" },
   { key: "wall_sit", name: "Wall Sit", focus: "Quadriceps endurance", dosage: "3 sets · 30 second hold", tracking: ["Hold time", "Trunk control"], xp: 120, difficulty: "Foundational" },
   { key: "heel_raise", name: "Heel Raises", focus: "Calf strength and control", dosage: "2 sets · 12 repetitions", tracking: ["Tempo", "Balance"], xp: 90, difficulty: "Foundational" },
   { key: "single_leg_balance", name: "Single-leg Balance", focus: "Balance and proprioception", dosage: "3 sets · 20 second hold", tracking: ["Stability", "Hold time"], xp: 140, difficulty: "Progression" },
@@ -152,6 +152,10 @@ const average = (values) => values.length
   ? values.reduce((sum, value) => sum + value, 0) / values.length
   : 0;
 
+const kneeBendDegrees = (jointAngle) => jointAngle === null || jointAngle === undefined
+  ? null
+  : Math.max(0, Math.min(180, Math.round(180 - jointAngle)));
+
 function relativeSessionLabel(value) {
   if (!value) return "No sessions yet";
   const days = Math.floor((Date.now() - new Date(value).getTime()) / 86400000);
@@ -254,7 +258,7 @@ function twinSvg() {
         <line id="bone-neck-head" class="twin-bone"/>
         ${joints.map(joint => `<circle id="joint-${joint}" class="twin-joint" r="${joint === "head" ? 16 : 6}"/>`).join("")}
       </g>
-      <g class="angle-orbit"><path d="M91 266 A46 46 0 0 1 132 309"/><text id="twin-angle" x="76" y="296">96°</text></g>
+      <g class="angle-orbit"><path d="M91 266 A46 46 0 0 1 132 309"/><text id="twin-angle" x="76" y="296">84°</text></g>
     </svg>`;
 }
 
@@ -275,7 +279,7 @@ function homeView() {
           <div class="orbit orbit--one"></div><div class="orbit orbit--two"></div>
           <div class="hero-twin">${twinSvg()}</div>
           <div class="floating-card floating-card--calibrated"><span class="mini-check">${icon("check", 12)}</span><div><b>BODY CALIBRATED</b><small>Session baseline ready</small></div></div>
-          <div class="floating-card floating-card--rep"><small>BEST REP</small><b>#4</b><span>96° depth · 2.6s</span></div>
+          <div class="floating-card floating-card--rep"><small>BEST REP</small><b>#4</b><span>84° knee bend · 2.6s</span></div>
           <div class="hero-signature">${signatureSvg({ compact: true, id: "hero" })}</div>
         </div>
       </section>
@@ -284,7 +288,7 @@ function homeView() {
         <div class="section-heading"><div><span class="section-kicker">THE AXION LOOP</span><h2>From camera to clarity.</h2></div><p>One focused workflow, built around what patients feel and what therapists need to know.</p></div>
         <div class="story-grid">
           <article class="story-card story-card--feature"><span class="story-index">01</span><div class="mini-twin">${twinSvg()}</div><div><h3>Movement Twin</h3><p>A clean live reconstruction mirrors the session and makes target range visible without uploading video.</p></div></article>
-          <article class="story-card"><span class="story-index">02</span>${icon("spark", 28)}<h3>Contextual coaching</h3><p>Axion reads the sequence—depth, tempo, consistency, and where performance changes.</p><blockquote>“Rep 4 was your most consistent. Your last three reps slowed.”</blockquote></article>
+          <article class="story-card"><span class="story-index">02</span>${icon("spark", 28)}<h3>Contextual coaching</h3><p>Axion reads the sequence—knee bend, tempo, consistency, and where performance changes.</p><blockquote>“Rep 4 was your most consistent. Your last three reps slowed.”</blockquote></article>
           <article class="story-card"><span class="story-index">03</span>${icon("report", 28)}<h3>Movement Report</h3><p>Best rep, least consistent rep, session trend, skeleton replay, and a clear therapist-review cue.</p><div class="report-mini"><span style="--v:82%"></span><span style="--v:90%"></span><span style="--v:96%"></span><span style="--v:88%"></span><span style="--v:72%"></span></div></article>
         </div>
       </section>
@@ -411,11 +415,11 @@ function labView() {
             </div>
           </div>
           <div class="motion-stage">
-            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera preview</b><small>Full body · front or ¾ view</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button><button id="recovery-demo">Use Demo Mode</button></div></div><span class="pane-label">YOU</span></div>
-            <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> Target range</div></div>
+            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera preview</b><small>Full body · 45° side view</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button><button id="recovery-demo">Use Demo Mode</button></div></div><span class="pane-label">YOU</span></div>
+            <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> 70–90° knee bend</div></div>
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
-          <div class="live-metrics"><div><span>REPS</span><b><i id="live-reps">0</i><small>/ ${repTarget}</small></b></div><div><span>DEPTH</span><b id="live-depth">—</b></div><div><span>RHYTHM</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
+          <div class="live-metrics"><div><span>REPS</span><b><i id="live-reps">0</i><small>/ ${repTarget}</small></b></div><div><span>KNEE BEND</span><b id="live-depth">—</b></div><div><span>RHYTHM</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
           <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>AXION COACH</small><p id="coach-message" aria-live="polite">Stand naturally for three seconds. Axion will learn your baseline for this session.</p></div><span id="coach-state">READY</span></div>
           <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: repTarget }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
           <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Use camera</button><button class="button button--primary" id="run-demo">${icon("play", 17)} Demo Mode <small>70 sec</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
@@ -435,9 +439,11 @@ function labView() {
 }
 
 function summaryFor(reps) {
-  if (!reps.length) return { depth: 0, tempo: 0, symmetry: 0, consistency: 0 };
+  if (!reps.length) return { depth: 0, kneeBend: 0, tempo: 0, symmetry: 0, consistency: 0 };
+  const depth = Math.round(average(reps.map((r) => r.depthAngle)));
   return {
-    depth: Math.round(average(reps.map((r) => r.depthAngle))),
+    depth,
+    kneeBend: kneeBendDegrees(depth),
     tempo: average(reps.map((r) => r.tempo)).toFixed(1),
     symmetry: average(reps.map((r) => r.symmetryDelta ?? 0)).toFixed(1),
     consistency: Math.round(average(reps.map((r) => r.consistency ?? Math.max(45, 100 - Math.abs(r.depthAngle - 98) * 2 - (r.symmetryDelta ?? 5))))),
@@ -463,8 +469,8 @@ function reportView() {
   const reportTarget = reps.length <= 5 ? 5 : 10;
   const reportPulse = demoScriptActive ? 89 : 86;
   const patternText = reps.length <= 5
-    ? "Reps 3–5 formed Maya’s most consistent sequence, with rep 4 showing the best combined depth, tempo, and symmetry delta."
-    : "Reps 3–5 were most consistent. Depth decreased and tempo slowed across reps 7–9, then partially recovered on rep 10.";
+    ? "Reps 3–5 formed Maya’s most consistent sequence, with rep 4 showing the best combined knee bend, tempo, and symmetry delta."
+    : "Reps 3–5 were most consistent. Knee bend decreased and tempo slowed across reps 7–9, then partially recovered on rep 10.";
   selectedRep = Math.min(selectedRep, reps.length);
   const selected = reps.find((r) => r.index === selectedRep) || best;
   app.innerHTML = layout(`
@@ -480,43 +486,43 @@ function reportView() {
       </section>
       <section class="report-metrics">
         <article><span>REPETITIONS</span><b>${reps.length}<small>/${reportTarget}</small></b><em>Completed</em></article>
-        <article><span>AVG. DEPTH ANGLE</span><b>${stats.depth}°</b><em class="up">↓ ${Math.max(1, 108 - stats.depth)}° vs last</em></article>
+        <article><span>AVG. KNEE BEND</span><b>${stats.kneeBend}°</b><em class="up">↑ ${Math.max(1, stats.kneeBend - kneeBendDegrees(108))}° vs last</em></article>
         <article><span>AVG. TEMPO</span><b>${stats.tempo}<small>s</small></b><em class="up">More consistent</em></article>
         <article><span>MOVEMENT CONSISTENCY</span><b>${stats.consistency}</b><em class="up">↑ 12%</em></article>
         <article><span>SYMMETRY DELTA</span><b>${stats.symmetry}°</b><em class="up">↓ 2.1°</em></article>
       </section>
       <section class="progress-comparison">
         <div class="comparison-head">
-          <div><span class="section-kicker">BASELINE VS TODAY</span><h2>Movement changed measurably.</h2><p>Maya’s trajectory is tighter, her depth is more consistent, and left/right variation has decreased since Week 1.</p></div>
+          <div><span class="section-kicker">BASELINE VS TODAY</span><h2>Movement changed measurably.</h2><p>Maya’s trajectory is tighter, her knee bend is more consistent, and left/right variation has decreased since Week 1.</p></div>
           <span class="comparison-window">4-WEEK VIEW</span>
         </div>
         <div class="comparison-visuals">
           <article class="comparison-session baseline">
             <div><span>WEEK 1 · BASELINE</span><b>Consistency 61</b></div>
             ${comparisonSignature({ improved: false })}
-            <div class="mini-metrics"><span>Depth <b>116°</b></span><span>Symmetry Δ <b>10.8°</b></span><span>Tempo <b>3.8s</b></span></div>
+            <div class="mini-metrics"><span>Knee bend <b>${kneeBendDegrees(116)}°</b></span><span>Symmetry Δ <b>10.8°</b></span><span>Tempo <b>3.8s</b></span></div>
           </article>
           <div class="comparison-arrow">${icon("arrow", 22)}<span>4 weeks</span></div>
           <article class="comparison-session today">
             <div><span>TODAY · SESSION 15</span><b>Consistency ${stats.consistency}</b></div>
             ${comparisonSignature({ improved: true })}
-            <div class="mini-metrics"><span>Depth <b>${stats.depth}°</b><em>↓ ${116 - stats.depth}°</em></span><span>Symmetry Δ <b>${stats.symmetry}°</b><em>↓ ${(10.8 - Number(stats.symmetry)).toFixed(1)}°</em></span><span>Tempo <b>${stats.tempo}s</b><em>↓ ${(3.8 - Number(stats.tempo)).toFixed(1)}s</em></span></div>
+            <div class="mini-metrics"><span>Knee bend <b>${stats.kneeBend}°</b><em>↑ ${stats.kneeBend - kneeBendDegrees(116)}°</em></span><span>Symmetry Δ <b>${stats.symmetry}°</b><em>↓ ${(10.8 - Number(stats.symmetry)).toFixed(1)}°</em></span><span>Tempo <b>${stats.tempo}s</b><em>↓ ${(3.8 - Number(stats.tempo)).toFixed(1)}s</em></span></div>
           </article>
         </div>
       </section>
       <section class="report-grid">
         <aside class="session-rail">
           <div class="rail-head"><div><span class="section-kicker">SESSION TIMELINE</span><h3>Rep sequence</h3></div><span>${reps.length} reps</span></div>
-          <div class="rail-list">${reps.map((rep) => `<button class="${selectedRep === rep.index ? "selected" : ""}" data-select-rep="${rep.index}"><span class="rep-number">${String(rep.index).padStart(2, "0")}</span><span><b>Rep ${rep.index}</b><small>${rep.depthAngle}° · ${rep.tempo}s · Δ ${rep.symmetryDelta ?? "—"}°</small></span><i style="--score:${repScore(rep)}%"></i></button>`).join("")}</div>
+          <div class="rail-list">${reps.map((rep) => `<button class="${selectedRep === rep.index ? "selected" : ""}" data-select-rep="${rep.index}"><span class="rep-number">${String(rep.index).padStart(2, "0")}</span><span><b>Rep ${rep.index}</b><small>${kneeBendDegrees(rep.depthAngle)}° bend · ${rep.tempo}s · Δ ${rep.symmetryDelta ?? "—"}°</small></span><i style="--score:${repScore(rep)}%"></i></button>`).join("")}</div>
         </aside>
         <div class="replay-card">
           <div class="replay-head"><div><span class="section-kicker">SKELETON REPLAY</span><h3>Rep ${selected.index}</h3></div><div class="tab-pills"><button class="active">Replay</button><button>Trajectory</button></div></div>
-          <div class="replay-stage"><div class="floor-grid"></div>${twinSvg()}<div class="replay-badges"><span><small>DEPTH</small><b>${selected.depthAngle}°</b></span><span><small>TEMPO</small><b>${selected.tempo}s</b></span><span><small>SYMMETRY Δ</small><b>${selected.symmetryDelta ?? "—"}°</b></span></div><span class="no-video-badge">${icon("shield", 13)} Reconstructed from pose coordinates</span></div>
+          <div class="replay-stage"><div class="floor-grid"></div>${twinSvg()}<div class="replay-badges"><span><small>KNEE BEND</small><b>${kneeBendDegrees(selected.depthAngle)}°</b></span><span><small>TEMPO</small><b>${selected.tempo}s</b></span><span><small>SYMMETRY Δ</small><b>${selected.symmetryDelta ?? "—"}°</b></span></div><span class="no-video-badge">${icon("shield", 13)} Reconstructed from pose coordinates</span></div>
           <div class="replay-controls"><button id="replay-button" class="circle-button">${icon("play", 18)}</button><div><span style="width:${Math.round((selected.index / reps.length) * 100)}%"></span></div><small>REP ${selected.index} / ${reps.length}</small></div>
         </div>
         <aside class="insight-column">
-          <article class="rep-highlight best"><span>${icon("spark", 17)} BEST REP</span><h3>#${best.index}</h3><div><span>Depth <b>${best.depthAngle}°</b></span><span>Consistency <b>${repScore(best)}</b></span><span>Tempo <b>${best.tempo}s</b></span></div></article>
-          <article class="rep-highlight weak"><span>PERFORMANCE SHIFT</span><h3>#${weakest.index}</h3><p>Depth and tempo varied most here. Review the sequence before changing the plan.</p><div><span>Depth <b>${weakest.depthAngle}°</b></span><span>Consistency <b>${repScore(weakest)}</b></span></div></article>
+          <article class="rep-highlight best"><span>${icon("spark", 17)} BEST REP</span><h3>#${best.index}</h3><div><span>Knee bend <b>${kneeBendDegrees(best.depthAngle)}°</b></span><span>Consistency <b>${repScore(best)}</b></span><span>Tempo <b>${best.tempo}s</b></span></div></article>
+          <article class="rep-highlight weak"><span>PERFORMANCE SHIFT</span><h3>#${weakest.index}</h3><p>Knee bend and tempo varied most here. Review the sequence before changing the plan.</p><div><span>Knee bend <b>${kneeBendDegrees(weakest.depthAngle)}°</b></span><span>Consistency <b>${repScore(weakest)}</b></span></div></article>
           <article class="ai-note"><span class="coach-orb">${icon("spark", 17)}</span><div><span class="section-kicker">SESSION PATTERN</span><p>${patternText}</p></div></article>
         </aside>
       </section>
@@ -1012,8 +1018,8 @@ async function initializeLab() {
       sessionReps.push({ ...rep, consistency });
       updateLiveSession();
     },
-    onUpdate: ({ reps, angle, symmetryDelta, message, stage }) => {
-      setText("#live-reps", reps); setText("#live-depth", angle === null ? "—" : `${angle}°`); setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}°`); setText("#coach-message", message); setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "down" ? "IN MOTION" : "READY");
+    onUpdate: ({ reps, kneeBend, symmetryDelta, message, stage }) => {
+      setText("#live-reps", reps); setText("#live-depth", kneeBend === null ? "—" : `${kneeBend}°`); setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}°`); setText("#coach-message", message); setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "down" ? "IN MOTION" : "READY");
     },
     onError: (message) => {
       setText("#capture-status", "CAMERA NEEDS ATTENTION");
@@ -1210,16 +1216,16 @@ function celebrateMilestone() {
 function updateLiveSession() {
   const last = sessionReps.at(-1);
   const stats = summaryFor(sessionReps);
-  setText("#live-reps", sessionReps.length); setText("#live-depth", last ? `${last.depthAngle}°` : "—"); setText("#live-tempo", last ? `${last.tempo}s` : "—"); setText("#live-symmetry", last ? `${last.symmetryDelta ?? "—"}°` : "—");
+  setText("#live-reps", sessionReps.length); setText("#live-depth", last ? `${kneeBendDegrees(last.depthAngle)}°` : "—"); setText("#live-tempo", last ? `${last.tempo}s` : "—"); setText("#live-symmetry", last ? `${last.symmetryDelta ?? "—"}°` : "—");
   const targetReps = demoScriptActive ? 5 : Number(currentExercise?.dosage?.match(/(\d+) repetitions/)?.[1] || 10);
   setText("#energy-value", `${Math.min(100, Math.round((sessionReps.length / targetReps) * 100))}%`);
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
   if (last) {
-    let message = `Rep ${last.index} captured at ${last.depthAngle}°. Keep that rhythm.`;
+    let message = `Rep ${last.index} captured at ${kneeBendDegrees(last.depthAngle)}° knee bend. Keep that rhythm.`;
     if (last.index === 4) message = "Rep 4 is your most consistent so far.";
-    if (last.index >= 8) message = "Depth has decreased across the late set. Finish with control.";
-    setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${last.depthAngle}°`);
+    if (last.index >= 8) message = "Knee bend has decreased across the late set. Finish with control.";
+    setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${kneeBendDegrees(last.depthAngle)}°`);
   }
   const finish = document.querySelector("#finish-session"); if (finish) finish.disabled = sessionReps.length === 0;
   if (stats.tempo) document.documentElement.style.setProperty("--tempo", stats.tempo);
@@ -1312,6 +1318,8 @@ async function saveSessionSummary(reps) {
       quality_score: stats.consistency,
       movement_summary: {
         average_depth_angle: stats.depth,
+        average_joint_angle_degrees: stats.depth,
+        average_knee_bend_degrees: stats.kneeBend,
         average_tempo_seconds: Number(stats.tempo),
         average_symmetry_delta: Number(stats.symmetry),
         movement_consistency: stats.consistency
@@ -1385,13 +1393,29 @@ async function submitSignIn(event) {
   const email = document.querySelector("#email").value.trim();
   const password = document.querySelector("#password").value;
   const message = document.querySelector("#auth-message");
+  const submitButton = event.currentTarget.querySelector('button[type="submit"]');
   const signingUp = authMode === "signup";
   message.textContent = signingUp ? "Creating your secure patient account…" : "Signing in…";
+  if (submitButton) submitButton.disabled = true;
   const displayName = document.querySelector("#display-name")?.value.trim();
-  const { data, error } = signingUp
-    ? await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } })
-    : await supabase.auth.signInWithPassword({ email, password });
-  if (error) { message.textContent = error.message; return; }
+  let data;
+  let error;
+  try {
+    ({ data, error } = signingUp
+      ? await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } })
+      : await supabase.auth.signInWithPassword({ email, password }));
+  } catch {
+    message.textContent = "Axion could not reach the secure sign-in service. Try again shortly.";
+    return;
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
+  if (error) {
+    message.textContent = signingUp
+      ? "The account could not be created. Check the fields and try again."
+      : "The email or password is incorrect.";
+    return;
+  }
   currentSession = data.session;
   if (signingUp && !currentSession) {
     message.textContent = "Check your email to verify the account, then return here to sign in.";
