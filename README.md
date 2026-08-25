@@ -1,4 +1,4 @@
-# Axion Movement Intelligence POC
+# Axion Movement Intelligence
 
 Axion turns a prescribed movement into an understandable session for the patient and a concise movement report for the therapist.
 
@@ -27,6 +27,11 @@ The public synthetic demo works without configuration:
 - therapist dashboard, Recovery Pulse, and therapist-review suggestion;
 - role-aware patient recovery portal with XP, streaks, milestones, daily prescriptions, momentum, and achievements;
 - functional therapist workspace sections for patients, recovery roadmaps, check-ins, attention alerts, and the exercise library;
+- patient account creation with patient-only public role assignment;
+- cryptographically random, email-bound, single-use therapist invitations that expire after 48 hours;
+- real patient XP, streak, completion, and therapist panel summaries derived from protected session rows;
+- Recovery Arcade entry points that launch prescribed movement inside Motion Lab;
+- therapist Connections and Security workspaces modeled after the YC demonstration;
 - therapist-to-patient exercise assignment with a persistent synthetic demo path and Supabase-backed live path;
 - Baseline vs Today comparison and four-week therapist drill-down;
 - explainable “Why Axion flagged this” attention-queue rationale;
@@ -52,12 +57,14 @@ npm run check
 ## Optional Supabase setup
 
 1. For a new project, run `supabase/schema.sql`.
-2. For the existing Axion project, run `supabase/migrations/20260824_portal_workflows.sql` once in the SQL editor. The migration preserves existing session rows.
-3. Add the new URL and publishable/anon key to `src/config.js`.
+2. For the existing PTpal project, run `supabase/migrations/20260824_portal_workflows.sql`, then `supabase/migrations/20260825_secure_connections.sql`. Both preserve existing session rows.
+3. Add the browser-safe publishable/anon key for project `kxhmrfgolttrofpumqpy` to `src/config.js`.
 4. Create accounts through Supabase Auth.
 5. Promote therapist accounts only through the administrative SQL shown at the end of the schema.
 
 The browser receives only the publishable/anon key. Never place a Supabase service-role key in `src/config.js`; row-level security is the authorization boundary.
+
+The 2026 security migration also moves privileged authorization helpers into a non-exposed `private` schema, adds explicit Data API grants, prevents direct relationship creation, records connection audit events, and makes session writes idempotent.
 
 ## Scope and boundaries
 

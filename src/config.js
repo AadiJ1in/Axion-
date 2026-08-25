@@ -1,4 +1,6 @@
-// Use credentials from a NEW Supabase project.
-// The publishable/anon key is designed for browser use; RLS is the authorization boundary.
-export const SUPABASE_URL = "https://qjcxelpzcfmcsrpsnlrs.supabase.co";
-export const SUPABASE_ANON_KEY = "sb_publishable_BsJygeo1bWo87fr6FLq_KA_XTO6jndu";
+// PTpal production project. Only a browser-safe publishable/anon key belongs here.
+// The key is intentionally blank until it is read from this exact project; using
+// a key copied from another Supabase project would make authentication fail and
+// could send credentials to the wrong backend.
+export const SUPABASE_URL = "https://kxhmrfgolttrofpumqpy.supabase.co";
+export const SUPABASE_ANON_KEY = "";

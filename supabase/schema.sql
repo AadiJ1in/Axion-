@@ -51,11 +51,14 @@ create table public.exercise_prescriptions (
 
 create table public.exercise_sessions (
   id bigint generated always as identity primary key,
-  user_id uuid not null references public.profiles(id) on delete cascade,
+  patient_id uuid not null references public.profiles(id) on delete cascade,
   prescription_id bigint references public.exercise_prescriptions(id) on delete set null,
+  client_session_id uuid,
   exercise_key text not null check (exercise_key in ('bodyweight_squat_poc', 'wall_sit', 'heel_raise', 'single_leg_balance', 'step_down', 'shoulder_flexion')),
   repetitions integer not null check (repetitions between 0 and 500),
-  source text not null check (source = 'mediapipe_browser_poc'),
+  source text check (source = 'mediapipe_browser_poc'),
+  duration_seconds integer check (duration_seconds between 0 and 14400),
+  quality_score smallint check (quality_score between 0 and 100),
   movement_summary jsonb not null default '{}'::jsonb,
   difficulty smallint check (difficulty between 1 and 5),
   discomfort text check (discomfort in ('none', 'mild', 'moderate', 'stop')),
@@ -73,6 +76,10 @@ create table public.patient_checkins (
   note text check (char_length(note) <= 500),
   created_at timestamptz not null default now()
 );
+
+create unique index exercise_sessions_patient_client_session_uidx
+  on public.exercise_sessions (patient_id, client_session_id)
+  where client_session_id is not null;
 
 create table public.therapist_alerts (
   id bigint generated always as identity primary key,
@@ -135,9 +142,9 @@ create policy "plans_manage_therapist" on public.recovery_plans for all to authe
 create policy "prescriptions_read_patient" on public.exercise_prescriptions for select to authenticated using (patient_id = auth.uid());
 create policy "prescriptions_manage_therapist" on public.exercise_prescriptions for all to authenticated using (therapist_id = auth.uid() and public.is_assigned_therapist(patient_id)) with check (therapist_id = auth.uid() and public.is_assigned_therapist(patient_id));
 create policy "prescriptions_complete_patient" on public.exercise_prescriptions for update to authenticated using (patient_id = auth.uid()) with check (patient_id = auth.uid() and status = 'completed');
-create policy "sessions_insert_self" on public.exercise_sessions for insert to authenticated with check (user_id = auth.uid() and public.current_app_role() = 'patient');
-create policy "sessions_read_self" on public.exercise_sessions for select to authenticated using (user_id = auth.uid());
-create policy "sessions_read_assigned" on public.exercise_sessions for select to authenticated using (public.is_assigned_therapist(user_id));
+create policy "sessions_insert_self" on public.exercise_sessions for insert to authenticated with check (patient_id = auth.uid() and public.current_app_role() = 'patient');
+create policy "sessions_read_self" on public.exercise_sessions for select to authenticated using (patient_id = auth.uid());
+create policy "sessions_read_assigned" on public.exercise_sessions for select to authenticated using (public.is_assigned_therapist(patient_id));
 create policy "checkins_insert_self" on public.patient_checkins for insert to authenticated with check (patient_id = auth.uid());
 create policy "checkins_read_self" on public.patient_checkins for select to authenticated using (patient_id = auth.uid());
 create policy "checkins_read_assigned" on public.patient_checkins for select to authenticated using (public.is_assigned_therapist(patient_id));

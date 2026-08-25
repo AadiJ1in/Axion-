@@ -77,6 +77,11 @@ let therapistSection = "overview";
 let selectedPatientId = "demo-patient";
 let toastTimer = null;
 let lastSavedSessionId = null;
+let patientConnection = null;
+let patientProgress = { xp: 0, streak: 0, completed: 0, sessionsThisWeek: 0 };
+let authMode = "signin";
+let sessionStartedAt = null;
+let sessionClientId = null;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
@@ -134,9 +139,26 @@ function patientExerciseMarkup(exercise, index) {
     </article>`;
 }
 
+function newClientSessionId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === "x" ? random : (random & 3) | 8;
+    return value.toString(16);
+  });
+}
+
 const average = (values) => values.length
   ? values.reduce((sum, value) => sum + value, 0) / values.length
   : 0;
+
+function relativeSessionLabel(value) {
+  if (!value) return "No sessions yet";
+  const days = Math.floor((Date.now() - new Date(value).getTime()) / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return `${days} days ago`;
+}
 
 function icon(name, size = 18) {
   const paths = {
@@ -283,6 +305,10 @@ function patientView() {
   const completeCount = patientExercises.filter((exercise) => exercise.status === "complete").length;
   const readyCount = patientExercises.filter((exercise) => exercise.status === "ready").length;
   const sessionMinutes = Math.max(8, patientExercises.length * 4 + 2);
+  const isLivePatient = Boolean(currentSession?.user && !currentSession.demo);
+  const recoveryXp = isLivePatient ? patientProgress.xp : 4390 + completeCount * 90;
+  const recoveryStreak = isLivePatient ? patientProgress.streak : 4;
+  const therapistName = patientConnection?.therapistName || "Dr. Ava Patel";
   app.innerHTML = layout(`
     <main class="patient-portal container-wide">
       <section class="patient-welcome">
@@ -292,11 +318,17 @@ function patientView() {
           <p>Your next recovery session is ready. Complete today’s movement mission to keep your four-day streak alive.</p>
         </div>
         <div class="patient-scoreboard" aria-label="Recovery game statistics">
-          <article><span>${icon("trophy", 18)}</span><div><small>RECOVERY XP</small><b>${(4390 + completeCount * 90).toLocaleString()}</b></div></article>
-          <article><span>${icon("spark", 18)}</span><div><small>LEVEL</small><b>7</b></div></article>
-          <article><span>${icon("calendar", 18)}</span><div><small>STREAK</small><b>4 days</b></div></article>
+          <article><span>${icon("trophy", 18)}</span><div><small>RECOVERY XP</small><b>${recoveryXp.toLocaleString()}</b></div></article>
+          <article><span>${icon("spark", 18)}</span><div><small>LEVEL</small><b>${Math.max(1, Math.floor(recoveryXp / 600) + 1)}</b></div></article>
+          <article><span>${icon("calendar", 18)}</span><div><small>STREAK</small><b>${recoveryStreak} day${recoveryStreak === 1 ? "" : "s"}</b></div></article>
         </div>
       </section>
+
+      ${isLivePatient ? (patientConnection ? `
+        <section class="connection-banner connected"><span>${icon("shield", 20)}</span><div><small>CONNECTED CARE TEAM</small><b>${escapeHtml(therapistName)}</b><p>Your therapist can review completed movement summaries and check-ins. Raw camera video stays on this device.</p></div><button data-portal-signout>Sign out</button></section>
+      ` : `
+        <section class="connection-banner"><span>${icon("users", 20)}</span><div><small>CONNECT YOUR CARE TEAM</small><b>Enter the private invitation from your physical therapist.</b><p>Codes are tied to your account email, expire after 48 hours, and work only once.</p></div><form id="claim-invite-form"><input id="patient-invite-code" maxlength="16" autocomplete="one-time-code" placeholder="16-character code" required/><button class="button button--primary" type="submit">Connect securely</button><em id="invite-message"></em></form></section>
+      `) : ""}
 
       <section class="patient-grid">
         <article class="recovery-map-card">
@@ -321,11 +353,12 @@ function patientView() {
             <div><span class="section-kicker">WEEKLY GOAL</span><h3>One session from your streak.</h3><p>Finish today’s prescribed exercise to reach this week’s target.</p></div>
           </article>
           <article class="reward-card"><span>${icon("trophy", 24)}</span><div><small>NEXT REWARD</small><h3>Trailblazer badge</h3><p>Earn 160 XP in today’s Motion Lab.</p></div></article>
+          <article class="arcade-card"><span>${icon("activity", 24)}</span><div><small>RECOVERY ARCADE</small><h3>Motion-powered challenges</h3><p>Use your prescribed movement to cross the Balance Bridge and build a controlled rhythm.</p></div><button class="button button--ghost" data-arcade-start>Open challenge ${icon("arrow", 15)}</button></article>
         </aside>
       </section>
 
       <section class="today-plan">
-        <div class="section-heading compact"><div><span class="section-kicker">TODAY’S PRESCRIPTION</span><h2>${patientExercises.length} focused exercises.</h2></div><p>Prescribed by Dr. Ava Patel · Estimated time ${sessionMinutes} minutes · ${readyCount} ready now</p></div>
+        <div class="section-heading compact"><div><span class="section-kicker">TODAY’S PRESCRIPTION</span><h2>${patientExercises.length} focused exercises.</h2></div><p>Prescribed by ${escapeHtml(therapistName)} · Estimated time ${sessionMinutes} minutes · ${readyCount} ready now</p></div>
         <div class="exercise-list">
           ${patientExercises.map(patientExerciseMarkup).join("")}
         </div>
@@ -553,7 +586,105 @@ async function loadAssignedPatients() {
     return;
   }
 
-  assignedPatients = profiles || [];
+  const [{ data: sessionRows }, { data: planRows }] = await Promise.all([
+    supabase
+      .from("exercise_sessions")
+      .select("patient_id, repetitions, quality_score, completed_at")
+      .in("patient_id", patientIds)
+      .order("completed_at", { ascending: false })
+      .limit(250),
+    supabase
+      .from("recovery_plans")
+      .select("patient_id, title, target_sessions_per_week, stage")
+      .in("patient_id", patientIds)
+      .eq("status", "active"),
+  ]);
+
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+  assignedPatients = (profiles || []).map((profile) => {
+    const patientSessions = (sessionRows || []).filter((session) => session.patient_id === profile.id);
+    const weeklySessions = patientSessions.filter((session) => new Date(session.completed_at) >= weekStart).length;
+    const plan = (planRows || []).find((item) => item.patient_id === profile.id);
+    const target = Number(plan?.target_sessions_per_week || 3);
+    const adherence = Math.min(100, Math.round((weeklySessions / target) * 100));
+    const qualityValues = patientSessions.slice(0, 4).map((session) => Number(session.quality_score)).filter(Number.isFinite);
+    const quality = qualityValues.length ? Math.round(average(qualityValues)) : 70;
+    return {
+      ...profile,
+      planTitle: plan?.title || "Active recovery plan",
+      stage: plan?.stage || "foundation",
+      weeklySessions,
+      adherence,
+      pulse: Math.round(adherence * .55 + quality * .45),
+      lastSessionAt: patientSessions[0]?.completed_at || null,
+    };
+  });
+}
+
+function calculateSessionStreak(sessionRows) {
+  const days = new Set((sessionRows || []).map((session) => new Date(session.completed_at).toISOString().slice(0, 10)));
+  if (!days.size) return 0;
+  let cursor = new Date();
+  const today = cursor.toISOString().slice(0, 10);
+  if (!days.has(today)) cursor.setUTCDate(cursor.getUTCDate() - 1);
+  let streak = 0;
+  while (days.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return streak;
+}
+
+async function loadPatientConnectionAndProgress() {
+  patientConnection = null;
+  patientProgress = { xp: 0, streak: 0, completed: 0, sessionsThisWeek: 0 };
+  if (!supabase || !currentSession?.user || currentSession.demo) return;
+
+  const [{ data: relationships }, { data: sessions }, { count: completed }] = await Promise.all([
+    supabase
+      .from("therapist_patients")
+      .select("therapist_id, assigned_at")
+      .eq("patient_id", currentSession.user.id)
+      .eq("status", "active")
+      .limit(1),
+    supabase
+      .from("exercise_sessions")
+      .select("repetitions, completed_at")
+      .eq("patient_id", currentSession.user.id)
+      .order("completed_at", { ascending: false })
+      .limit(100),
+    supabase
+      .from("exercise_prescriptions")
+      .select("id", { count: "exact", head: true })
+      .eq("patient_id", currentSession.user.id)
+      .eq("status", "completed"),
+  ]);
+
+  const relationship = relationships?.[0];
+  if (relationship?.therapist_id) {
+    const { data: therapist } = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", relationship.therapist_id)
+      .single();
+    patientConnection = {
+      therapistId: relationship.therapist_id,
+      therapistName: therapist?.display_name || "Your physical therapist",
+      assignedAt: relationship.assigned_at,
+    };
+  }
+
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+  patientProgress = {
+    xp: (sessions || []).reduce((total, session) => total + Math.max(40, Number(session.repetitions || 0) * 10), 0),
+    streak: calculateSessionStreak(sessions || []),
+    completed: completed || 0,
+    sessionsThisWeek: (sessions || []).filter((session) => new Date(session.completed_at) >= weekStart).length,
+  };
 }
 
 async function loadPatientPortalData() {
@@ -595,6 +726,22 @@ async function loadPatientPortalData() {
   }
 }
 
+async function claimPatientInvite(event) {
+  event.preventDefault();
+  const code = document.querySelector("#patient-invite-code")?.value.trim().toUpperCase();
+  const message = document.querySelector("#invite-message");
+  if (!code || !message) return;
+  message.textContent = "Checking this private invitation…";
+  const { error } = await supabase.rpc("claim_patient_invite", { invite_code: code });
+  if (error) {
+    message.textContent = error.message;
+    return;
+  }
+  await Promise.all([loadPatientConnectionAndProgress(), loadPatientPortalData()]);
+  showToast("Care team connected", "Your therapist can now assign exercises and review completed summaries.");
+  patientView();
+}
+
 function therapistWorkspaceNav() {
   const tabs = [
     ["overview", "Overview"],
@@ -603,6 +750,8 @@ function therapistWorkspaceNav() {
     ["checkins", "Check-ins"],
     ["alerts", "Alerts", "2"],
     ["library", "Exercise library"],
+    ["connections", "Connections"],
+    ["security", "Security"],
   ];
   return `<section class="pt-workspace-nav">
     <div><span>${icon("activity", 17)}</span><b>Clinical command center</b></div>
@@ -618,12 +767,14 @@ function therapistSectionView(dashboardPatients, isDemoTherapist) {
     checkins: ["PATIENT CONTEXT", "Check-ins", "Pair movement summaries with the patient’s own report."],
     alerts: ["REVIEW QUEUE", "Attention alerts", "Prioritize meaningful changes without turning a metric into a diagnosis."],
     library: ["THERAPIST TOOLS", "Exercise library", "Assign a movement-tracked exercise to the patient experience."],
+    connections: ["SECURE ONBOARDING", "Patient connections", "Invite a patient without making the directory searchable or exposing an account identifier."],
+    security: ["TRUST CENTER", "Security and privacy", "Review the safeguards built into Axion’s current nonclinical architecture."],
   };
   const [kicker, title, copy] = sectionMeta[therapistSection] || sectionMeta.patients;
   let content = "";
 
   if (therapistSection === "patients") {
-    content = `<section class="pt-directory"><div class="pt-directory-tools"><label>${icon("users", 16)}<input placeholder="Search patients" aria-label="Search patients"/></label><button class="filter-button">Active plans</button></div><div class="patient-directory-grid">${dashboardPatients.map((patient) => `<article><div><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><span><b>${escapeHtml(patient.name)}</b><small>${escapeHtml(patient.plan)}</small></span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></div><div class="directory-pulse"><span>Recovery Pulse</span><b>${patient.pulse}</b><i><u style="width:${patient.pulse}%"></u></i></div><div><span>Last session <b>${patient.name === "Maya Chen" ? "Today" : "2 days ago"}</b></span><span>Adherence <b>${patient.name === "Maya Chen" ? "92%" : "78%"}</b></span></div><button class="button button--ghost" data-nav="report">Open patient ${icon("arrow", 15)}</button></article>`).join("")}</div></section>`;
+    content = `<section class="pt-directory"><div class="pt-directory-tools"><label>${icon("users", 16)}<input placeholder="Search patients" aria-label="Search patients"/></label><button class="filter-button">Active plans</button></div><div class="patient-directory-grid">${dashboardPatients.map((patient) => `<article><div><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><span><b>${escapeHtml(patient.name)}</b><small>${escapeHtml(patient.plan)}</small></span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></div><div class="directory-pulse"><span>Recovery Pulse</span><b>${patient.pulse}</b><i><u style="width:${patient.pulse}%"></u></i></div><div><span>Last session <b>${escapeHtml(patient.lastSessionAt ? relativeSessionLabel(patient.lastSessionAt) : patient.name === "Maya Chen" ? "Today" : "2 days ago")}</b></span><span>Adherence <b>${patient.adherence ?? (patient.name === "Maya Chen" ? 92 : 78)}%</b></span></div><button class="button button--ghost" data-nav="report">Open patient ${icon("arrow", 15)}</button></article>`).join("")}</div></section>`;
   }
 
   if (therapistSection === "roadmaps") {
@@ -643,8 +794,40 @@ function therapistSectionView(dashboardPatients, isDemoTherapist) {
     content = `<section class="exercise-library"><div class="library-filters"><button class="active">All exercises</button><button>Lower body</button><button>Balance</button><button>Mobility</button><span>${exerciseCatalog.length} exercises</span></div><div class="library-grid">${exerciseCatalog.map((exercise, index) => `<article><div class="library-visual"><span>${String(index + 1).padStart(2, "0")}</span>${icon(index % 2 ? "activity" : "spark", 28)}<i>${exercise.difficulty}</i></div><div><small>${escapeHtml(exercise.focus)}</small><h3>${escapeHtml(exercise.name)}</h3><p>${escapeHtml(exercise.dosage)}</p><div>${exercise.tracking.map((metric) => `<span>${escapeHtml(metric)}</span>`).join("")}</div></div><button class="button button--primary" data-assign-exercise="${escapeHtml(exercise.key)}">Assign exercise ${icon("arrow", 15)}</button></article>`).join("")}</div></section>`;
   }
 
+  if (therapistSection === "connections") {
+    content = `<section class="connections-workspace"><article class="invite-builder"><span>${icon("users", 24)}</span><div><small>ONE-TIME PATIENT INVITE</small><h2>Connect a patient privately.</h2><p>Axion creates a cryptographically random code tied to the patient’s account email. It expires after 48 hours and cannot be reused.</p></div><form id="create-invite-form"><label>Patient email<input id="invite-email" type="email" autocomplete="off" placeholder="patient@example.com" required/></label><button class="button button--primary" type="submit">Create secure invitation ${icon("arrow", 15)}</button><div id="created-invite" class="created-invite" aria-live="polite"></div></form></article><aside class="connection-rules"><span class="section-kicker">CONNECTION RULES</span><div>${icon("lock", 18)}<p><b>No patient directory</b><small>Patients cannot search for or self-assign a therapist.</small></p></div><div>${icon("calendar", 18)}<p><b>48-hour expiration</b><small>Unused invitations automatically become invalid.</small></p></div><div>${icon("shield", 18)}<p><b>Email-bound and single-use</b><small>A code works only for its intended signed-in account.</small></p></div></aside></section>`;
+  }
+
+  if (therapistSection === "security") {
+    content = `<section class="security-workspace"><div class="security-grid"><article>${icon("shield", 22)}<div><small>AUTHORIZATION</small><h3>Row-level access control</h3><p>Patients access their own records. Therapists access only actively connected patients.</p><span>ENFORCED IN POSTGRES</span></div></article><article>${icon("camera", 22)}<div><small>DATA MINIMIZATION</small><h3>No raw camera upload</h3><p>Pose estimation runs in the browser; only a compact session summary is submitted.</p><span>ON-DEVICE PROCESSING</span></div></article><article>${icon("lock", 22)}<div><small>ACCOUNT SAFETY</small><h3>Patient-only public signup</h3><p>Therapist privileges require a trusted administrative promotion and are never read from editable user metadata.</p><span>ROLE HARDENED</span></div></article><article>${icon("report", 22)}<div><small>AUDITABILITY</small><h3>Connection events recorded</h3><p>Invitation creation and claiming generate server-side audit events without storing the invitation plaintext.</p><span>APPEND-ONLY EVENTS</span></div></article></div><div class="security-boundary">${icon("activity", 20)}<div><b>Nonclinical MVP boundary</b><p>These controls materially improve the prototype, but they do not constitute HIPAA certification, clinical validation, or authorization for real patient use.</p></div></div></section>`;
+  }
+
   app.innerHTML = layout(`<main class="therapist-page container-wide">${therapistWorkspaceNav()}<header class="workspace-section-head"><div><span class="section-kicker">${kicker}</span><h1>${title}</h1><p>${copy}</p></div><span class="workspace-live"><i></i>${isDemoTherapist ? "Synthetic workspace" : "Live workspace"}</span></header>${content}</main>`, { full: true });
   bindEvents();
+}
+
+async function createPatientInvite(event) {
+  event.preventDefault();
+  const email = document.querySelector("#invite-email")?.value.trim();
+  const output = document.querySelector("#created-invite");
+  if (!email || !output) return;
+  output.textContent = "Generating a single-use invitation…";
+  const { data, error } = await supabase.rpc("create_patient_invite", { target_email: email });
+  if (error) {
+    output.textContent = error.message;
+    return;
+  }
+  const invitation = Array.isArray(data) ? data[0] : data;
+  if (!invitation?.invite_code) {
+    output.textContent = "The invitation could not be returned. Please try again.";
+    return;
+  }
+  const expires = new Date(invitation.expires_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  output.innerHTML = `<small>SHARE THIS CODE ONCE</small><b>${escapeHtml(invitation.invite_code)}</b><span>Expires ${escapeHtml(expires)} · Axion never stores this plaintext code.</span><button type="button" data-copy-invite="${escapeHtml(invitation.invite_code)}">Copy code</button>`;
+  output.querySelector("[data-copy-invite]")?.addEventListener("click", async (buttonEvent) => {
+    await navigator.clipboard.writeText(buttonEvent.currentTarget.dataset.copyInvite);
+    buttonEvent.currentTarget.textContent = "Copied";
+  });
 }
 
 function openAssignmentModal(exerciseKey) {
@@ -700,10 +883,12 @@ function therapistView() {
           id: patient.id,
           initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
           name,
-          plan: "Active recovery plan",
-          pulse: 74,
-          trend: "+3",
-          state: "On track",
+          plan: patient.planTitle || "Active recovery plan",
+          pulse: Number.isFinite(patient.pulse) ? patient.pulse : 0,
+          trend: patient.weeklySessions ? `+${patient.weeklySessions}` : "0",
+          adherence: patient.adherence || 0,
+          lastSessionAt: patient.lastSessionAt,
+          state: patient.adherence >= 80 ? "On track" : patient.adherence >= 45 ? "Review" : "Check in",
           color: ["mint", "violet", "orange"][index % 3]
         };
       })
@@ -755,12 +940,14 @@ function therapistView() {
 function authView() {
   currentView = "auth";
   stopDemo();
+  const signingUp = authMode === "signup";
   app.innerHTML = layout(`
     <main class="auth-page container-wide">
       <section class="auth-card auth-card--portal">
         <div class="auth-brand"><span class="brand-symbol"><i></i><i></i></span><b>AXION</b></div>
-        <span class="section-kicker">RECOVERY PLATFORM ACCESS</span><h1>Welcome back.</h1><p>Sign in to your Axion workspace, or enter either guided demo to see the complete patient-to-therapist story.</p>
-        ${isConfigured ? `<form id="auth-form"><label>Email<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="password" type="password" minlength="8" required autocomplete="current-password"/></label><div id="auth-message" class="form-message"></div><button class="button button--primary" type="submit">Sign in securely ${icon("arrow", 16)}</button></form>` : `<div class="config-note"><span>Authentication is unavailable, but both synthetic demo roles are ready below.</span></div>`}
+        <span class="section-kicker">RECOVERY PLATFORM ACCESS</span><h1>${signingUp ? "Create your patient account." : "Welcome back."}</h1><p>${signingUp ? "Your public account is always created as a patient. Connect to a physical therapist afterward with their private invitation code." : "Sign in to your Axion workspace, or enter either guided demo to see the complete patient-to-therapist story."}</p>
+        <div class="auth-mode-switch"><button class="${signingUp ? "" : "active"}" data-auth-mode="signin">Sign in</button><button class="${signingUp ? "active" : ""}" data-auth-mode="signup">Create patient account</button></div>
+        ${isConfigured ? `<form id="auth-form" class="${signingUp ? "signup-form" : ""}">${signingUp ? `<label>Full name<input id="display-name" type="text" minlength="1" maxlength="80" required autocomplete="name" placeholder="Your name"/></label>` : ""}<label>Email<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="password" type="password" minlength="10" required autocomplete="${signingUp ? "new-password" : "current-password"}"/></label><div id="auth-message" class="form-message"></div><button class="button button--primary" type="submit">${signingUp ? "Create patient account" : "Sign in securely"} ${icon("arrow", 16)}</button></form>` : `<div class="config-note"><span>Authentication is unavailable, but both synthetic demo roles are ready below.</span></div>`}
         <div class="demo-divider"><span>OR EXPLORE A SYNTHETIC ROLE</span></div>
         <div class="role-demo-grid">
           <button data-demo-role="patient"><span class="role-demo-icon">${icon("map", 22)}</span><div><small>PATIENT EXPERIENCE</small><b>Enter Maya’s recovery</b><p>Recovery path, daily prescription, rewards, and Motion Lab.</p></div>${icon("arrow", 17)}</button>
@@ -795,6 +982,8 @@ async function signOutPortal() {
   demoRole = null;
   therapistSection = "overview";
   assignedPatients = [];
+  patientConnection = null;
+  authMode = "signin";
   homeView();
 }
 
@@ -802,6 +991,8 @@ async function initializeLab() {
   const video = document.querySelector("#camera");
   const canvas = document.querySelector("#overlay");
   if (!video || !canvas) return;
+  sessionStartedAt = Date.now();
+  sessionClientId = newClientSessionId();
   updateSyntheticTwin(0);
   tracker = await createSquatTracker({
     video, canvas,
@@ -1028,6 +1219,8 @@ function updateLiveSession() {
 
 function resetLab() {
   stopDemo(); tracker?.reset?.(); sessionReps = [];
+  sessionStartedAt = Date.now();
+  sessionClientId = newClientSessionId();
   document.querySelector("#calibration-overlay")?.classList.remove("complete");
   document.querySelector(".camera-placeholder")?.classList.remove("demo-active");
   updateCalibration(0, "Stand naturally with your full body in view.");
@@ -1070,7 +1263,7 @@ async function completeCurrentExercise() {
 function showReflection() {
   const modal = document.createElement("div");
   modal.className = "modal-layer";
-  modal.innerHTML = `<section class="reflection-card"><span class="completion-mark">${icon("check", 26)}</span><span class="section-kicker">SESSION CAPTURED</span><h2>How did that feel?</h2><p>Two quick answers add context to the movement report.</p><div class="feedback-group"><span>Difficulty</span><div>${[1,2,3,4,5].map(n => `<button data-difficulty="${n}" class="${n === 3 ? "selected" : ""}">${n}</button>`).join("")}</div><small>Easy <i></i> Challenging</small></div><div class="feedback-group"><span>Any discomfort?</span><div class="feedback-options">${["None","Mild","Moderate","Stop"].map((label,i) => `<button data-discomfort="${label.toLowerCase()}" class="${i === 0 ? "selected" : ""}">${label}</button>`).join("")}</div></div><div class="reflection-actions"><button class="button button--ghost" data-close-modal>Back</button><button class="button button--primary" data-open-report>Build Movement Report ${icon("arrow", 16)}</button></div><small class="fine-print">These responses provide session context and do not constitute a diagnosis.</small></section>`;
+  modal.innerHTML = `<section class="reflection-card"><span class="completion-mark">${icon("check", 26)}</span><span class="section-kicker">SESSION CAPTURED</span><h2>How did that feel?</h2><p>A short check-in gives your therapist context alongside the movement summary.</p><div class="feedback-group"><span>Difficulty</span><div>${[1,2,3,4,5].map(n => `<button data-difficulty="${n}" class="${n === 3 ? "selected" : ""}">${n}</button>`).join("")}</div><small>Easy <i></i> Challenging</small></div><div class="feedback-group"><span>Any discomfort?</span><div class="feedback-options">${["None","Mild","Moderate","Stop"].map((label,i) => `<button data-discomfort="${label.toLowerCase()}" class="${i === 0 ? "selected" : ""}">${label}</button>`).join("")}</div></div><label class="reflection-field">Movement confidence<select id="reflection-confidence">${[1,2,3,4,5].map((value) => `<option value="${value}" ${value === 4 ? "selected" : ""}>${value} / 5</option>`).join("")}</select></label><label class="reflection-field">Optional note<textarea id="reflection-note" maxlength="500" rows="2" placeholder="What felt different today?"></textarea></label><div class="reflection-actions"><button class="button button--ghost" data-close-modal>Back</button><button class="button button--primary" data-open-report>Build Movement Report ${icon("arrow", 16)}</button></div><small class="fine-print">These responses provide session context and do not constitute a diagnosis.</small></section>`;
   document.body.appendChild(modal);
   modal.querySelectorAll(".feedback-group div button").forEach((button) => button.addEventListener("click", () => { [...button.parentElement.children].forEach((item) => item.classList.remove("selected")); button.classList.add("selected"); }));
   modal.querySelector("[data-close-modal]")?.addEventListener("click", () => modal.remove());
@@ -1081,11 +1274,15 @@ async function savePatientCheckin(modal) {
   if (!supabase || !currentSession?.user || currentSession.demo || !lastSavedSessionId?.id) return;
   const difficulty = Number(modal.querySelector("[data-difficulty].selected")?.dataset.difficulty || 3);
   const discomfort = modal.querySelector("[data-discomfort].selected")?.dataset.discomfort || "none";
+  const confidence = Number(modal.querySelector("#reflection-confidence")?.value || 4);
+  const note = modal.querySelector("#reflection-note")?.value.trim() || null;
   const { error } = await supabase.from("patient_checkins").insert({
     patient_id: currentSession.user.id,
     session_id: lastSavedSessionId.id,
     difficulty,
     discomfort,
+    confidence,
+    note,
   });
   if (error) console.warn("Movement report created, but the patient check-in could not be saved.", error);
 }
@@ -1098,10 +1295,13 @@ async function saveSessionSummary(reps) {
   const { data, error } = await supabase
     .from("exercise_sessions")
     .insert({
-      user_id: currentSession.user.id,
+      patient_id: currentSession.user.id,
+      client_session_id: sessionClientId || newClientSessionId(),
+      prescription_id: currentExercise?.id || null,
       exercise_key: currentExercise?.key || "bodyweight_squat_poc",
       repetitions: reps.length,
-      source: "mediapipe_browser_poc",
+      duration_seconds: sessionStartedAt ? Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)) : null,
+      quality_score: stats.consistency,
       movement_summary: {
         average_depth_angle: stats.depth,
         average_tempo_seconds: Number(stats.tempo),
@@ -1114,6 +1314,15 @@ async function saveSessionSummary(reps) {
     .single();
 
   if (error) {
+    if (error.code === "23505" && sessionClientId) {
+      const { data: existing } = await supabase
+        .from("exercise_sessions")
+        .select("id")
+        .eq("patient_id", currentSession.user.id)
+        .eq("client_session_id", sessionClientId)
+        .single();
+      return existing || null;
+    }
     console.error("Failed to save exercise session:", error);
     return null;
   }
@@ -1168,19 +1377,27 @@ async function submitSignIn(event) {
   const email = document.querySelector("#email").value.trim();
   const password = document.querySelector("#password").value;
   const message = document.querySelector("#auth-message");
-  message.textContent = "Signing in…";
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const signingUp = authMode === "signup";
+  message.textContent = signingUp ? "Creating your secure patient account…" : "Signing in…";
+  const displayName = document.querySelector("#display-name")?.value.trim();
+  const { data, error } = signingUp
+    ? await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } })
+    : await supabase.auth.signInWithPassword({ email, password });
   if (error) { message.textContent = error.message; return; }
   currentSession = data.session;
+  if (signingUp && !currentSession) {
+    message.textContent = "Check your email to verify the account, then return here to sign in.";
+    return;
+  }
   const { data: profile } = await supabase.from("profiles").select("id, display_name, role").eq("id", currentSession.user.id).single();
   currentProfile = profile;
-if (profile?.role === "therapist") {
-  await loadAssignedPatients();
-  therapistView();
-} else {
-  await loadPatientPortalData();
-  patientView();
-}
+  if (profile?.role === "therapist") {
+    await loadAssignedPatients();
+    therapistView();
+  } else {
+    await Promise.all([loadPatientPortalData(), loadPatientConnectionAndProgress()]);
+    patientView();
+  }
 }
 
 function setText(selector, text) { const element = document.querySelector(selector); if (element) element.textContent = text; }
@@ -1227,8 +1444,19 @@ function bindEvents() {
   document.querySelectorAll("[data-select-rep]").forEach((element) => element.addEventListener("click", () => { selectedRep = Number(element.dataset.selectRep); reportView(); }));
   document.querySelector("#replay-button")?.addEventListener("click", replaySelectedRep);
   document.querySelector("#auth-form")?.addEventListener("submit", submitSignIn);
+  document.querySelectorAll("[data-auth-mode]").forEach((element) => element.addEventListener("click", () => {
+    authMode = element.dataset.authMode;
+    authView();
+  }));
   document.querySelectorAll("[data-demo-role]").forEach((element) => element.addEventListener("click", () => enterDemoPortal(element.dataset.demoRole)));
   document.querySelectorAll("[data-portal-signout]").forEach((element) => element.addEventListener("click", signOutPortal));
+  document.querySelector("#claim-invite-form")?.addEventListener("submit", claimPatientInvite);
+  document.querySelector("#create-invite-form")?.addEventListener("submit", createPatientInvite);
+  document.querySelector("[data-arcade-start]")?.addEventListener("click", () => {
+    currentExercise = patientExercises.find((exercise) => exercise.status === "ready") || patientExercises[0];
+    showToast("Balance Bridge ready", "Your controlled repetitions will power the challenge inside Motion Lab.");
+    navigateTo("lab");
+  });
   document.querySelectorAll("[data-start-exercise]").forEach((element) => element.addEventListener("click", () => {
     currentExercise = patientExercises.find((exercise) => exercise.key === element.dataset.startExercise) || patientExercises[0];
     navigateTo("lab");
@@ -1267,7 +1495,7 @@ async function bootstrap() {
         return;
       }
       if (profile?.role === "patient") {
-        await loadPatientPortalData();
+        await Promise.all([loadPatientPortalData(), loadPatientConnectionAndProgress()]);
         patientView();
         return;
       }
