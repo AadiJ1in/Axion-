@@ -5,6 +5,7 @@ const files = {
   pose: await readFile(new URL("../src/pose.js", import.meta.url), "utf8"),
   css: await readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
   demo: await readFile(new URL("../DEMO.md", import.meta.url), "utf8"),
+  schema: await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
 };
 
 const requirements = [
@@ -20,6 +21,10 @@ const requirements = [
   [files.pose, "camera_disconnected", "disconnect camera state"],
   [files.css, "prefers-reduced-motion", "reduced-motion support"],
   [files.demo, "70-second automatic pitch", "presenter documentation"],
+  [files.main, "Exercise library", "therapist exercise library"],
+  [files.main, "data-assign-exercise", "exercise assignment flow"],
+  [files.main, "exercise_prescriptions", "patient prescription data integration"],
+  [files.schema, "is_assigned_therapist", "assignment-scoped RLS"],
 ];
 
 for (const [source, marker, label] of requirements) {
@@ -36,4 +41,4 @@ const cssBalance = [...files.css].reduce((balance, character) => {
 }, 0);
 if (cssBalance !== 0) throw new Error("Unbalanced CSS braces.");
 
-console.log("Axion smoke test passed: 12 feature markers, 70-second script, balanced CSS.");
+console.log(`Axion smoke test passed: ${requirements.length} feature markers, 70-second script, balanced CSS.`);

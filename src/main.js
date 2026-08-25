@@ -41,6 +41,21 @@ const mayaHistory = [
   { label: "Today", week: "Today", pulse: 89, adherence: 92, depth: 101, symmetry: 5.9, tempo: 2.9, consistency: 86, discomfort: 1 },
 ];
 
+const exerciseCatalog = [
+  { key: "bodyweight_squat_poc", name: "Bodyweight Squat", focus: "Lower-body control", dosage: "3 sets · 10 repetitions", tracking: ["Depth", "Tempo", "Symmetry"], xp: 160, difficulty: "Foundational" },
+  { key: "wall_sit", name: "Wall Sit", focus: "Quadriceps endurance", dosage: "3 sets · 30 second hold", tracking: ["Hold time", "Trunk control"], xp: 120, difficulty: "Foundational" },
+  { key: "heel_raise", name: "Heel Raises", focus: "Calf strength and control", dosage: "2 sets · 12 repetitions", tracking: ["Tempo", "Balance"], xp: 90, difficulty: "Foundational" },
+  { key: "single_leg_balance", name: "Single-leg Balance", focus: "Balance and proprioception", dosage: "3 sets · 20 second hold", tracking: ["Stability", "Hold time"], xp: 140, difficulty: "Progression" },
+  { key: "step_down", name: "Controlled Step-down", focus: "Eccentric knee control", dosage: "3 sets · 8 repetitions", tracking: ["Knee path", "Tempo", "Symmetry"], xp: 180, difficulty: "Progression" },
+  { key: "shoulder_flexion", name: "Shoulder Flexion", focus: "Shoulder mobility", dosage: "2 sets · 10 repetitions", tracking: ["Range", "Tempo"], xp: 110, difficulty: "Mobility" },
+];
+
+const defaultPatientPlan = [
+  { ...exerciseCatalog[0], status: "ready", order: 1, prescribedBy: "Dr. Ava Patel" },
+  { ...exerciseCatalog[1], status: "locked", order: 2, prescribedBy: "Dr. Ava Patel" },
+  { ...exerciseCatalog[2], status: "complete", order: 3, prescribedBy: "Dr. Ava Patel" },
+];
+
 let currentView = "home";
 let currentSession = null;
 let currentProfile = null;
@@ -56,10 +71,67 @@ let demoStageIndex = 0;
 let sessionReps = [];
 let reportReps = [...todaySeed];
 let selectedRep = 4;
+let patientExercises = [...defaultPatientPlan];
+let currentExercise = patientExercises[0];
+let therapistSection = "overview";
+let selectedPatientId = "demo-patient";
+let toastTimer = null;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
 }[char]));
+
+function restoreDemoPlan() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("axion-demo-plan") || "null");
+    if (Array.isArray(saved) && saved.length) patientExercises = saved;
+  } catch (error) {
+    console.warn("Could not restore the synthetic recovery plan.", error);
+  }
+  currentExercise = patientExercises.find((exercise) => exercise.status === "ready") || patientExercises[0];
+}
+
+function persistDemoPlan() {
+  try {
+    localStorage.setItem("axion-demo-plan", JSON.stringify(patientExercises));
+  } catch (error) {
+    console.warn("Could not persist the synthetic recovery plan.", error);
+  }
+}
+
+function showToast(title, copy = "") {
+  document.querySelector(".portal-toast")?.remove();
+  if (toastTimer) clearTimeout(toastTimer);
+  const toast = document.createElement("div");
+  toast.className = "portal-toast";
+  toast.setAttribute("role", "status");
+  toast.innerHTML = `<span>${icon("check", 16)}</span><div><b>${escapeHtml(title)}</b>${copy ? `<small>${escapeHtml(copy)}</small>` : ""}</div>`;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("visible"));
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => toast.remove(), 220);
+  }, 3600);
+}
+
+function patientExerciseMarkup(exercise, index) {
+  const isReady = exercise.status === "ready";
+  const isComplete = exercise.status === "complete";
+  const statusCopy = isComplete ? `Completed · +${exercise.xp} XP` : isReady ? "Movement tracking enabled" : "Unlocks after the current exercise";
+  return `
+    <article class="exercise-card ${isReady ? "exercise-card--primary" : ""} ${isComplete ? "complete" : ""}">
+      <div class="exercise-order">${String(index + 1).padStart(2, "0")}</div>
+      ${isReady ? `<div class="exercise-visual">${twinSvg()}</div>` : `<span class="exercise-icon">${icon(isComplete ? "check" : "activity", 24)}</span>`}
+      <div class="exercise-copy">
+        ${isReady ? `<span class="live-pill">READY NOW</span>` : ""}
+        <h3>${escapeHtml(exercise.name)}</h3>
+        <p>${escapeHtml(exercise.dosage)}</p>
+        <small>${escapeHtml(statusCopy)}</small>
+        ${isReady ? `<div>${exercise.tracking.map((metric) => `<span>${escapeHtml(metric)}</span>`).join("")}</div>` : ""}
+      </div>
+      ${isReady ? `<button class="button button--primary" data-start-exercise="${escapeHtml(exercise.key)}">Start in Motion Lab ${icon("arrow", 16)}</button>` : isComplete ? `<span class="complete-label">COMPLETED</span>` : `<button class="button button--ghost" disabled>Locked</button>`}
+    </article>`;
+}
 
 const average = (values) => values.length
   ? values.reduce((sum, value) => sum + value, 0) / values.length
@@ -207,6 +279,9 @@ function patientView() {
   currentView = "patient";
   stopDemo();
   const patientName = currentProfile?.display_name || "Maya Chen";
+  const completeCount = patientExercises.filter((exercise) => exercise.status === "complete").length;
+  const readyCount = patientExercises.filter((exercise) => exercise.status === "ready").length;
+  const sessionMinutes = Math.max(8, patientExercises.length * 4 + 2);
   app.innerHTML = layout(`
     <main class="patient-portal container-wide">
       <section class="patient-welcome">
@@ -216,7 +291,7 @@ function patientView() {
           <p>Your next recovery session is ready. Complete today’s movement mission to keep your four-day streak alive.</p>
         </div>
         <div class="patient-scoreboard" aria-label="Recovery game statistics">
-          <article><span>${icon("trophy", 18)}</span><div><small>RECOVERY XP</small><b>4,390</b></div></article>
+          <article><span>${icon("trophy", 18)}</span><div><small>RECOVERY XP</small><b>${(4390 + completeCount * 90).toLocaleString()}</b></div></article>
           <article><span>${icon("spark", 18)}</span><div><small>LEVEL</small><b>7</b></div></article>
           <article><span>${icon("calendar", 18)}</span><div><small>STREAK</small><b>4 days</b></div></article>
         </div>
@@ -249,17 +324,28 @@ function patientView() {
       </section>
 
       <section class="today-plan">
-        <div class="section-heading compact"><div><span class="section-kicker">TODAY’S PRESCRIPTION</span><h2>Three focused exercises.</h2></div><p>Prescribed by Dr. Ava Patel · Estimated time 14 minutes</p></div>
+        <div class="section-heading compact"><div><span class="section-kicker">TODAY’S PRESCRIPTION</span><h2>${patientExercises.length} focused exercises.</h2></div><p>Prescribed by Dr. Ava Patel · Estimated time ${sessionMinutes} minutes · ${readyCount} ready now</p></div>
         <div class="exercise-list">
-          <article class="exercise-card exercise-card--primary">
-            <div class="exercise-order">01</div>
-            <div class="exercise-visual">${twinSvg()}</div>
-            <div class="exercise-copy"><span class="live-pill">READY NOW</span><h3>Bodyweight Squat</h3><p>3 sets · 10 repetitions · movement tracking enabled</p><div><span>Depth</span><span>Tempo</span><span>Symmetry</span></div></div>
-            <button class="button button--primary" data-nav="lab">Start in Motion Lab ${icon("arrow", 16)}</button>
-          </article>
-          <article class="exercise-card"><div class="exercise-order">02</div><span class="exercise-icon">${icon("activity", 24)}</span><div class="exercise-copy"><h3>Wall Sit</h3><p>3 sets · 30 second hold</p><small>Complete after Bodyweight Squat</small></div><button class="button button--ghost" disabled>Locked</button></article>
-          <article class="exercise-card complete"><div class="exercise-order">03</div><span class="exercise-icon">${icon("check", 24)}</span><div class="exercise-copy"><h3>Heel Raises</h3><p>2 sets · 12 repetitions</p><small>Completed yesterday · +90 XP</small></div><span class="complete-label">COMPLETED</span></article>
+          ${patientExercises.map(patientExerciseMarkup).join("")}
         </div>
+      </section>
+
+      <section class="patient-insights">
+        <article class="momentum-card">
+          <div class="card-title"><div><span class="section-kicker">YOUR MOMENTUM</span><h2>Consistency is building.</h2></div><span class="positive-pill">↑ 12% this month</span></div>
+          <div class="momentum-chart" aria-label="Four week recovery consistency trend">
+            ${[58, 67, 77, 89].map((value, index) => `<span><i style="--momentum:${value}%"></i><small>Week ${index + 1}</small><b>${value}</b></span>`).join("")}
+          </div>
+          <p>Your best change is movement consistency. Keep the same controlled rhythm in today’s Motion Lab.</p>
+        </article>
+        <article class="achievement-card">
+          <div><span class="section-kicker">RECENT ACHIEVEMENTS</span><h2>Recovery wins</h2></div>
+          <div class="achievement-list">
+            <span><i>${icon("trophy", 18)}</i><b>Four-day streak</b><small>Keep showing up</small></span>
+            <span><i>${icon("spark", 18)}</i><b>Control builder</b><small>10 steady repetitions</small></span>
+            <span class="locked"><i>${icon("lock", 18)}</i><b>Trailblazer</b><small>160 XP to unlock</small></span>
+          </div>
+        </article>
       </section>
     </main>
   `, { full: true });
@@ -271,10 +357,13 @@ function labView() {
   currentView = "lab";
   sessionReps = [];
   const backTarget = currentProfile?.role === "patient" || demoRole === "patient" ? "patient" : "home";
+  const exerciseIndex = Math.max(0, patientExercises.findIndex((exercise) => exercise.key === currentExercise?.key));
+  const repMatch = currentExercise?.dosage?.match(/(\d+) repetitions/);
+  const repTarget = demoScriptActive ? 5 : Number(repMatch?.[1] || 10);
   app.innerHTML = layout(`
     <main class="lab-page">
       <div class="lab-header container-wide">
-        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to recovery plan</button><div class="eyebrow"><span></span> Today’s prescription · Exercise 1 of 3</div><h1>Bodyweight Squat</h1></div>
+        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to recovery plan</button><div class="eyebrow"><span></span> Today’s prescription · Exercise ${exerciseIndex + 1} of ${patientExercises.length}</div><h1>${escapeHtml(currentExercise?.name || "Bodyweight Squat")}</h1><p class="lab-prescription">${escapeHtml(currentExercise?.dosage || "3 sets · 10 repetitions")} · ${escapeHtml(currentExercise?.focus || "Movement control")}</p></div>
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
       </div>
       <section class="motion-workspace container-wide">
@@ -292,9 +381,9 @@ function labView() {
             <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> Target range</div></div>
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
-          <div class="live-metrics"><div><span>REPS</span><b><i id="live-reps">0</i><small>/ ${demoScriptActive ? 5 : 10}</small></b></div><div><span>DEPTH</span><b id="live-depth">—</b></div><div><span>RHYTHM</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
+          <div class="live-metrics"><div><span>REPS</span><b><i id="live-reps">0</i><small>/ ${repTarget}</small></b></div><div><span>DEPTH</span><b id="live-depth">—</b></div><div><span>RHYTHM</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
           <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>AXION COACH</small><p id="coach-message" aria-live="polite">Stand naturally for three seconds. Axion will learn your baseline for this session.</p></div><span id="coach-state">READY</span></div>
-          <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: demoScriptActive ? 5 : 10 }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
+          <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: repTarget }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
           <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Use camera</button><button class="button button--primary" id="run-demo">${icon("play", 17)} Demo Mode <small>70 sec</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
         </div>
         <aside class="journey-panel">
@@ -466,6 +555,139 @@ async function loadAssignedPatients() {
   assignedPatients = profiles || [];
 }
 
+async function loadPatientPortalData() {
+  if (!supabase || !currentSession?.user || currentSession.demo) {
+    restoreDemoPlan();
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("exercise_prescriptions")
+    .select("id, exercise_key, sets, target_reps, hold_seconds, status, position, prescribed_at, profiles!exercise_prescriptions_therapist_id_fkey(display_name)")
+    .eq("patient_id", currentSession.user.id)
+    .in("status", ["active", "completed"])
+    .order("position", { ascending: true });
+
+  if (error) {
+    console.warn("Using the local recovery plan until the Supabase portal migration is applied.", error);
+    patientExercises = [...defaultPatientPlan];
+    currentExercise = patientExercises[0];
+    return;
+  }
+
+  if (data?.length) {
+    patientExercises = data.map((prescription, index) => {
+      const catalogExercise = exerciseCatalog.find((exercise) => exercise.key === prescription.exercise_key) || exerciseCatalog[0];
+      const dosage = prescription.hold_seconds
+        ? `${prescription.sets} sets · ${prescription.hold_seconds} second hold`
+        : `${prescription.sets} sets · ${prescription.target_reps} repetitions`;
+      return {
+        ...catalogExercise,
+        id: prescription.id,
+        dosage,
+        order: prescription.position || index + 1,
+        status: prescription.status === "completed" ? "complete" : index === 0 ? "ready" : "locked",
+        prescribedBy: prescription.profiles?.display_name || "Your therapist",
+      };
+    });
+    currentExercise = patientExercises.find((exercise) => exercise.status === "ready") || patientExercises[0];
+  }
+}
+
+function therapistWorkspaceNav() {
+  const tabs = [
+    ["overview", "Overview"],
+    ["patients", "Patients"],
+    ["roadmaps", "Recovery roadmaps"],
+    ["checkins", "Check-ins"],
+    ["alerts", "Alerts", "2"],
+    ["library", "Exercise library"],
+  ];
+  return `<section class="pt-workspace-nav">
+    <div><span>${icon("activity", 17)}</span><b>Clinical command center</b></div>
+    <nav>${tabs.map(([key, label, count]) => `<button class="${therapistSection === key ? "active" : ""}" data-therapist-section="${key}">${label}${count ? ` <i>${count}</i>` : ""}</button>`).join("")}</nav>
+    <button data-portal-signout>Sign out</button>
+  </section>`;
+}
+
+function therapistSectionView(dashboardPatients, isDemoTherapist) {
+  const sectionMeta = {
+    patients: ["PATIENT PANEL", "Patients", "Review every active recovery plan and open a movement report."],
+    roadmaps: ["PLAN BUILDER", "Recovery roadmaps", "See where each patient is today and what unlocks next."],
+    checkins: ["PATIENT CONTEXT", "Check-ins", "Pair movement summaries with the patient’s own report."],
+    alerts: ["REVIEW QUEUE", "Attention alerts", "Prioritize meaningful changes without turning a metric into a diagnosis."],
+    library: ["THERAPIST TOOLS", "Exercise library", "Assign a movement-tracked exercise to the patient experience."],
+  };
+  const [kicker, title, copy] = sectionMeta[therapistSection] || sectionMeta.patients;
+  let content = "";
+
+  if (therapistSection === "patients") {
+    content = `<section class="pt-directory"><div class="pt-directory-tools"><label>${icon("users", 16)}<input placeholder="Search patients" aria-label="Search patients"/></label><button class="filter-button">Active plans</button></div><div class="patient-directory-grid">${dashboardPatients.map((patient) => `<article><div><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><span><b>${escapeHtml(patient.name)}</b><small>${escapeHtml(patient.plan)}</small></span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></div><div class="directory-pulse"><span>Recovery Pulse</span><b>${patient.pulse}</b><i><u style="width:${patient.pulse}%"></u></i></div><div><span>Last session <b>${patient.name === "Maya Chen" ? "Today" : "2 days ago"}</b></span><span>Adherence <b>${patient.name === "Maya Chen" ? "92%" : "78%"}</b></span></div><button class="button button--ghost" data-nav="report">Open patient ${icon("arrow", 15)}</button></article>`).join("")}</div></section>`;
+  }
+
+  if (therapistSection === "roadmaps") {
+    const stages = [["Foundation", ["Amara Patel"]], ["Control", ["Jordan Lee"]], ["Strength", ["Maya Chen"]], ["Balance", ["Sam Rivera"]]];
+    content = `<section class="roadmap-board">${stages.map(([stage, names], index) => `<article><div><span>STAGE ${index + 1}</span><b>${stage}</b><small>${names.length} active</small></div>${names.map((name) => `<button data-nav="report"><i class="patient-avatar ${index % 2 ? "violet" : "mint"}">${name.split(" ").map((part) => part[0]).join("")}</i><span><b>${name}</b><small>${index === 2 ? "2 sessions to next stage" : "Review this week"}</small></span>${icon("arrow", 15)}</button>`).join("")}<button class="roadmap-add" data-show-toast="Roadmap editor prepared">+ Add milestone</button></article>`).join("")}</section>`;
+  }
+
+  if (therapistSection === "checkins") {
+    content = `<section class="checkin-grid"><article class="checkin-feature"><div><i class="patient-avatar mint">MC</i><span><small>TODAY · AFTER SESSION</small><h2>Maya reported no discomfort.</h2></span></div><div class="checkin-values"><span>DIFFICULTY<b>3 / 5</b></span><span>DISCOMFORT<b>None</b></span><span>CONFIDENCE<b>4 / 5</b></span></div><blockquote>“The last few reps felt steadier than last week.”</blockquote><button class="button button--primary" data-nav="report">View with movement report</button></article><aside class="checkin-list"><span class="section-kicker">RECENT RESPONSES</span>${["Jordan Lee|Mild discomfort|Yesterday", "Sam Rivera|Session felt difficult|2 days ago", "Amara Patel|No discomfort|3 days ago"].map((row) => { const [name, note, when] = row.split("|"); return `<button data-show-toast="Check-in opened"><i>${name.split(" ").map((part) => part[0]).join("")}</i><span><b>${name}</b><small>${note}</small><em>${when}</em></span>${icon("arrow", 14)}</button>`; }).join("")}</aside></section>`;
+  }
+
+  if (therapistSection === "alerts") {
+    content = `<section class="alerts-workspace"><article class="alert-item urgent"><span>${icon("bell", 20)}</span><div><small>ADHERENCE CHANGE · YESTERDAY</small><h3>Sam Rivera missed two prescribed sessions.</h3><p>Weekly completion changed from 83% to 61%. No clinical conclusion is inferred.</p><div><button class="button button--primary" data-show-toast="Check-in drafted">Draft check-in</button><button class="button button--ghost" data-nav="report">Review history</button></div></div></article><article class="alert-item"><span>${icon("activity", 20)}</span><div><small>MOVEMENT CHANGE · 3 SESSIONS</small><h3>Jordan Lee’s late-set symmetry varied.</h3><p>Variation was observed across the last three sessions. Review the reconstructed movement before changing the plan.</p><div><button class="button button--primary" data-nav="report">Open movement report</button><button class="button button--ghost" data-show-toast="Alert marked reviewed">Mark reviewed</button></div></div></article><aside class="alert-guardrail">${icon("shield", 22)}<div><b>Designed for review, not diagnosis</b><p>Alerts explain the source signal, preserve patient context, and never change a prescription automatically.</p></div></aside></section>`;
+  }
+
+  if (therapistSection === "library") {
+    content = `<section class="exercise-library"><div class="library-filters"><button class="active">All exercises</button><button>Lower body</button><button>Balance</button><button>Mobility</button><span>${exerciseCatalog.length} exercises</span></div><div class="library-grid">${exerciseCatalog.map((exercise, index) => `<article><div class="library-visual"><span>${String(index + 1).padStart(2, "0")}</span>${icon(index % 2 ? "activity" : "spark", 28)}<i>${exercise.difficulty}</i></div><div><small>${escapeHtml(exercise.focus)}</small><h3>${escapeHtml(exercise.name)}</h3><p>${escapeHtml(exercise.dosage)}</p><div>${exercise.tracking.map((metric) => `<span>${escapeHtml(metric)}</span>`).join("")}</div></div><button class="button button--primary" data-assign-exercise="${escapeHtml(exercise.key)}">Assign exercise ${icon("arrow", 15)}</button></article>`).join("")}</div></section>`;
+  }
+
+  app.innerHTML = layout(`<main class="therapist-page container-wide">${therapistWorkspaceNav()}<header class="workspace-section-head"><div><span class="section-kicker">${kicker}</span><h1>${title}</h1><p>${copy}</p></div><span class="workspace-live"><i></i>${isDemoTherapist ? "Synthetic workspace" : "Live workspace"}</span></header>${content}</main>`, { full: true });
+  bindEvents();
+}
+
+function openAssignmentModal(exerciseKey) {
+  const exercise = exerciseCatalog.find((item) => item.key === exerciseKey);
+  if (!exercise) return;
+  const isDemo = currentSession?.demo || demoRole === "therapist";
+  const patientOptions = isDemo
+    ? [["demo-patient", "Maya Chen"], ["demo-jordan", "Jordan Lee"], ["demo-sam", "Sam Rivera"]]
+    : assignedPatients.map((patient) => [patient.id, patient.display_name || "Axion Patient"]);
+  const modal = document.createElement("div");
+  modal.className = "modal-layer";
+  modal.innerHTML = `<section class="assignment-card"><button class="modal-close" data-close-modal aria-label="Close">×</button><span class="section-kicker">ASSIGN EXERCISE</span><h2>${escapeHtml(exercise.name)}</h2><p>${escapeHtml(exercise.focus)} · ${escapeHtml(exercise.dosage)}</p><label>Patient<select id="assignment-patient">${patientOptions.map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("")}</select></label><div class="assignment-details"><label>Sets<input id="assignment-sets" type="number" min="1" max="8" value="${Number(exercise.dosage.match(/\d+/)?.[0] || 3)}"/></label><label>Target repetitions<input id="assignment-reps" type="number" min="1" max="50" value="${Number(exercise.dosage.match(/(\d+) repetitions/)?.[1] || 10)}"/></label></div><label>Therapist note<textarea id="assignment-note" rows="3" placeholder="Focus on a slow, controlled rhythm."></textarea></label><button class="button button--primary" data-confirm-assignment="${escapeHtml(exercise.key)}" ${patientOptions.length ? "" : "disabled"}>${patientOptions.length ? "Add to patient plan" : "No assigned patients"} ${icon("arrow", 16)}</button><small>Axion will place this exercise in the patient’s recovery path. The patient begins it from Motion Lab.</small></section>`;
+  document.body.appendChild(modal);
+  modal.querySelector("[data-close-modal]")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("[data-confirm-assignment]")?.addEventListener("click", () => assignExercise(exerciseKey, modal));
+}
+
+async function assignExercise(exerciseKey, modal) {
+  const exercise = exerciseCatalog.find((item) => item.key === exerciseKey);
+  if (!exercise) return;
+  const sets = Number(modal.querySelector("#assignment-sets")?.value || 3);
+  const targetReps = Number(modal.querySelector("#assignment-reps")?.value || 10);
+  const note = modal.querySelector("#assignment-note")?.value.trim() || "Focus on a slow, controlled rhythm.";
+  const patientId = modal.querySelector("#assignment-patient")?.value || selectedPatientId;
+  const isDemo = currentSession?.demo || demoRole === "therapist";
+
+  if (isDemo) {
+    const existingIndex = patientExercises.findIndex((item) => item.key === exerciseKey);
+    const assigned = { ...exercise, dosage: `${sets} sets · ${targetReps} repetitions`, status: "locked", order: patientExercises.length + 1, prescribedBy: "Dr. Ava Patel", therapistNote: note };
+    if (existingIndex >= 0) patientExercises[existingIndex] = { ...patientExercises[existingIndex], ...assigned };
+    else patientExercises.push(assigned);
+    persistDemoPlan();
+  } else if (supabase && currentSession?.user) {
+    const { error } = await supabase.from("exercise_prescriptions").insert({ therapist_id: currentSession.user.id, patient_id: patientId, exercise_key: exerciseKey, sets, target_reps: targetReps, therapist_note: note, position: patientExercises.length + 1, status: "active" });
+    if (error) {
+      modal.querySelector("small").textContent = `Could not assign: ${error.message}`;
+      return;
+    }
+  }
+
+  modal.remove();
+  showToast(`${exercise.name} assigned`, "It now appears in Maya’s patient recovery plan.");
+}
+
 function therapistView() {
   currentView = "therapist";
   if (!demoScriptActive) stopDemo();
@@ -491,13 +713,13 @@ function therapistView() {
   const dayName = today.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
   const dateLabel = today.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
   const patientCount = dashboardPatients.length;
+  if (therapistSection !== "overview") {
+    therapistSectionView(dashboardPatients, isDemoTherapist);
+    return;
+  }
   app.innerHTML = layout(`
     <main class="therapist-page container-wide">
-      <section class="pt-workspace-nav">
-        <div><span>${icon("activity", 17)}</span><b>Clinical command center</b></div>
-        <nav><button class="active">Overview</button><button>Patients</button><button>Recovery roadmaps</button><button>Check-ins</button><button>Alerts <i>2</i></button><button>Exercise library</button></nav>
-        <button data-portal-signout>Sign out</button>
-      </section>
+      ${therapistWorkspaceNav()}
       <div class="dashboard-head">
         <div><span class="section-kicker">THERAPIST WORKSPACE</span><h1>Good afternoon, ${escapeHtml(currentProfile?.display_name || "Dr. Ava Patel")}.</h1><p>Here is what changed across your patient panel since your last review.</p></div>
         <div class="date-card"><span>${dayName}</span><b>${dateLabel}</b></div>
@@ -552,12 +774,16 @@ function authView() {
 
 function enterDemoPortal(role) {
   demoRole = role;
+  therapistSection = "overview";
   currentSession = { demo: true, user: { id: `demo-${role}` } };
   currentProfile = role === "therapist"
     ? { id: "demo-therapist", display_name: "Dr. Ava Patel", role: "therapist" }
     : { id: "demo-patient", display_name: "Maya Chen", role: "patient" };
   if (role === "therapist") therapistView();
-  else patientView();
+  else {
+    restoreDemoPlan();
+    patientView();
+  }
 }
 
 async function signOutPortal() {
@@ -566,6 +792,7 @@ async function signOutPortal() {
   currentSession = null;
   currentProfile = null;
   demoRole = null;
+  therapistSection = "overview";
   assignedPatients = [];
   homeView();
 }
@@ -784,7 +1011,7 @@ function updateLiveSession() {
   const last = sessionReps.at(-1);
   const stats = summaryFor(sessionReps);
   setText("#live-reps", sessionReps.length); setText("#live-depth", last ? `${last.depthAngle}°` : "—"); setText("#live-tempo", last ? `${last.tempo}s` : "—"); setText("#live-symmetry", last ? `${last.symmetryDelta ?? "—"}°` : "—");
-  const targetReps = demoScriptActive ? 5 : 10;
+  const targetReps = demoScriptActive ? 5 : Number(currentExercise?.dosage?.match(/(\d+) repetitions/)?.[1] || 10);
   setText("#energy-value", `${Math.min(100, Math.round((sessionReps.length / targetReps) * 100))}%`);
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
@@ -816,7 +1043,27 @@ async function finishSession() {
   if (!sessionReps.length && liveMetrics?.reps?.length) sessionReps = liveMetrics.reps;
   if (sessionReps.length) reportReps = sessionReps.map((rep, i) => ({ ...rep, index: i + 1 }));
   await saveSessionSummary(reportReps);
+  await completeCurrentExercise();
   showReflection();
+}
+
+async function completeCurrentExercise() {
+  const index = patientExercises.findIndex((exercise) => exercise.key === currentExercise?.key);
+  if (index >= 0) {
+    patientExercises[index] = { ...patientExercises[index], status: "complete", completedAt: new Date().toISOString() };
+    const nextLocked = patientExercises.findIndex((exercise, exerciseIndex) => exerciseIndex > index && exercise.status === "locked");
+    if (nextLocked >= 0) patientExercises[nextLocked] = { ...patientExercises[nextLocked], status: "ready" };
+    persistDemoPlan();
+  }
+
+  if (!supabase || !currentSession?.user || currentSession.demo) return;
+  const { error } = await supabase
+    .from("exercise_prescriptions")
+    .update({ status: "completed", completed_at: new Date().toISOString() })
+    .eq("patient_id", currentSession.user.id)
+    .eq("exercise_key", currentExercise?.key)
+    .eq("status", "active");
+  if (error) console.warn("Session saved, but the prescription status could not be updated.", error);
 }
 
 function showReflection() {
@@ -837,9 +1084,10 @@ async function saveSessionSummary(reps) {
   const { data, error } = await supabase
     .from("exercise_sessions")
     .insert({
-      patient_id: currentSession.user.id,
-      exercise_key: "bodyweight_squat",
+      user_id: currentSession.user.id,
+      exercise_key: currentExercise?.key || "bodyweight_squat_poc",
       repetitions: reps.length,
+      source: "mediapipe_browser_poc",
       movement_summary: {
         average_depth_angle: stats.depth,
         average_tempo_seconds: Number(stats.tempo),
@@ -916,6 +1164,7 @@ if (profile?.role === "therapist") {
   await loadAssignedPatients();
   therapistView();
 } else {
+  await loadPatientPortalData();
   patientView();
 }
 }
@@ -966,6 +1215,16 @@ function bindEvents() {
   document.querySelector("#auth-form")?.addEventListener("submit", submitSignIn);
   document.querySelectorAll("[data-demo-role]").forEach((element) => element.addEventListener("click", () => enterDemoPortal(element.dataset.demoRole)));
   document.querySelectorAll("[data-portal-signout]").forEach((element) => element.addEventListener("click", signOutPortal));
+  document.querySelectorAll("[data-start-exercise]").forEach((element) => element.addEventListener("click", () => {
+    currentExercise = patientExercises.find((exercise) => exercise.key === element.dataset.startExercise) || patientExercises[0];
+    navigateTo("lab");
+  }));
+  document.querySelectorAll("[data-therapist-section]").forEach((element) => element.addEventListener("click", () => {
+    therapistSection = element.dataset.therapistSection;
+    therapistView();
+  }));
+  document.querySelectorAll("[data-assign-exercise]").forEach((element) => element.addEventListener("click", () => openAssignmentModal(element.dataset.assignExercise)));
+  document.querySelectorAll("[data-show-toast]").forEach((element) => element.addEventListener("click", () => showToast(element.dataset.showToast, "This prototype interaction is ready for the next data connection.")));
   document.querySelector("#skip-demo-step")?.addEventListener("click", runNextDemoStage);
   document.querySelector("#reset-demo")?.addEventListener("click", resetDemoExperience);
 }
@@ -994,6 +1253,7 @@ async function bootstrap() {
         return;
       }
       if (profile?.role === "patient") {
+        await loadPatientPortalData();
         patientView();
         return;
       }
