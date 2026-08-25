@@ -76,6 +76,7 @@ let currentExercise = patientExercises[0];
 let therapistSection = "overview";
 let selectedPatientId = "demo-patient";
 let toastTimer = null;
+let lastSavedSessionId = null;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
@@ -188,7 +189,7 @@ function layout(content, { full = false } = {}) {
           <button id="reset-demo">Reset demo</button>
         </div>` : ""}
       ${content}
-      <footer class="footer"><span>Axion v0.2 • nonclinical proof of concept</span><span>No raw camera video is stored by this prototype.</span></footer>
+      <footer class="footer"><span>Axion v0.3 • nonclinical proof of concept</span><span>No raw camera video is stored by this prototype.</span></footer>
     </div>
   `;
 }
@@ -1042,7 +1043,7 @@ async function finishSession() {
   const liveMetrics = tracker?.getMetrics?.();
   if (!sessionReps.length && liveMetrics?.reps?.length) sessionReps = liveMetrics.reps;
   if (sessionReps.length) reportReps = sessionReps.map((rep, i) => ({ ...rep, index: i + 1 }));
-  await saveSessionSummary(reportReps);
+  lastSavedSessionId = await saveSessionSummary(reportReps);
   await completeCurrentExercise();
   showReflection();
 }
@@ -1069,11 +1070,24 @@ async function completeCurrentExercise() {
 function showReflection() {
   const modal = document.createElement("div");
   modal.className = "modal-layer";
-  modal.innerHTML = `<section class="reflection-card"><span class="completion-mark">${icon("check", 26)}</span><span class="section-kicker">SESSION CAPTURED</span><h2>How did that feel?</h2><p>Two quick answers add context to the movement report.</p><div class="feedback-group"><span>Difficulty</span><div>${[1,2,3,4,5].map(n => `<button data-difficulty="${n}" class="${n === 3 ? "selected" : ""}">${n}</button>`).join("")}</div><small>Easy <i></i> Challenging</small></div><div class="feedback-group"><span>Any discomfort?</span><div class="feedback-options">${["None","Mild","Moderate","Stop"].map((label,i) => `<button class="${i === 0 ? "selected" : ""}">${label}</button>`).join("")}</div></div><div class="reflection-actions"><button class="button button--ghost" data-close-modal>Back</button><button class="button button--primary" data-open-report>Build Movement Report ${icon("arrow", 16)}</button></div><small class="fine-print">These responses provide session context and do not constitute a diagnosis.</small></section>`;
+  modal.innerHTML = `<section class="reflection-card"><span class="completion-mark">${icon("check", 26)}</span><span class="section-kicker">SESSION CAPTURED</span><h2>How did that feel?</h2><p>Two quick answers add context to the movement report.</p><div class="feedback-group"><span>Difficulty</span><div>${[1,2,3,4,5].map(n => `<button data-difficulty="${n}" class="${n === 3 ? "selected" : ""}">${n}</button>`).join("")}</div><small>Easy <i></i> Challenging</small></div><div class="feedback-group"><span>Any discomfort?</span><div class="feedback-options">${["None","Mild","Moderate","Stop"].map((label,i) => `<button data-discomfort="${label.toLowerCase()}" class="${i === 0 ? "selected" : ""}">${label}</button>`).join("")}</div></div><div class="reflection-actions"><button class="button button--ghost" data-close-modal>Back</button><button class="button button--primary" data-open-report>Build Movement Report ${icon("arrow", 16)}</button></div><small class="fine-print">These responses provide session context and do not constitute a diagnosis.</small></section>`;
   document.body.appendChild(modal);
   modal.querySelectorAll(".feedback-group div button").forEach((button) => button.addEventListener("click", () => { [...button.parentElement.children].forEach((item) => item.classList.remove("selected")); button.classList.add("selected"); }));
   modal.querySelector("[data-close-modal]")?.addEventListener("click", () => modal.remove());
-  modal.querySelector("[data-open-report]")?.addEventListener("click", () => { modal.remove(); reportView(); });
+  modal.querySelector("[data-open-report]")?.addEventListener("click", async () => { await savePatientCheckin(modal); modal.remove(); reportView(); });
+}
+
+async function savePatientCheckin(modal) {
+  if (!supabase || !currentSession?.user || currentSession.demo || !lastSavedSessionId?.id) return;
+  const difficulty = Number(modal.querySelector("[data-difficulty].selected")?.dataset.difficulty || 3);
+  const discomfort = modal.querySelector("[data-discomfort].selected")?.dataset.discomfort || "none";
+  const { error } = await supabase.from("patient_checkins").insert({
+    patient_id: currentSession.user.id,
+    session_id: lastSavedSessionId.id,
+    difficulty,
+    discomfort,
+  });
+  if (error) console.warn("Movement report created, but the patient check-in could not be saved.", error);
 }
 
 async function saveSessionSummary(reps) {
