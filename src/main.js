@@ -15,8 +15,14 @@ import {
 } from "./portal.js";
 
 const app = document.querySelector("#app");
-const uiScenario = new URLSearchParams(window.location.search).get("state");
-let passwordRecoveryMode = new URLSearchParams(window.location.search).get("reset") === "1";
+const authQuery = new URLSearchParams(window.location.search);
+const authFragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+const uiScenario = authQuery.get("state");
+const recoveryErrorCode = authQuery.get("error_code") || authFragment.get("error_code");
+const recoveryErrorDescription = authQuery.get("error_description") || authFragment.get("error_description");
+let passwordRecoveryMode = window.location.pathname === "/reset-password"
+  || authQuery.get("reset") === "1"
+  || authFragment.get("type") === "recovery";
 
 const previousSession = [
   { index: 1, depthAngle: 108, tempo: 3.2, symmetryDelta: 8.1, consistency: 76 },
@@ -1229,6 +1235,25 @@ function passwordResetView() {
   bindEvents();
 }
 
+function passwordResetErrorView(message = "This recovery link is invalid or has expired.") {
+  currentView = "auth";
+  app.innerHTML = layout(`
+    <main class="auth-page container-wide">
+      <section class="auth-card auth-card--portal">
+        <div class="auth-brand"><span class="brand-symbol"><i></i><i></i></span><b>AXION</b></div>
+        <span class="section-kicker">RECOVERY LINK EXPIRED</span>
+        <h1>Request a fresh reset link.</h1>
+        <p>${escapeHtml(message)} Recovery links work once and older emails cannot be reused.</p>
+        <label>Therapist email<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"/></label>
+        <div id="auth-message" class="form-message"></div>
+        <button class="button button--primary" type="button" data-forgot-password>Send a new reset email ${icon("arrow", 16)}</button>
+        <button class="text-link" type="button" data-nav="auth">Return to sign in</button>
+      </section>
+    </main>
+  `, { full: true });
+  bindEvents();
+}
+
 async function requestPasswordReset() {
   const email = document.querySelector("#email")?.value.trim().toLowerCase();
   const message = document.querySelector("#auth-message");
@@ -1238,7 +1263,7 @@ async function requestPasswordReset() {
     return;
   }
   message.textContent = "Sending a secure recovery email…";
-  const redirectTo = `${window.location.origin}${window.location.pathname}?reset=1`;
+  const redirectTo = `${window.location.origin}/reset-password`;
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
   message.textContent = error
     ? error.message
@@ -1265,7 +1290,7 @@ async function submitNewPassword(event) {
     return;
   }
   passwordRecoveryMode = false;
-  window.history.replaceState({}, "", window.location.pathname);
+  window.history.replaceState({}, "", "/");
   const { data: profile, error: profileError } = await supabase.from("profiles")
     .select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days")
     .eq("id", currentSession.user.id).single();
@@ -1429,8 +1454,6 @@ document.addEventListener("keydown", (event) => {
 
 async function bootstrap() {
   if (supabase) {
-    const { data } = await supabase.auth.getSession();
-    currentSession = data.session;
     supabase.auth.onAuthStateChange((event, session) => {
       currentSession = session;
       if (!session) currentProfile = null;
@@ -1439,6 +1462,16 @@ async function bootstrap() {
         passwordResetView();
       }
     });
+    const { data } = await supabase.auth.getSession();
+    currentSession = data.session;
+    if (recoveryErrorCode) {
+      passwordResetErrorView(recoveryErrorDescription || "Supabase could not verify this one-time recovery link.");
+      return;
+    }
+    if (passwordRecoveryMode && !currentSession?.user) {
+      passwordResetErrorView("The recovery session is missing, so Axion cannot safely change a password from this page.");
+      return;
+    }
     if (currentSession?.user) {
       if (passwordRecoveryMode) {
         passwordResetView();
