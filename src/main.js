@@ -74,6 +74,7 @@ let sessionReps = [];
 let reportReps = [...todaySeed];
 let selectedRep = 4;
 let sessionStartedAt = null;
+let sessionClientId = null;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
@@ -325,7 +326,7 @@ function connectionRequiredView() {
         <h1>${escapeHtml(patientName.split(" ")[0])}, your workspace is ready.</h1>
         <p>Your roadmap and Movement Science Lab will remain private and empty until your physical therapist invites this email and approves you.</p>
         <ol><li><b>1</b><span>Your therapist creates an invitation for your account email.</span></li><li><b>2</b><span>You enter the single-use code below.</span></li><li><b>3</b><span>Your therapist verifies the connection and assigns your plan.</span></li></ol>
-        <form id="connection-form"><label>Private invitation code<input id="invite-code" minlength="8" maxlength="24" autocomplete="one-time-code" placeholder="ENTER YOUR CODE" required/></label><div id="connection-message" class="form-message"></div><button class="button button--primary" type="submit">Request therapist verification ${icon("arrow", 16)}</button></form>
+        <form id="connection-form"><label>Private invitation code<input id="invite-code" minlength="20" maxlength="20" pattern="[A-Fa-f0-9]{20}" autocomplete="one-time-code" placeholder="20-CHARACTER CODE" required/></label><div id="connection-message" class="form-message"></div><button class="button button--primary" type="submit">Request therapist verification ${icon("arrow", 16)}</button></form>
         <small>${icon("shield", 14)} The invitation must match the email on this account and expires after 48 hours.</small>
       </section>
     </main>
@@ -461,7 +462,7 @@ function reportView() {
   const reportInitials = reportPatientName.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const reportExercise = currentAssignment?.display_name || "Bodyweight Squat";
   if (uiScenario === "error") {
-    app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("activity", 26)}</span><h2>Movement Report could not load</h2><p>Your session summary is still safe. Check the connection and try again, or return to the therapist dashboard.</p><div><button class="button button--primary" onclick="window.location.href=window.location.pathname">Try again</button><button class="button button--ghost" data-nav="therapist">Therapist dashboard</button></div></div></main>`);
+    app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("activity", 26)}</span><h2>Movement Report could not load</h2><p>Your session summary is still safe. Check the connection and try again, or return to the therapist dashboard.</p><div><button class="button button--primary" data-reload>Try again</button><button class="button button--ghost" data-nav="therapist">Therapist dashboard</button></div></div></main>`);
     bindEvents();
     return;
   }
@@ -704,7 +705,7 @@ function authView() {
         <div class="auth-brand"><span class="brand-symbol"><i></i><i></i></span><b>AXION</b></div>
         <span class="section-kicker">RECOVERY PLATFORM ACCESS</span><h1>Your care starts with your account.</h1><p>Every patient gets a private identity, one-time walkthrough, therapist-verified connection, personal roadmap, and their own Movement Science Lab.</p>
         ${isConfigured ? `<form id="auth-form"><label>Email<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="password" type="password" minlength="8" required autocomplete="current-password"/></label><div id="auth-message" class="form-message"></div><button class="button button--primary" type="submit">Sign in securely ${icon("arrow", 16)}</button></form>` : `<div class="config-note"><span>Authentication is unavailable, but both synthetic demo roles are ready below.</span></div>`}
-        ${isConfigured ? `<details class="signup-panel"><summary>Create a new patient account</summary><form id="signup-form"><label>Full name<input id="signup-name" minlength="2" maxlength="80" required autocomplete="name" placeholder="Your name"/></label><label>Email<input id="signup-email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="signup-password" type="password" minlength="8" required autocomplete="new-password"/></label><div id="signup-message" class="form-message"></div><button class="button button--ghost" type="submit">Create patient account ${icon("arrow",16)}</button></form></details>` : ""}
+        ${isConfigured ? `<details class="signup-panel"><summary>Create a new patient account</summary><form id="signup-form"><label>Full name<input id="signup-name" minlength="2" maxlength="80" required autocomplete="name" placeholder="Your name"/></label><label>Email<input id="signup-email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="signup-password" type="password" minlength="12" maxlength="128" required autocomplete="new-password" aria-describedby="password-rules"/></label><small id="password-rules">Use 12+ characters with uppercase, lowercase, a number, and a symbol.</small><div id="signup-message" class="form-message"></div><button class="button button--ghost" type="submit">Create patient account ${icon("arrow",16)}</button></form></details>` : ""}
         <div class="demo-divider"><span>OR EXPLORE A SYNTHETIC ROLE</span></div>
         <div class="role-demo-grid">
           <button data-demo-role="patient"><span class="role-demo-icon">${icon("map", 22)}</span><div><small>NEW PATIENT EXPERIENCE</small><b>Preview first-time onboarding</b><p>Name capture, care-team verification, private roadmap, and personal lab.</p></div>${icon("arrow", 17)}</button>
@@ -746,6 +747,7 @@ async function initializeLab() {
   const canvas = document.querySelector("#overlay");
   if (!video || !canvas) return;
   sessionStartedAt = Date.now();
+  sessionClientId = crypto.randomUUID();
   updateSyntheticTwin(0);
   tracker = await createSquatTracker({
     video, canvas,
@@ -982,6 +984,7 @@ function updateLiveSession() {
 function resetLab() {
   stopDemo(); tracker?.reset?.(); sessionReps = [];
   sessionStartedAt = Date.now();
+  sessionClientId = crypto.randomUUID();
   document.querySelector("#calibration-overlay")?.classList.remove("complete");
   document.querySelector(".camera-placeholder")?.classList.remove("demo-active");
   updateCalibration(0, "Stand naturally with your full body in view.");
@@ -1012,7 +1015,7 @@ function showReflection() {
 }
 
 async function saveSessionSummary(reps) {
-  if (!supabase || !currentSession?.user || !reps.length) return null;
+  if (!supabase || !currentSession?.user || currentSession.demo || !reps.length) return null;
 
   const stats = summaryFor(reps);
 
@@ -1020,10 +1023,12 @@ async function saveSessionSummary(reps) {
     .from("exercise_sessions")
     .insert({
       patient_id: currentSession.user.id,
+      client_session_id: sessionClientId || crypto.randomUUID(),
       assignment_id: currentAssignment?.id?.startsWith?.("demo-") ? null : (currentAssignment?.id || null),
       exercise_key: currentAssignment?.exercise_key || "bodyweight_squat",
       repetitions: reps.length,
       duration_seconds: sessionStartedAt ? Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)) : null,
+      started_at: sessionStartedAt ? new Date(sessionStartedAt).toISOString() : null,
       movement_summary: {
         average_depth_angle: stats.depth,
         average_joint_angle_degrees: stats.depth,
@@ -1038,6 +1043,12 @@ async function saveSessionSummary(reps) {
     .single();
 
   if (error) {
+    if (error.code === "23505" && sessionClientId) {
+      const existing = await supabase.from("exercise_sessions")
+        .select("id").eq("patient_id", currentSession.user.id)
+        .eq("client_session_id", sessionClientId).maybeSingle();
+      if (!existing.error && existing.data) return existing.data;
+    }
     console.error("Failed to save exercise session:", error);
     return null;
   }
@@ -1109,6 +1120,10 @@ async function submitPatientSignUp(event) {
   const displayName = document.querySelector("#signup-name").value.trim();
   const email = document.querySelector("#signup-email").value.trim().toLowerCase();
   const password = document.querySelector("#signup-password").value;
+  if (password.length < 12 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    message.textContent = "Use at least 12 characters with uppercase, lowercase, a number, and a symbol.";
+    return;
+  }
   const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } });
   if (error) { message.textContent = error.message; return; }
   if (!data.session) {
@@ -1195,6 +1210,8 @@ function bindEvents() {
   document.querySelector("[data-onboarding-next]")?.addEventListener("click", advanceOnboarding);
   document.querySelector("[data-onboarding-back]")?.addEventListener("click", () => { onboardingStep = Math.max(0, onboardingStep - 1); onboardingView(); });
   document.querySelectorAll("[data-refresh-patient]").forEach((element) => element.addEventListener("click", () => routePatientPortal().catch(showPortalError)));
+  document.querySelectorAll("[data-reload]").forEach((element) => element.addEventListener("click", () => window.location.reload()));
+  document.querySelectorAll("[data-home]").forEach((element) => element.addEventListener("click", homeView));
   document.querySelectorAll("[data-demo-role]").forEach((element) => element.addEventListener("click", () => enterDemoPortal(element.dataset.demoRole)));
   document.querySelectorAll("[data-portal-signout]").forEach((element) => element.addEventListener("click", signOutPortal));
   document.querySelector("#skip-demo-step")?.addEventListener("click", runNextDemoStage);
@@ -1234,5 +1251,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
-  app.innerHTML = `<main class="fatal container-wide"><span>${icon("activity", 28)}</span><h1>Axion could not start.</h1><p>${escapeHtml(error.message)}</p><button class="button button--primary" onclick="window.location.reload()">Try again</button><button class="button button--ghost" onclick="window.location.href=window.location.pathname">Open synthetic demo</button></main>`;
+  app.innerHTML = `<main class="fatal container-wide"><span>${icon("activity", 28)}</span><h1>Axion could not start.</h1><p>${escapeHtml(error.message)}</p><button class="button button--primary" data-reload>Try again</button><button class="button button--ghost" data-home>Open synthetic demo</button></main>`;
+  bindEvents();
 });

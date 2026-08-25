@@ -61,7 +61,7 @@ export async function loadPatientWorkspace(client, userId) {
   }
 
   const sessionsResult = await client.from("exercise_sessions")
-    .select("id, assignment_id, exercise_key, repetitions, movement_summary, completed_at, created_at")
+    .select("id, assignment_id, exercise_key, repetitions, duration_seconds, movement_summary, completed_at, created_at")
     .eq("patient_id", userId).order("created_at", { ascending: false }).limit(50);
   const sessions = sessionsResult.error ? [] : (sessionsResult.data || []);
 
@@ -84,40 +84,18 @@ export async function completePatientOnboarding(client, userId, displayName) {
 
 export async function claimCareInvitation(client, userId, inviteCode) {
   const code = inviteCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (code.length < 8) throw new Error("Enter the complete invitation code from your physical therapist.");
-  const invitation = await throwIfError(
-    await client.from("care_invitations").select("id, therapist_id, patient_email, invite_code, status, expires_at").eq("invite_code", code).maybeSingle(),
-    "Could not verify that invitation"
-  );
-  if (!invitation) throw new Error("That invitation was not found for this signed-in email.");
-  if (invitation.status !== "sent") throw new Error("That invitation has already been used or revoked.");
-  if (new Date(invitation.expires_at) <= new Date()) throw new Error("That invitation expired. Ask your therapist for a new one.");
-
+  if (code.length !== 20) throw new Error("Enter the complete 20-character invitation code from your physical therapist.");
   return throwIfError(
-    await client.from("therapist_patients").insert({
-      therapist_id: invitation.therapist_id,
-      patient_id: userId,
-      invitation_id: invitation.id,
-      status: "pending_verification",
-      patient_confirmed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).select("therapist_id, patient_id, status, invitation_id").single(),
-    "Could not request therapist verification"
+    await client.rpc("claim_care_invitation", { p_invite_code: code }).single(),
+    "Could not claim that invitation"
   );
-}
-
-function newInviteCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 export async function createCareInvitation(client, therapistId, patientEmail) {
   const email = patientEmail.trim().toLowerCase();
   if (!email.includes("@")) throw new Error("Enter the patient’s email address.");
   return throwIfError(
-    await client.from("care_invitations").insert({ therapist_id: therapistId, patient_email: email, invite_code: newInviteCode() })
-      .select("id, patient_email, invite_code, status, expires_at").single(),
+    await client.rpc("create_care_invitation", { p_patient_email: email }).single(),
     "Could not create the invitation"
   );
 }
@@ -138,70 +116,30 @@ export async function loadTherapistConnections(client, therapistId) {
 }
 
 export async function approvePatientConnection(client, therapistId, patientId, invitationId) {
-  const now = new Date().toISOString();
-  const relationship = await throwIfError(
-    await client.from("therapist_patients").update({ status: "active", therapist_verified_at: now, updated_at: now })
-      .eq("therapist_id", therapistId).eq("patient_id", patientId).eq("status", "pending_verification").select("therapist_id, patient_id, status").single(),
+  return throwIfError(
+    await client.rpc("approve_patient_connection", {
+      p_patient_id: patientId,
+      p_invitation_id: invitationId,
+    }),
     "Could not approve this patient"
   );
-  if (invitationId) {
-    const inviteResult = await client.from("care_invitations").update({ status: "approved", patient_id: patientId, approved_at: now, updated_at: now })
-      .eq("id", invitationId).eq("therapist_id", therapistId);
-    if (inviteResult.error) throw new Error(`Patient approved, but the invitation could not be closed: ${inviteResult.error.message}`);
-  }
-  return relationship;
 }
 
 export async function createPersonalPlan(client, therapistId, patientId, input) {
-  const activePlans = await client.from("exercise_plans").select("id").eq("therapist_id", therapistId).eq("patient_id", patientId).eq("status", "active");
-  if (activePlans.error) throw new Error(`Could not check current plans: ${activePlans.error.message}`);
-  if (activePlans.data?.length) {
-    const archive = await client.from("exercise_plans").update({ status: "archived", updated_at: new Date().toISOString() }).in("id", activePlans.data.map((plan) => plan.id));
-    if (archive.error) throw new Error(`Could not archive the previous plan: ${archive.error.message}`);
-  }
-
   const exerciseKeys = [...new Set((input.exerciseKeys?.length ? input.exerciseKeys : [input.exerciseKey || "bodyweight_squat"]).filter((key) => exerciseCatalog[key]))];
-  const plan = await throwIfError(
-    await client.from("exercise_plans").insert({
-      therapist_id: therapistId,
-      patient_id: patientId,
-      title: input.title.trim() || "Personal recovery roadmap",
-      program_label: input.programLabel.trim() || "Personal recovery plan",
-      phase_label: input.phaseLabel.trim() || "Getting started",
-      instructions: input.instructions.trim() || null,
-      start_date: new Date().toISOString().slice(0, 10),
-      status: "active",
-    }).select("id").single(),
-    "Could not create the recovery plan"
+  if (!exerciseKeys.length) throw new Error("Choose at least one supported exercise.");
+  return throwIfError(
+    await client.rpc("publish_patient_plan", {
+      p_patient_id: patientId,
+      p_title: input.title.trim() || "Personal recovery roadmap",
+      p_program_label: input.programLabel.trim() || "Personal recovery plan",
+      p_phase_label: input.phaseLabel.trim() || "Getting started",
+      p_instructions: input.instructions.trim() || "",
+      p_exercise_keys: exerciseKeys,
+      p_sets: Number(input.sets) || 3,
+      p_repetitions: Number(input.repetitions) || 10,
+      p_duration_seconds: Number(input.durationSeconds) || 30,
+    }),
+    "Could not publish the recovery plan"
   );
-
-  const assignments = exerciseKeys.map((exerciseKey, index) => {
-    const catalog = exerciseCatalog[exerciseKey];
-    return {
-      plan_id: plan.id,
-      exercise_key: exerciseKey,
-      display_name: catalog.name,
-      sequence: index + 1,
-      tracking_mode: catalog.trackingMode,
-      target_sets: Number(input.sets) || 3,
-      target_repetitions: Number(input.repetitions) || 10,
-      duration_seconds: catalog.trackingMode === "timed_hold" ? (Number(input.durationSeconds) || 30) : null,
-      instructions: input.instructions.trim() || null,
-      status: "active",
-    };
-  });
-  const [assignmentResult, roadmapResult] = await Promise.all([
-    client.from("exercise_assignments").insert(assignments),
-    client.from("roadmap_stages").insert([
-      { plan_id: plan.id, stage_number: 1, title: "Baseline", detail: "Establish a comfortable movement baseline.", status: "current", unlock_after_sessions: 0 },
-      { plan_id: plan.id, stage_number: 2, title: "Control", detail: "Build repeatable movement control.", status: "locked", unlock_after_sessions: 3 },
-      { plan_id: plan.id, stage_number: 3, title: "Capacity", detail: "Progress volume under therapist guidance.", status: "locked", unlock_after_sessions: 8 },
-      { plan_id: plan.id, stage_number: 4, title: "Return", detail: "Complete therapist-defined return milestones.", status: "locked", unlock_after_sessions: 14 },
-    ]),
-  ]);
-  if (assignmentResult.error || roadmapResult.error) {
-    await client.from("exercise_plans").update({ status: "draft", updated_at: new Date().toISOString() }).eq("id", plan.id);
-    throw new Error(assignmentResult.error?.message || roadmapResult.error?.message || "Could not finish the plan.");
-  }
-  return plan;
 }

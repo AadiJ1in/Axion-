@@ -54,17 +54,27 @@ Run the zero-dependency validation:
 npm run check
 ```
 
-## Optional Supabase setup
+## Supabase production setup
 
-1. For a new project, run `supabase/schema.sql`.
-2. For the existing PTpal project, run `supabase/migrations/20260824_portal_workflows.sql`, then `supabase/migrations/20260825_secure_connections.sql`. Both preserve existing session rows.
-3. Add the browser-safe publishable/anon key for project `kxhmrfgolttrofpumqpy` to `src/config.js`.
-4. Create accounts through Supabase Auth.
-5. Promote therapist accounts only through the administrative SQL shown at the end of the schema.
+The deployed app uses Axion project `qjcxelpzcfmcsrpsnlrs` and the browser-safe publishable key in `src/config.js`.
+
+The applied production migration sequence is:
+
+1. `202608250001_patient_personalization.sql`
+2. `202608250002_security_hardening.sql`
+3. `202608250003_data_api_grants.sql`
+4. `202608250004_production_security.sql`
+5. `202608250005_security_advisor_cleanup.sql`
+6. `202608250006_claim_invitation_constraint.sql`
+7. `202608250007_profile_onboarding_grants.sql`
+
+The final migration hashes invitation codes at rest, moves multi-table mutations behind transactional RPCs, validates session-to-assignment ownership, adds workflow audit events, and makes session writes idempotent. Promote therapist accounts only through a trusted administrative workflow; public signup always creates a patient.
 
 The browser receives only the publishable/anon key. Never place a Supabase service-role key in `src/config.js`; row-level security is the authorization boundary.
 
-The 2026 security migration also moves privileged authorization helpers into a non-exposed `private` schema, adds explicit Data API grants, prevents direct relationship creation, records connection audit events, and makes session writes idempotent.
+`supabase/tests/rls_integration.sql` exercises the complete approval and session workflow with synthetic identities inside a transaction that is always rolled back. It verifies pending approval, therapist verification, patient-specific plans, assignment-bound session writes, duplicate-write rejection, and cross-patient isolation.
+
+See [`SECURITY_READINESS.md`](SECURITY_READINESS.md) for the operator controls still required before real healthcare use.
 
 ## Scope and boundaries
 

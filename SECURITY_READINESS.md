@@ -13,8 +13,11 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 - Patient-to-therapist relationships require a cryptographically random, email-bound, one-time invitation that expires after 48 hours.
 - Invitation plaintext is returned once and never stored; only SHA-256 hashes are retained.
 - Privileged authorization functions live in a non-exposed private schema with a fixed empty search path.
-- Session submissions include a client idempotency identifier to prevent accidental duplicate rows.
-- Connection creation and claiming produce server-side audit events.
+- Session submissions include a patient-scoped idempotency identifier to prevent accidental duplicate rows.
+- Invitation creation, claim, therapist approval, and plan publication are transactional database RPCs.
+- Sensitive workflow mutations produce server-side audit events in a non-exposed schema.
+- Browser sessions use `sessionStorage` rather than persistent cross-restart token storage.
+- The deployed Content Security Policy allows only the current Axion Supabase project and pinned runtime origins.
 - Row Level Security restricts patient access to their own profile and sessions.
 - The synthetic demo is explicitly labeled and does not require an account.
 
@@ -24,6 +27,14 @@ Independent review must cover HIPAA applicability, BAAs, privacy notices and con
 
 No person should interpret Axion's current movement metrics, heatmap, coaching text, or Recovery Pulse as diagnosis, risk classification, prognosis, or autonomous treatment guidance.
 
-## Immediate operator action
+## Required operator settings before collecting real patient information
 
-Rotate any service-role or secret key that has ever appeared in a screenshot, message, terminal output, or repository history. The browser app must receive only the public publishable/anon key for the exact PTpal project.
+- Enable leaked-password protection in Supabase Auth (Pro plan or higher).
+- Require email confirmation and configure a trusted custom SMTP sender on the Axion domain.
+- Enable CAPTCHA/bot protection and review Auth rate limits before public signup is announced.
+- Require MFA for therapist accounts and MFA for every Supabase/GitHub/Vercel administrator.
+- Configure production redirect URLs so verification links never return to localhost.
+- Enable database SSL enforcement, network restrictions, backups/PITR appropriate to the risk assessment, and alerting.
+- Rotate any service-role or secret key that has ever appeared in a screenshot, message, terminal output, or repository history.
+
+The browser app receives only the public publishable key for Axion project `qjcxelpzcfmcsrpsnlrs`. No service-role or `sb_secret_` key belongs in this repository.

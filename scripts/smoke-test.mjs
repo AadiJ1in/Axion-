@@ -9,6 +9,10 @@ const files = {
   schema: await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
   securityMigration: await readFile(new URL("../supabase/migrations/20260825_secure_connections.sql", import.meta.url), "utf8"),
   personalizationMigration: await readFile(new URL("../supabase/migrations/202608250001_patient_personalization.sql", import.meta.url), "utf8"),
+  productionSecurityMigration: await readFile(new URL("../supabase/migrations/202608250004_production_security.sql", import.meta.url), "utf8"),
+  onboardingGrantMigration: await readFile(new URL("../supabase/migrations/202608250007_profile_onboarding_grants.sql", import.meta.url), "utf8"),
+  rlsIntegrationTest: await readFile(new URL("../supabase/tests/rls_integration.sql", import.meta.url), "utf8"),
+  supabaseClient: await readFile(new URL("../src/supabase.js", import.meta.url), "utf8"),
   vercel: await readFile(new URL("../vercel.json", import.meta.url), "utf8"),
 };
 
@@ -46,7 +50,18 @@ const requirements = [
   [files.main, "average_knee_bend_degrees", "knee-bend summary"],
   [files.personalizationMigration, "one_active_plan_per_patient", "one active patient roadmap"],
   [files.personalizationMigration, "pending_verification", "therapist verification workflow"],
+  [files.productionSecurityMigration, "invite_code_hash", "hashed invitation storage"],
+  [files.productionSecurityMigration, "publish_patient_plan", "transactional plan publication"],
+  [files.productionSecurityMigration, "sessions_insert_assigned_patient", "assignment-bound session policy"],
+  [files.productionSecurityMigration, "private.audit_events", "private security audit trail"],
+  [files.productionSecurityMigration, "client_session_id", "idempotent patient sessions"],
+  [files.onboardingGrantMigration, "grant update (display_name, onboarding_version, onboarding_completed_at, updated_at)", "column-scoped onboarding updates"],
+  [files.rlsIntegrationTest, "Cross-patient assignment insert was allowed", "cross-patient authorization regression test"],
+  [files.rlsIntegrationTest, "Duplicate client session was allowed", "duplicate-session regression test"],
+  [files.rlsIntegrationTest, "rollback;", "non-persistent security fixtures"],
+  [files.supabaseClient, "window.sessionStorage", "session-scoped auth token storage"],
   [files.vercel, "Content-Security-Policy", "production content security policy"],
+  [files.vercel, "qjcxelpzcfmcsrpsnlrs.supabase.co", "current Supabase CSP origin"],
   [files.vercel, "Permissions-Policy", "camera permissions policy"],
 ];
 
@@ -65,5 +80,7 @@ const cssBalance = [...files.css].reduce((balance, character) => {
 if (cssBalance !== 0) throw new Error("Unbalanced CSS braces.");
 
 JSON.parse(files.vercel);
+if (files.vercel.includes("kxhmrfgolttrofpumqpy")) throw new Error("CSP still references the retired Supabase project.");
+if (files.main.includes("onclick=")) throw new Error("Inline event handlers are blocked by the production CSP.");
 
 console.log(`Axion smoke test passed: ${requirements.length} feature markers, 70-second script, balanced CSS.`);
