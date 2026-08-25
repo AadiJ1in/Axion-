@@ -211,7 +211,7 @@ function layout(content, { full = false } = {}) {
           <button id="reset-demo">Reset demo</button>
         </div>` : ""}
       ${content}
-      <footer class="footer"><span>Axion v0.3 • nonclinical proof of concept</span><span>No raw camera video is stored by this prototype.</span></footer>
+      <footer class="footer"><span>Axion v0.4 • nonclinical proof of concept</span><span>No raw camera video is stored by this prototype.</span></footer>
     </div>
   `;
 }
@@ -811,6 +811,14 @@ async function createPatientInvite(event) {
   const email = document.querySelector("#invite-email")?.value.trim();
   const output = document.querySelector("#created-invite");
   if (!email || !output) return;
+  if (currentSession?.demo || !supabase) {
+    output.innerHTML = `<small>SYNTHETIC INVITATION</small><b>AX10-DEMO-48HR</b><span>Preview only · the live workspace generates a random, email-bound code.</span><button type="button" data-copy-invite="AX10-DEMO-48HR">Copy code</button>`;
+    output.querySelector("[data-copy-invite]")?.addEventListener("click", async (buttonEvent) => {
+      await navigator.clipboard.writeText(buttonEvent.currentTarget.dataset.copyInvite);
+      buttonEvent.currentTarget.textContent = "Copied";
+    });
+    return;
+  }
   output.textContent = "Generating a single-use invitation…";
   const { data, error } = await supabase.rpc("create_patient_invite", { target_email: email });
   if (error) {
