@@ -117,11 +117,30 @@ select public.approve_patient_connection(
   current_setting('axion.invitation_id')::uuid
 );
 
-select set_config('axion.plan_b', public.publish_patient_plan(
+select set_config('axion.plan_b', public.publish_patient_plan_v2(
   '10000000-0000-4000-8000-000000000003'::uuid,
   'Patient B secure plan', 'Shoulder recovery', 'Phase 2',
-  'Patient B only instructions', array['bodyweight_squat']::text[], 2, 6, 30
+  'Patient B only instructions',
+  '[{"exercise_key":"bodyweight_squat","sets":2,"repetitions":6,"duration_seconds":null},{"exercise_key":"wall_sit","sets":4,"repetitions":1,"duration_seconds":35}]'::jsonb
 )::text, true);
+
+do $test$
+begin
+  if not exists (
+    select 1 from public.exercise_assignments ea
+    where ea.plan_id = current_setting('axion.plan_b')::uuid
+      and ea.exercise_key = 'bodyweight_squat'
+      and ea.target_sets = 2 and ea.target_repetitions = 6
+  ) or not exists (
+    select 1 from public.exercise_assignments ea
+    where ea.plan_id = current_setting('axion.plan_b')::uuid
+      and ea.exercise_key = 'wall_sit'
+      and ea.target_sets = 4 and ea.duration_seconds = 35
+  ) then
+    raise exception 'Per-exercise dosage was not preserved';
+  end if;
+end
+$test$;
 
 select set_config('axion.assignment_b', ea.id::text, true)
 from public.exercise_assignments ea

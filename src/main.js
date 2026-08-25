@@ -9,9 +9,11 @@ import {
   createCareInvitation,
   createPersonalPlan,
   exerciseCatalog,
+  exerciseCatalogSource,
   loadPatientWorkspace,
   loadMovementReport,
   loadTherapistConnections,
+  loadTherapistWorkspace,
 } from "./portal.js";
 
 const app = document.querySelector("#app");
@@ -67,6 +69,10 @@ let currentProfile = null;
 let demoRole = null;
 let assignedPatients = [];
 let therapistConnections = [];
+let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
+let therapistSection = "overview";
+let exerciseLibraryQuery = "";
+let roadmapExpanded = false;
 let patientWorkspace = null;
 let currentAssignment = null;
 let selectedPatient = null;
@@ -84,6 +90,7 @@ let reportSessions = [];
 let selectedRep = 4;
 let sessionStartedAt = null;
 let sessionClientId = null;
+let lastTwinPoints = null;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
@@ -94,6 +101,12 @@ const average = (values) => values.length
   : 0;
 
 const kneeBendDegrees = (jointAngle) => Math.max(0, Math.round(180 - Number(jointAngle || 0)));
+const jointAngleToTwinDepth = (jointAngle, movementRangeDegrees = null) => {
+  const range = movementRangeDegrees === null
+    ? Math.abs(180 - Number(jointAngle || 180))
+    : Math.abs(Number(movementRangeDegrees));
+  return Math.max(0, Math.min(0.82, range / 90));
+};
 
 function icon(name, size = 18) {
   const paths = {
@@ -113,6 +126,7 @@ function icon(name, size = 18) {
     map: '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/>',
     calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
     bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   };
   return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ""}</svg>`;
 }
@@ -179,18 +193,18 @@ function comparisonSignature({ improved = false } = {}) {
 
 function twinSvg() {
   const line = (a, b) => `<line id="bone-${a}-${b}" class="twin-bone" />`;
-  const joints = ["head", "neck", "ls", "rs", "le", "re", "lw", "rw", "lh", "rh", "lk", "rk", "la", "ra"];
+  const joints = ["head", "neck", "ls", "rs", "le", "re", "lw", "rw", "lh", "rh", "lk", "rk", "la", "ra", "lf", "rf"];
   return `
     <svg id="movement-twin" class="movement-twin" viewBox="0 0 320 420" aria-label="Movement twin">
       <defs><radialGradient id="jointGlow"><stop offset="0" stop-color="#e8fff4"/><stop offset=".32" stop-color="#6ef0b1"/><stop offset="1" stop-color="#6ef0b1" stop-opacity="0"/></radialGradient><linearGradient id="bodyLine" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#edfff7"/><stop offset="1" stop-color="#6ef0b1"/></linearGradient></defs>
       <g class="target-zone"><path d="M80 267 Q160 310 240 267"/><path d="M93 282 Q160 315 227 282"/></g>
       <g class="twin-shadow"><ellipse cx="160" cy="375" rx="94" ry="14"/></g>
       <g id="twin-body">
-        ${line("ls","rs")}${line("ls","le")}${line("le","lw")}${line("rs","re")}${line("re","rw")}${line("ls","lh")}${line("rs","rh")}${line("lh","rh")}${line("lh","lk")}${line("lk","la")}${line("rh","rk")}${line("rk","ra")}
+        ${line("ls","rs")}${line("ls","le")}${line("le","lw")}${line("rs","re")}${line("re","rw")}${line("ls","lh")}${line("rs","rh")}${line("lh","rh")}${line("lh","lk")}${line("lk","la")}${line("la","lf")}${line("rh","rk")}${line("rk","ra")}${line("ra","rf")}
         <line id="bone-neck-head" class="twin-bone"/>
         ${joints.map(joint => `<circle id="joint-${joint}" class="twin-joint" r="${joint === "head" ? 16 : 6}"/>`).join("")}
       </g>
-      <g class="angle-orbit"><path d="M91 266 A46 46 0 0 1 132 309"/><text id="twin-angle" x="76" y="296">96°</text></g>
+      <g class="angle-orbit"><path id="twin-angle-arc" d=""/><circle id="twin-angle-anchor" r="4"/><text id="twin-angle" x="0" y="0">—</text></g>
     </svg>`;
 }
 
@@ -387,8 +401,8 @@ function patientView() {
     <main class="patient-portal container-wide">
       <section class="patient-welcome"><div><span class="section-kicker">${escapeHtml(workspace.plan?.phase_label || "YOUR RECOVERY")} · ${escapeHtml(workspace.plan?.program_label || "PERSONAL PLAN")}</span><h1>Welcome back, ${escapeHtml(firstName)}.</h1><p>${escapeHtml(workspace.plan?.instructions || "Your therapist-built recovery session is ready when you are.")}</p></div><div class="patient-scoreboard" aria-label="Recovery statistics"><article><span>${icon("trophy", 18)}</span><div><small>RECOVERY XP</small><b>${Number(profile.recovery_xp || 0).toLocaleString()}</b></div></article><article><span>${icon("spark", 18)}</span><div><small>LEVEL</small><b>${profile.level || 1}</b></div></article><article><span>${icon("calendar", 18)}</span><div><small>STREAK</small><b>${profile.streak_days || 0} days</b></div></article></div></section>
       <section class="care-team-pill">${icon("shield", 17)}<div><small>VERIFIED CARE TEAM</small><b>${escapeHtml(therapistName)}</b></div><span>Connected</span></section>
-      <section class="patient-grid"><article class="recovery-map-card"><div class="card-title"><div><span class="section-kicker">YOUR UNIQUE ROADMAP</span><h2>${escapeHtml(workspace.plan?.title || "Personal recovery roadmap")}</h2></div><span class="journey-percent">${progress}% complete</span></div><div class="recovery-route" aria-label="Patient-specific roadmap"><div class="route-line"></div>${roadmap.slice(0,5).map((stage, index) => { const [x,y] = positions[index] || [90,20]; const state = stage.status === "complete" ? "complete" : stage.status === "current" ? "current" : ""; return `<div class="route-node ${state}" style="--x:${x}%;--y:${y}%"><span>${stage.status === "complete" ? icon("check",15) : index === roadmap.length - 1 ? icon("trophy",16) : stage.stage_number}</span><b>${escapeHtml(stage.title)}</b><small>${stage.status === "complete" ? "Complete" : stage.status === "current" ? "You are here" : "Therapist locked"}</small></div>`; }).join("")}</div><div class="next-unlock"><span>${icon("spark",17)}</span><div><b>Your roadmap belongs only to you</b><small>${escapeHtml(therapistName)} controls every milestone and progression.</small></div><strong>${assignments.length} prescribed</strong></div></article><aside class="patient-side-stack"><article class="daily-goal-card"><div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32"/></svg><b>${Math.min(weeklySessions,3)}/3</b></div><div><span class="section-kicker">WEEKLY GOAL</span><h3>${weeklySessions >= 3 ? "Weekly goal complete." : `${3 - weeklySessions} session${3 - weeklySessions === 1 ? "" : "s"} to your goal.`}</h3><p>Only completed sessions from your account count here.</p></div></article><article class="reward-card"><span>${icon("activity",24)}</span><div><small>MY MOVEMENT SCIENCE LAB</small><h3>Calibrated per session</h3><p>Your assignment, camera landmarks, and movement summary stay tied to your patient ID.</p></div></article></aside></section>
-      <section class="today-plan"><div class="section-heading compact"><div><span class="section-kicker">YOUR PRESCRIPTION</span><h2>${assignments.length} exercise${assignments.length === 1 ? "" : "s"} from your therapist.</h2></div><p>Prescribed by ${escapeHtml(therapistName)}</p></div><div class="exercise-list">${assignments.length ? assignments.map((assignment,index) => { const completed = sessions.some((session) => session.assignment_id === assignment.id); const target = assignment.tracking_mode === "timed_hold" ? `${assignment.target_sets || 1} sets · ${assignment.duration_seconds || 30} second hold` : `${assignment.target_sets || 1} sets · ${assignment.target_repetitions || 10} repetitions`; return `<article class="exercise-card ${index === 0 ? "exercise-card--primary" : ""} ${completed ? "complete" : ""}"><div class="exercise-order">${String(index+1).padStart(2,"0")}</div>${index === 0 ? `<div class="exercise-visual">${twinSvg()}</div>` : `<span class="exercise-icon">${icon(completed ? "check" : "activity",24)}</span>`}<div class="exercise-copy"><span class="live-pill">${completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${target} · ${assignment.tracking_mode === "pose_reps" ? "pose tracking" : assignment.tracking_mode.replace("_", " ")}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div>${assignment.instructions ? `<small>${escapeHtml(assignment.instructions)}</small>` : ""}</div><button class="button button--primary" data-start-assignment="${assignment.id}">${completed ? "Do again" : "Start exercise"} ${icon("arrow",16)}</button></article>`; }).join("") : `<div class="empty-state"><span>${icon("map",24)}</span><h3>Your prescription is being prepared</h3><p>${escapeHtml(therapistName)} has not added an active exercise yet.</p></div>`}</div></section>
+      <section class="patient-grid"><article class="recovery-map-card"><div class="card-title"><div><span class="section-kicker">YOUR UNIQUE ROADMAP</span><h2>${escapeHtml(workspace.plan?.title || "Personal recovery roadmap")}</h2></div><span class="journey-percent">${progress}% complete</span></div><div class="recovery-route" aria-label="Patient-specific roadmap"><div class="route-line"></div>${roadmap.slice(0,5).map((stage, index) => { const [x,y] = positions[index] || [90,20]; const state = stage.status === "complete" ? "complete" : stage.status === "current" ? "current" : ""; return `<div class="route-node ${state}" style="--x:${x}%;--y:${y}%"><span>${stage.status === "complete" ? icon("check",15) : index === roadmap.length - 1 ? icon("trophy",16) : stage.stage_number}</span><b>${escapeHtml(stage.title)}</b><small>${stage.status === "complete" ? "Complete" : stage.status === "current" ? "You are here" : "Therapist locked"}</small></div>`; }).join("")}</div><div class="next-unlock"><span>${icon("spark",17)}</span><div><b>Your roadmap belongs only to you</b><small>${escapeHtml(therapistName)} controls every milestone and progression.</small></div><strong>${assignments.length} prescribed</strong></div><button class="roadmap-open-button" data-open-roadmap>${roadmapExpanded ? "Hide exercise list" : "Open roadmap exercises"} ${icon(roadmapExpanded ? "back" : "arrow",16)}</button></article><aside class="patient-side-stack"><article class="daily-goal-card"><div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32"/></svg><b>${Math.min(weeklySessions,3)}/3</b></div><div><span class="section-kicker">WEEKLY GOAL</span><h3>${weeklySessions >= 3 ? "Weekly goal complete." : `${3 - weeklySessions} session${3 - weeklySessions === 1 ? "" : "s"} to your goal.`}</h3><p>Only completed sessions from your account count here.</p></div></article><article class="reward-card"><span>${icon("activity",24)}</span><div><small>MY MOVEMENT SCIENCE LAB</small><h3>Calibrated per session</h3><p>Your assignment, camera landmarks, and movement summary stay tied to your patient ID.</p></div></article></aside></section>
+      <section id="patient-exercises" class="today-plan ${roadmapExpanded ? "expanded" : "collapsed"}"><div class="section-heading compact"><div><span class="section-kicker">YOUR PRESCRIPTION</span><h2>${assignments.length} exercise${assignments.length === 1 ? "" : "s"} from your therapist.</h2></div><p>Prescribed by ${escapeHtml(therapistName)}</p></div><div class="exercise-list">${assignments.length ? assignments.map((assignment,index) => { const completed = sessions.some((session) => session.assignment_id === assignment.id); const target = assignment.tracking_mode === "timed_hold" ? `${assignment.target_sets || 1} sets · ${assignment.duration_seconds || 30} second hold` : `${assignment.target_sets || 1} sets · ${assignment.target_repetitions || 10} repetitions`; return `<article class="exercise-card ${index === 0 ? "exercise-card--primary" : ""} ${completed ? "complete" : ""}"><div class="exercise-order">${String(index+1).padStart(2,"0")}</div>${index === 0 ? `<div class="exercise-visual">${twinSvg()}</div>` : `<span class="exercise-icon">${icon(completed ? "check" : "activity",24)}</span>`}<div class="exercise-copy"><span class="live-pill">${completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${target} · ${assignment.tracking_mode === "pose_reps" ? "automatic pose tracking" : assignment.tracking_mode.replace("_", " ")}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div>${assignment.instructions ? `<small>${escapeHtml(assignment.instructions)}</small>` : ""}</div><button class="button button--primary" data-start-assignment="${assignment.id}">${completed ? "Do again" : "Start exercise"} ${icon("arrow",16)}</button></article>`; }).join("") : `<div class="empty-state"><span>${icon("map",24)}</span><h3>Your prescription is being prepared</h3><p>${escapeHtml(therapistName)} has not added an active exercise yet.</p></div>`}</div></section>
     </main>
   `, { full: true });
   bindEvents();
@@ -403,13 +417,18 @@ function labView() {
   const patientName = currentProfile?.display_name || "Patient";
   const therapistName = patientWorkspace?.therapist?.display_name || "your physical therapist";
   const targetReps = assignment.target_repetitions || 10;
+  const timedExercise = assignment.tracking_mode === "timed_hold";
+  const jointLabel = `${assignment.joint || "knee"} angle`;
+  const dosageLabel = timedExercise
+    ? `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${assignment.duration_seconds || 30} second hold`
+    : `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${targetReps} repetition${targetReps === 1 ? "" : "s"}`;
   const assignmentNumber = Math.max(1, (patientWorkspace?.assignments || []).findIndex((item) => item.id === assignment.id) + 1);
   const assignmentCount = Math.max(1, patientWorkspace?.assignments?.length || 1);
   const backTarget = currentProfile?.role === "patient" || demoRole === "patient" ? "patient" : "home";
   app.innerHTML = layout(`
     <main class="lab-page">
       <div class="lab-header container-wide">
-        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to ${escapeHtml(patientName.split(" ")[0])}’s recovery</button><div class="eyebrow"><span></span> ${escapeHtml(patientName)}’s Movement Science Lab · Exercise ${assignmentNumber} of ${assignmentCount}</div><h1>${escapeHtml(assignment.display_name)}</h1><p class="lab-prescriber">Prescribed by ${escapeHtml(therapistName)} · ${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${targetReps} repetition${targetReps === 1 ? "" : "s"}</p></div>
+        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to ${escapeHtml(patientName.split(" ")[0])}’s recovery</button><div class="eyebrow"><span></span> ${escapeHtml(patientName)}’s Movement Science Lab · Exercise ${assignmentNumber} of ${assignmentCount}</div><h1>${escapeHtml(assignment.display_name)}</h1><p class="lab-prescriber">Prescribed by ${escapeHtml(therapistName)} · ${escapeHtml(dosageLabel)}</p></div>
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
       </div>
       <div class="personal-lab-banner container-wide">${icon("shield", 17)}<div><small>PRIVATE PATIENT LAB</small><b>${escapeHtml(patientName)} · ${escapeHtml(patientWorkspace?.plan?.title || "Personal recovery plan")}</b></div><span>Session summaries save only to this patient account</span></div>
@@ -428,10 +447,10 @@ function labView() {
             <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> Target range</div></div>
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
-          <div class="live-metrics"><div><span>REPS</span><b><i id="live-reps">0</i><small>/ ${demoScriptActive ? 5 : targetReps}</small></b></div><div><span>KNEE BEND</span><b id="live-depth">—</b></div><div><span>RHYTHM</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
+          <div class="live-metrics"><div><span>${timedExercise ? "HOLD" : "REPS"}</span><b><i id="live-reps">0</i><small>/ ${timedExercise ? `${assignment.duration_seconds || 30}s` : (demoScriptActive ? 5 : targetReps)}</small></b></div><div><span id="live-angle-label">${escapeHtml(jointLabel.toUpperCase())}</span><b id="live-depth">—</b></div><div><span>MOVEMENT RANGE</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
           <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S AXION COACH</small><p id="coach-message" aria-live="polite">${escapeHtml(assignment.instructions || "Stand naturally for three seconds. Axion will learn your baseline for this session.")}</p></div><span id="coach-state">READY</span></div>
           <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: demoScriptActive ? 5 : Math.min(targetReps, 30) }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
-          <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Start my camera scan</button><button class="button button--primary" id="run-demo">${icon("play", 17)} ${currentSession?.demo ? "Demo Mode" : "Preview movement tracking"} <small>${currentSession?.demo ? "70 sec" : "guided"}</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
+          <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Restart camera scan</button><button class="button button--primary" id="run-demo">${icon("play", 17)} ${currentSession?.demo ? "Demo Mode" : "Preview movement tracking"} <small>${currentSession?.demo ? "70 sec" : "guided"}</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
         </div>
         <aside class="journey-panel">
           <div class="journey-head"><span class="section-kicker">${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S ROADMAP</span><span>${escapeHtml(patientWorkspace?.plan?.phase_label || "Current phase")}</span></div>
@@ -448,11 +467,13 @@ function labView() {
 }
 
 function summaryFor(reps) {
-  if (!reps.length) return { depth: 0, kneeBend: 0, tempo: 0, symmetry: 0, consistency: 0 };
-  const depth = Math.round(average(reps.map((r) => r.depthAngle)));
+  if (!reps.length) return { depth: 0, jointAngle: 0, kneeBend: 0, movementRange: 0, tempo: 0, symmetry: 0, consistency: 0 };
+  const depth = Math.round(average(reps.map((r) => r.jointAngle ?? r.depthAngle)));
   return {
     depth,
+    jointAngle: depth,
     kneeBend: kneeBendDegrees(depth),
+    movementRange: Math.round(average(reps.map((r) => r.movementRangeDegrees ?? Math.abs(180 - (r.jointAngle ?? r.depthAngle))))),
     tempo: average(reps.map((r) => r.tempo)).toFixed(1),
     symmetry: average(reps.map((r) => r.symmetryDelta ?? 0)).toFixed(1),
     consistency: Math.round(average(reps.map((r) => r.consistency ?? Math.max(45, 100 - Math.abs(r.depthAngle - 98) * 2 - (r.symmetryDelta ?? 5))))),
@@ -569,13 +590,16 @@ function reportView() {
     </main>
   `);
   bindEvents();
-  updateSyntheticTwin(selected.index > 6 ? 0.58 : 0.42);
+  updateSyntheticTwin(jointAngleToTwinDepth(selected.jointAngle ?? selected.depthAngle, selected.movementRangeDegrees ?? null));
   animateNumber(document.querySelector(".pulse-score b"), reportPulse);
 }
 
 function sessionSummary(session) {
   const summary = session?.movement_summary || {};
   return {
+    joint: summary.tracked_joint || "knee",
+    jointAngle: Number(summary.average_joint_angle_degrees ?? 0),
+    movementRange: Number(summary.average_joint_movement_range_degrees ?? 0),
     kneeBend: Number(summary.average_knee_bend_degrees ?? 0),
     tempo: Number(summary.average_tempo_seconds ?? 0),
     symmetry: Number(summary.average_symmetry_delta ?? 0),
@@ -607,7 +631,9 @@ function realReportView() {
   }
 
   const stats = sessionSummary(latest);
-  const exercise = assignmentDetails({ exercise_key: latest.exercise_key }).display_name;
+  const exerciseDetails = assignmentDetails({ exercise_key: latest.exercise_key });
+  const exercise = exerciseDetails.display_name;
+  const trackedJoint = stats.joint || exerciseDetails.joint || "knee";
   const completedAt = new Date(latest.completed_at || latest.created_at);
   const duration = latest.duration_seconds ? `${Math.floor(latest.duration_seconds / 60)}m ${latest.duration_seconds % 60}s` : "Not recorded";
   const metric = (value, suffix = "") => value > 0 ? `${Number(value).toFixed(suffix ? 1 : 0)}${suffix}` : "—";
@@ -624,8 +650,8 @@ function realReportView() {
       </section>
       <section class="report-metrics">
         <article><span>REPETITIONS</span><b>${latest.repetitions ?? 0}</b><em>Completed</em></article>
-        <article><span>AVG. KNEE BEND</span><b>${metric(stats.kneeBend, "°")}</b><em>Descriptive range</em></article>
-        <article><span>AVG. TEMPO</span><b>${metric(stats.tempo, "s")}</b><em>Measured average</em></article>
+        <article><span>AVG. ${escapeHtml(trackedJoint.toUpperCase())} ANGLE</span><b>${metric(stats.jointAngle, "°")}</b><em>3D landmark angle</em></article>
+        <article><span>MOVEMENT RANGE</span><b>${metric(stats.movementRange, "°")}</b><em>Baseline-relative excursion</em></article>
         <article><span>MOVEMENT CONSISTENCY</span><b>${stats.consistency || "—"}</b><em>Session value</em></article>
         <article><span>SYMMETRY DELTA</span><b>${metric(stats.symmetry, "°")}</b><em>Measured difference</em></article>
       </section>
@@ -661,16 +687,110 @@ async function loadAssignedPatients() {
   if (!supabase || !currentSession?.user) {
     assignedPatients = [];
     therapistConnections = [];
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
     return;
   }
   try {
     therapistConnections = await loadTherapistConnections(supabase, currentSession.user.id);
     assignedPatients = therapistConnections.filter((item) => item.status === "active").map((item) => item.profile);
+    therapistWorkspace = await loadTherapistWorkspace(supabase, currentSession.user.id, assignedPatients.map((patient) => patient.id));
   } catch (error) {
     console.error("Failed to load therapist assignments:", error);
     assignedPatients = [];
     therapistConnections = [];
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
   }
+}
+
+function therapistPanelClass(section) {
+  return `therapist-panel${therapistSection === section ? " active" : ""}`;
+}
+
+function patientNameById(patientId) {
+  return assignedPatients.find((patient) => patient.id === patientId)?.display_name || "Connected patient";
+}
+
+function planExercises(planId) {
+  return therapistWorkspace.assignments.filter((assignment) => assignment.plan_id === planId);
+}
+
+function prescriptionTarget(exercise) {
+  return exercise.tracking_mode === "timed_hold"
+    ? `${exercise.target_sets || 1} sets · ${exercise.duration_seconds || 30}s hold`
+    : `${exercise.target_sets || 1} sets · ${exercise.target_repetitions || 10} reps`;
+}
+
+function exercisePrescriptionRows() {
+  return Object.entries(exerciseCatalog).map(([key, exercise], index) => {
+    const timed = exercise.trackingMode === "timed_hold";
+    return `<label class="prescription-row" data-prescription-row="${key}">
+      <input class="prescription-toggle" type="checkbox" value="${key}" ${index === 0 ? "checked" : ""}/>
+      <span class="prescription-name"><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(exercise.region)} · ${escapeHtml(exercise.focus.join(" · "))}</small></span>
+      <span class="dosage-control"><small>SETS</small><input class="prescription-sets" type="number" min="1" max="20" value="${exercise.defaultSets}" ${index === 0 ? "" : "disabled"}/></span>
+      ${timed
+        ? `<span class="dosage-control"><small>HOLD (SEC)</small><input class="prescription-duration" type="number" min="5" max="3600" value="${exercise.defaultDuration || 30}" ${index === 0 ? "" : "disabled"}/><input class="prescription-reps" type="hidden" value="1"/></span>`
+        : `<span class="dosage-control"><small>REPS</small><input class="prescription-reps" type="number" min="1" max="500" value="${exercise.defaultReps}" ${index === 0 ? "" : "disabled"}/></span>`}
+    </label>`;
+  }).join("");
+}
+
+function renderPlanBuilder(isDemoTherapist) {
+  if (isDemoTherapist) return `<div class="demo-lock-note">Sign in as a verified therapist to publish a live patient roadmap.</div>`;
+  if (!assignedPatients.length) return `<div class="empty-state"><span>${icon("users", 24)}</span><h3>Connect a patient first</h3><p>A therapist can prescribe only after the patient accepts an email-bound invitation and the therapist verifies it.</p></div>`;
+  return `<section class="plan-builder-card plan-builder-card--v2">
+    <div><span class="section-kicker">PUBLISH A PERSONAL ROADMAP</span><h2>Choose exercises and dose each one</h2><p>Every selected exercise gets its own sets, reps, or hold time. Publishing archives the previous active plan for this patient.</p></div>
+    <form id="plan-builder-form">
+      <div class="plan-basics">
+        <label>Patient<select id="plan-patient" required>${assignedPatients.map((patient) => `<option value="${patient.id}">${escapeHtml(patient.display_name)}</option>`).join("")}</select></label>
+        <label>Roadmap title<input id="plan-title" value="Personal recovery roadmap" required/></label>
+        <label>Program<input id="plan-program" value="Personal recovery plan" required/></label>
+        <label>Current phase<input id="plan-phase" value="Foundation" required/></label>
+      </div>
+      <div class="prescription-toolbar"><div><b>Exercise prescription</b><small>Select up to 12 exercises. Dosage is independent for each one.</small></div><span id="selected-exercise-count">1 selected</span></div>
+      <div class="prescription-list">${exercisePrescriptionRows()}</div>
+      <label class="wide">Patient instructions<textarea id="plan-instructions" rows="3" maxlength="2000" placeholder="Add patient-specific positioning, equipment, precautions, and stop criteria."></textarea></label>
+      <div class="clinical-source-note">${icon("shield", 16)}<span><b>Clinician-directed library</b> · Exercise names are drawn from AAOS OrthoInfo conditioning programs. The therapist remains responsible for suitability, dosage, and progression.</span></div>
+      <button class="button button--primary" type="submit">Publish private plan ${icon("arrow",16)}</button>
+    </form><div id="plan-result" class="form-message"></div>
+  </section>`;
+}
+
+function renderRoadmapList(isDemoTherapist) {
+  const plans = isDemoTherapist ? [] : therapistWorkspace.plans;
+  if (!plans.length) return `<div class="empty-state"><span>${icon("map", 24)}</span><h3>No published roadmaps yet</h3><p>Use the prescription builder above to create the first patient-specific roadmap.</p></div>`;
+  return `<div class="therapist-roadmap-list">${plans.map((plan) => {
+    const exercises = planExercises(plan.id);
+    return `<details class="therapist-roadmap-card" ${plan.status === "active" ? "open" : ""}>
+      <summary><span>${icon("map", 18)}</span><div><small>${escapeHtml(patientNameById(plan.patient_id))}</small><b>${escapeHtml(plan.title)}</b><em>${escapeHtml(plan.phase_label)} · ${plan.status}</em></div><strong>${exercises.length} exercise${exercises.length === 1 ? "" : "s"}</strong></summary>
+      <div class="roadmap-detail-list">${exercises.map((exercise, index) => `<div><span>${String(index + 1).padStart(2, "0")}</span><div><b>${escapeHtml(exercise.display_name)}</b><small>${escapeHtml(prescriptionTarget(exercise))}</small></div><em>${escapeHtml(exercise.tracking_mode.replaceAll("_", " "))}</em></div>`).join("") || `<p>No active exercises in this roadmap.</p>`}</div>
+    </details>`;
+  }).join("")}</div>`;
+}
+
+function renderTherapistCheckins(isDemoTherapist) {
+  const sessions = isDemoTherapist ? [
+    { id: "demo-1", patient_id: "demo", exercise_key: "bodyweight_squat", repetitions: 10, difficulty: 3, discomfort: "none", completed_at: new Date().toISOString() },
+    { id: "demo-2", patient_id: "demo", exercise_key: "single_leg_balance", repetitions: 0, duration_seconds: 30, difficulty: 2, discomfort: "none", completed_at: new Date(Date.now() - 86400000).toISOString() },
+  ] : therapistWorkspace.sessions;
+  return `<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">PATIENT CHECK-INS</span><h2>Completed movement sessions</h2></div><span>${sessions.length} records</span></div>${sessions.length ? `<div class="checkin-list">${sessions.map((session) => {
+    const exercise = exerciseCatalog[session.exercise_key] || { name: session.exercise_key };
+    const patient = isDemoTherapist ? "Maya Chen" : patientNameById(session.patient_id);
+    return `<article><span class="patient-avatar mint">${escapeHtml(patient.split(" ").map((part) => part[0]).join("").slice(0,2))}</span><div><b>${escapeHtml(patient)} · ${escapeHtml(exercise.name)}</b><small>${session.repetitions ? `${session.repetitions} reps` : `${session.duration_seconds || 0}s`} · ${new Date(session.completed_at || session.created_at).toLocaleString()}</small></div><span>Difficulty <b>${session.difficulty || "—"}/5</b></span><span>Discomfort <b>${escapeHtml(session.discomfort || "—")}</b></span></article>`;
+  }).join("")}</div>` : `<div class="empty-state"><span>${icon("activity",24)}</span><h3>No patient check-ins yet</h3><p>Completed private sessions will appear here without storing raw camera video.</p></div>`}</section>`;
+}
+
+function renderTherapistAlerts(isDemoTherapist) {
+  const alerts = isDemoTherapist ? [
+    { id: "demo-a", title: "Adherence changed", explanation: "Sam completed fewer prescribed sessions this week.", status: "open", patient_id: "demo" },
+    { id: "demo-b", title: "Movement consistency changed", explanation: "Jordan’s late-set consistency differs from their own recent sessions.", status: "open", patient_id: "demo" },
+  ] : therapistWorkspace.alerts;
+  return `<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Descriptive alerts</h2></div><span>${alerts.filter((alert) => alert.status === "open").length} open</span></div>${alerts.length ? `<div class="alert-list">${alerts.map((alert) => `<article><span>${icon("bell",18)}</span><div><small>${escapeHtml(isDemoTherapist ? "DEMO PATIENT" : patientNameById(alert.patient_id))}</small><b>${escapeHtml(alert.title)}</b><p>${escapeHtml(alert.explanation)}</p></div><em>${escapeHtml(alert.status)}</em></article>`).join("")}</div>` : `<div class="empty-state"><span>${icon("bell",24)}</span><h3>No alerts require review</h3><p>Axion flags descriptive participation or movement changes; it does not diagnose or alter treatment.</p></div>`}</section>`;
+}
+
+function renderExerciseLibrary() {
+  const query = exerciseLibraryQuery.trim().toLowerCase();
+  const entries = Object.entries(exerciseCatalog).filter(([, exercise]) => !query || `${exercise.name} ${exercise.region} ${exercise.focus.join(" ")}`.toLowerCase().includes(query));
+  return `<section class="exercise-library-card"><div class="library-head"><div><span class="section-kicker">EXERCISE LIBRARY</span><h2>${Object.keys(exerciseCatalog).length} therapist-prescribed movements</h2><p>Search by movement, body region, or tracked metric.</p></div><label>${icon("search",16)}<input id="exercise-library-search" value="${escapeHtml(exerciseLibraryQuery)}" placeholder="Search exercises"/></label></div><div class="library-grid">${entries.map(([key, exercise]) => `<article data-library-exercise="${key}"><span>${escapeHtml(exercise.region)}</span><h3>${escapeHtml(exercise.name)}</h3><p>${escapeHtml(exercise.focus.join(" · "))}</p><div><small>${exercise.defaultSets} sets</small><small>${exercise.trackingMode === "timed_hold" ? `${exercise.defaultDuration || 30}s hold` : `${exercise.defaultReps} reps`}</small><small>${escapeHtml(exercise.joint)} angle</small></div></article>`).join("") || `<div class="empty-state"><h3>No exercises match that search.</h3></div>`}</div><footer>Source: <a href="${exerciseCatalogSource.url}" target="_blank" rel="noreferrer">${escapeHtml(exerciseCatalogSource.name)}</a>. ${escapeHtml(exerciseCatalogSource.note)}</footer></section>`;
 }
 
 function therapistView() {
@@ -703,9 +823,10 @@ function therapistView() {
     <main class="therapist-page container-wide">
       <section class="pt-workspace-nav">
         <div><span>${icon("activity", 17)}</span><b>Clinical command center</b></div>
-        <nav><button class="active">Overview</button><button>Patients</button><button>Recovery roadmaps</button><button>Check-ins</button><button>Alerts <i>2</i></button><button>Exercise library</button></nav>
+        <nav>${[["overview","Overview"],["patients","Patients"],["roadmaps","Recovery roadmaps"],["checkins","Check-ins"],["alerts","Alerts"],["library","Exercise library"]].map(([section,label]) => `<button class="${therapistSection === section ? "active" : ""}" data-therapist-section="${section}">${label}${section === "alerts" && (isDemoTherapist || therapistWorkspace.alerts.filter((alert) => alert.status === "open").length) ? `<i>${isDemoTherapist ? 2 : therapistWorkspace.alerts.filter((alert) => alert.status === "open").length}</i>` : ""}</button>`).join("")}</nav>
         <button data-portal-signout>Sign out</button>
       </section>
+      <div class="${therapistPanelClass("overview")}">
       <div class="dashboard-head">
         <div><span class="section-kicker">THERAPIST WORKSPACE</span><h1>Good afternoon, ${escapeHtml(currentProfile?.display_name || "Dr. Ava Patel")}.</h1><p>Here is what changed across your patient panel since your last review.</p></div>
         <div class="date-card"><span>${dayName}</span><b>${dateLabel}</b></div>
@@ -715,6 +836,8 @@ function therapistView() {
         <article><span class="stat-icon violet">${icon("users", 20)}</span><div><small>ACTIVE PATIENTS</small><b>${patientCount}</b><em>Across ${isDemoTherapist ? 3 : 1} recovery programs</em></div></article>
         <article><span class="stat-icon orange">${icon("bell", 20)}</span><div><small>NEEDS ATTENTION</small><b>${isDemoTherapist ? 2 : "—"}</b><em>Movement or adherence changes</em></div></article>
       </section>
+      </div>
+      <div class="${therapistPanelClass("patients")}">
       <section class="care-management-grid">
         <article class="care-action-card">
           <div><span class="section-kicker">INVITE A PATIENT</span><h2>Start a private connection</h2><p>The code is tied to the patient’s email, expires after 48 hours, and still requires your approval after they claim it.</p></div>
@@ -725,7 +848,13 @@ function therapistView() {
           ${pendingConnections.length ? `<div class="approval-list">${pendingConnections.map((connection) => `<div><span class="patient-avatar violet">${connection.profile.display_name.split(" ").map((part) => part[0]).join("").slice(0,2).toUpperCase()}</span><span><b>${escapeHtml(connection.profile.display_name)}</b><small>Patient confirmed their invitation</small></span><button class="button button--primary" data-approve-patient="${connection.patient_id}" data-invitation-id="${connection.invitation_id || ""}">${icon("check",15)} Verify</button></div>`).join("")}</div>` : `<div class="demo-lock-note">No patient verification requests are waiting.</div>`}
         </article>
       </section>
-      ${!isDemoTherapist && assignedPatients.length ? `<section class="plan-builder-card"><div><span class="section-kicker">PUBLISH A PERSONAL ROADMAP</span><h2>Assign a unique exercise set</h2><p>This creates a new roadmap, a patient-specific prescription, and a personal Movement Science Lab for every selected exercise. Any previous active plan is archived.</p></div><form id="plan-builder-form"><label>Patient<select id="plan-patient" required>${assignedPatients.map((patient) => `<option value="${patient.id}">${escapeHtml(patient.display_name)}</option>`).join("")}</select></label><label>Roadmap title<input id="plan-title" value="Personal recovery roadmap" required/></label><label>Program<input id="plan-program" value="Personal recovery plan" required/></label><label>Current phase<input id="plan-phase" value="Foundation" required/></label><label>Exercise 1<select id="plan-exercise">${Object.entries(exerciseCatalog).map(([key,value]) => `<option value="${key}">${escapeHtml(value.name)}</option>`).join("")}</select></label><label>Exercise 2<select id="plan-exercise-2"><option value="">None</option>${Object.entries(exerciseCatalog).map(([key,value]) => `<option value="${key}">${escapeHtml(value.name)}</option>`).join("")}</select></label><label>Exercise 3<select id="plan-exercise-3"><option value="">None</option>${Object.entries(exerciseCatalog).map(([key,value]) => `<option value="${key}">${escapeHtml(value.name)}</option>`).join("")}</select></label><label>Sets each<input id="plan-sets" type="number" min="1" max="20" value="3" required/></label><label>Repetitions each<input id="plan-reps" type="number" min="1" max="500" value="10" required/></label><label class="wide">Patient instructions<textarea id="plan-instructions" rows="2" placeholder="Move at a comfortable pace. Stop and contact me if..."></textarea></label><button class="button button--primary" type="submit">Publish private plan ${icon("arrow",16)}</button></form><div id="plan-result" class="form-message"></div></section>` : ""}
+      <section class="workspace-list-card patient-directory-card"><div class="card-title"><div><span class="section-kicker">CONNECTED PATIENTS</span><h2>Patient directory</h2></div><span>${dashboardPatients.length} active</span></div>${dashboardPatients.length ? `<div class="patient-table"><div class="table-head"><span>PATIENT</span><span>RECOVERY PLAN</span><span>RECOVERY PULSE</span><span>TREND</span><span>STATUS</span><span></span></div>${dashboardPatients.map((patient) => `<button class="patient-row" data-report-patient-id="${escapeHtml(patient.id || "demo")}" data-report-patient-name="${escapeHtml(patient.name)}"><span class="patient-cell"><i class="patient-avatar ${patient.color}">${escapeHtml(patient.initials)}</i><b>${escapeHtml(patient.name)}</b></span><span>${escapeHtml(patient.plan)}</span><span class="pulse-cell"><i style="--pulse:${patient.pulse}%"></i><b>${patient.pulse}</b></span><span>${patient.trend}</span><span><em class="state ${patient.state.toLowerCase().replaceAll(" ", "-")}">${patient.state}</em></span><span>${icon("arrow",16)}</span></button>`).join("")}</div>` : emptyMarkup()}</section>
+      </div>
+      <div class="${therapistPanelClass("roadmaps")}">${renderPlanBuilder(isDemoTherapist)}<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">PUBLISHED ROADMAPS</span><h2>Patient exercise plans</h2></div></div>${renderRoadmapList(isDemoTherapist)}</section></div>
+      <div class="${therapistPanelClass("checkins")}">${renderTherapistCheckins(isDemoTherapist)}</div>
+      <div class="${therapistPanelClass("alerts")}">${renderTherapistAlerts(isDemoTherapist)}</div>
+      <div class="${therapistPanelClass("library")}">${renderExerciseLibrary()}</div>
+      <div class="${therapistPanelClass("overview")}">
       <section class="dashboard-grid">
         <div class="patients-card">
           <div class="card-title"><div><span class="section-kicker">PATIENT OVERVIEW</span><h2>Recovery panel</h2></div><button class="filter-button">All patients</button></div>
@@ -740,6 +869,7 @@ function therapistView() {
         <article class="trend-card"><div class="card-title"><div><span class="section-kicker">SESSION ACTIVITY</span><h2>Weekly completion</h2></div><b>${isDemoTherapist ? "82%" : "—"}</b></div><div class="bar-chart">${[58,72,65,88,93,76,82].map((value, index) => `<span><i style="height:${value}%"></i><small>${["M","T","W","T","F","S","S"][index]}</small></span>`).join("")}</div></article>
         <article class="privacy-dashboard">${icon("shield", 26)}<div><span class="section-kicker">THERAPIST CONTROL</span><h3>Review movement, not recordings.</h3><p>Axion surfaces session summaries, adherence, and movement changes while keeping raw camera video on the patient’s device.</p></div></article>
       </section>
+      </div>
     </main>
   `, { full: true });
   bindEvents();
@@ -778,17 +908,26 @@ async function submitPersonalPlan(event) {
   const button = event.currentTarget.querySelector("button[type='submit']");
   button.disabled = true;
   try {
+    const exercises = [...event.currentTarget.querySelectorAll("[data-prescription-row]")]
+      .filter((row) => row.querySelector(".prescription-toggle")?.checked)
+      .map((row) => ({
+        exerciseKey: row.querySelector(".prescription-toggle").value,
+        sets: row.querySelector(".prescription-sets").value,
+        repetitions: row.querySelector(".prescription-reps").value,
+        durationSeconds: row.querySelector(".prescription-duration")?.value || null,
+      }));
     await createPersonalPlan(supabase, currentSession.user.id, document.querySelector("#plan-patient").value, {
       title: document.querySelector("#plan-title").value,
       programLabel: document.querySelector("#plan-program").value,
       phaseLabel: document.querySelector("#plan-phase").value,
-      exerciseKeys: [document.querySelector("#plan-exercise").value, document.querySelector("#plan-exercise-2").value, document.querySelector("#plan-exercise-3").value].filter(Boolean),
-      sets: document.querySelector("#plan-sets").value,
-      repetitions: document.querySelector("#plan-reps").value,
-      durationSeconds: 30,
+      exercises,
       instructions: document.querySelector("#plan-instructions").value,
     });
-    result.textContent = "Plan published. It is now visible only to this patient and your therapist account.";
+    await loadAssignedPatients();
+    therapistSection = "roadmaps";
+    therapistView();
+    const updatedResult = document.querySelector("#plan-result");
+    if (updatedResult) updatedResult.textContent = "Plan published. It is now visible only to this patient and your therapist account.";
   } catch (error) { result.textContent = error.message; }
   finally { button.disabled = false; }
 }
@@ -833,6 +972,9 @@ async function signOutPortal() {
   demoRole = null;
   assignedPatients = [];
   therapistConnections = [];
+  therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
+  therapistSection = "overview";
+  roadmapExpanded = false;
   patientWorkspace = null;
   currentAssignment = null;
   selectedPatient = null;
@@ -845,21 +987,32 @@ async function initializeLab() {
   const video = document.querySelector("#camera");
   const canvas = document.querySelector("#overlay");
   if (!video || !canvas) return;
+  tracker?.stop?.();
   sessionStartedAt = Date.now();
   sessionClientId = crypto.randomUUID();
   updateSyntheticTwin(0);
   tracker = await createSquatTracker({
     video, canvas,
+    exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
+    trackingMode: currentAssignment?.tracking_mode || "pose_reps",
     onCalibration: ({ progress, status }) => updateCalibration(progress, status),
     onPose: updateTwinFromLandmarks,
     onTrackingState: handleTrackingState,
     onRep: (rep) => {
-      const consistency = Math.max(45, Math.round(100 - Math.abs(rep.depthAngle - 98) * 2 - (rep.symmetryDelta ?? 5)));
+      const consistency = Math.max(45, Math.round(100 - (rep.symmetryDelta ?? 4) * 2 - Math.abs((rep.tempo || 3) - 3) * 6));
       sessionReps.push({ ...rep, consistency });
       updateLiveSession();
     },
-    onUpdate: ({ reps, kneeBend, symmetryDelta, message, stage }) => {
-      setText("#live-reps", reps); setText("#live-depth", kneeBend === null ? "—" : `${kneeBend}°`); setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}°`); setText("#coach-message", message); setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "down" ? "IN MOTION" : "READY");
+    onUpdate: ({ reps, jointAngle, angleLabel, movementRange, symmetryDelta, message, stage, elapsedSeconds }) => {
+      setText("#live-angle-label", (angleLabel || "Joint angle").toUpperCase());
+      setText("#live-reps", stage === "hold" ? Math.min(currentAssignment?.duration_seconds || 30, Math.round(elapsedSeconds || 0)) : reps);
+      setText("#live-depth", jointAngle === null ? "—" : `${jointAngle}°`);
+      setText("#live-tempo", movementRange === null ? "—" : `${movementRange}°`);
+      setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}°`);
+      updateTwinAngleOverlay(document.querySelector("#movement-twin"), lastTwinPoints, currentAssignment?.joint || "knee", jointAngle);
+      setText("#coach-message", message);
+      setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
+      if (stage === "hold" && (elapsedSeconds || 0) >= Math.min(5, currentAssignment?.duration_seconds || 30)) document.querySelector("#finish-session")?.removeAttribute("disabled");
     },
     onError: (message) => {
       setText("#capture-status", "CAMERA NEEDS ATTENTION");
@@ -876,6 +1029,11 @@ async function initializeLab() {
   document.querySelector("#recovery-demo")?.addEventListener("click", runPitchDemo);
   document.querySelector("#reset-session")?.addEventListener("click", resetLab);
   document.querySelector("#finish-session")?.addEventListener("click", finishSession);
+  if (!currentSession?.demo) {
+    document.querySelector(".camera-pane")?.classList.add("camera-on");
+    setText("#capture-status", "STARTING CAMERA");
+    await tracker.start();
+  }
 }
 
 function handleTrackingState({ code, label, quality, confidence }) {
@@ -1065,16 +1223,20 @@ function celebrateMilestone() {
 function updateLiveSession() {
   const last = sessionReps.at(-1);
   const stats = summaryFor(sessionReps);
-  setText("#live-reps", sessionReps.length); setText("#live-depth", last ? `${kneeBendDegrees(last.depthAngle)}°` : "—"); setText("#live-tempo", last ? `${last.tempo}s` : "—"); setText("#live-symmetry", last ? `${last.symmetryDelta ?? "—"}°` : "—");
+  const joint = currentAssignment?.joint || exerciseCatalog[currentAssignment?.exercise_key]?.joint || "knee";
+  const angleValue = last ? (last.jointAngle ?? last.depthAngle) : null;
+  setText("#live-angle-label", `${joint.toUpperCase()} ANGLE`);
+  setText("#live-reps", sessionReps.length); setText("#live-depth", angleValue === null ? "—" : `${Math.round(angleValue)}°`); setText("#live-tempo", last ? `${last.movementRangeDegrees ?? "—"}°` : "—"); setText("#live-symmetry", last ? `${last.symmetryDelta ?? "—"}°` : "—");
   const targetReps = demoScriptActive ? 5 : (currentAssignment?.target_repetitions || 10);
   setText("#energy-value", `${Math.min(100, Math.round((sessionReps.length / targetReps) * 100))}%`);
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
   if (last) {
-    let message = `Rep ${last.index} captured at ${kneeBendDegrees(last.depthAngle)}° knee bend. Keep that rhythm.`;
+    let message = `Rep ${last.index} captured at ${Math.round(angleValue)}° ${joint} angle. Keep that rhythm.`;
     if (last.index === 4) message = "Rep 4 is your most consistent so far.";
     if (last.index >= 8) message = "Depth has decreased across the late set. Finish with control.";
-    setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${kneeBendDegrees(last.depthAngle)}°`);
+    setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${Math.round(angleValue)}°`);
+    updateSyntheticTwin(jointAngleToTwinDepth(angleValue, last.movementRangeDegrees), true);
   }
   const finish = document.querySelector("#finish-session"); if (finish) finish.disabled = sessionReps.length === 0;
   if (stats.tempo) document.documentElement.style.setProperty("--tempo", stats.tempo);
@@ -1098,6 +1260,17 @@ async function finishSession() {
   stopDemo();
   const liveMetrics = tracker?.getMetrics?.();
   if (!sessionReps.length && liveMetrics?.reps?.length) sessionReps = liveMetrics.reps;
+  if (!sessionReps.length && currentAssignment?.tracking_mode === "timed_hold" && Number.isFinite(liveMetrics?.jointAngle)) {
+    sessionReps = [{
+      index: 1,
+      depthAngle: liveMetrics.jointAngle,
+      jointAngle: liveMetrics.jointAngle,
+      movementRangeDegrees: liveMetrics.movementRangeDegrees,
+      symmetryDelta: liveMetrics.symmetryDelta,
+      tempo: liveMetrics.durationSeconds,
+      consistency: Math.max(45, Math.round(100 - (liveMetrics.symmetryDelta ?? 4) * 2)),
+    }];
+  }
   if (sessionReps.length) reportReps = sessionReps.map((rep, i) => ({ ...rep, index: i + 1 }));
   showReflection();
 }
@@ -1138,13 +1311,15 @@ async function saveSessionSummary(reps, feedback = {}) {
       client_session_id: sessionClientId || crypto.randomUUID(),
       assignment_id: currentAssignment?.id?.startsWith?.("demo-") ? null : (currentAssignment?.id || null),
       exercise_key: currentAssignment?.exercise_key || "bodyweight_squat",
-      repetitions: reps.length,
+      repetitions: currentAssignment?.tracking_mode === "timed_hold" ? 0 : reps.length,
       duration_seconds: sessionStartedAt ? Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)) : null,
       started_at: sessionStartedAt ? new Date(sessionStartedAt).toISOString() : null,
       movement_summary: {
         average_depth_angle: stats.depth,
-        average_joint_angle_degrees: stats.depth,
-        average_knee_bend_degrees: stats.kneeBend,
+        tracked_joint: currentAssignment?.joint || exerciseCatalog[currentAssignment?.exercise_key]?.joint || "knee",
+        average_joint_angle_degrees: stats.jointAngle,
+        average_joint_movement_range_degrees: stats.movementRange,
+        average_knee_bend_degrees: (currentAssignment?.joint || exerciseCatalog[currentAssignment?.exercise_key]?.joint || "knee") === "knee" ? stats.kneeBend : null,
         average_tempo_seconds: Number(stats.tempo),
         average_symmetry_delta: Number(stats.symmetry),
         movement_consistency: stats.consistency
@@ -1179,10 +1354,11 @@ function updateSyntheticTwin(depth = 0, pulse = false) {
     head: [160, 64 + d * 42], neck: [160, 91 + d * 44], ls: [132, 104 + d * 45], rs: [188, 104 + d * 45],
     le: [111 - d * 12, 158 + d * 22], re: [209 + d * 12, 158 + d * 22], lw: [99 - d * 16, 214 + d * 5], rw: [221 + d * 16, 214 + d * 5],
     lh: [142 - d * 12, 205 + d * 68], rh: [178 + d * 12, 205 + d * 68], lk: [128 - d * 42, 282 + d * 20], rk: [192 + d * 42, 282 + d * 20],
-    la: [119 - d * 27, 364], ra: [201 + d * 27, 364],
+    la: [119 - d * 27, 364], ra: [201 + d * 27, 364], lf: [143 - d * 27, 377], rf: [225 + d * 27, 377],
   };
   twins.forEach((svg) => {
     setTwinPoints(svg, points);
+    updateTwinAngleOverlay(svg, points, currentAssignment?.joint || "knee", Math.round(180 - d * 90));
     svg.classList.toggle("pulse", pulse);
     if (pulse) setTimeout(() => svg.classList.remove("pulse"), 300);
   });
@@ -1191,19 +1367,48 @@ function updateSyntheticTwin(depth = 0, pulse = false) {
 function updateTwinFromLandmarks(landmarks) {
   const svg = document.querySelector("#movement-twin");
   if (!svg) return;
-  const map = { head:0, ls:11, rs:12, le:13, re:14, lw:15, rw:16, lh:23, rh:24, lk:25, rk:26, la:27, ra:28 };
+  const map = { head:0, ls:11, rs:12, le:13, re:14, lw:15, rw:16, lh:23, rh:24, lk:25, rk:26, la:27, ra:28, lf:31, rf:32 };
   const raw = {};
   Object.entries(map).forEach(([name, index]) => { raw[name] = [40 + (1 - landmarks[index].x) * 240, 22 + landmarks[index].y * 350]; });
   raw.neck = [(raw.ls[0] + raw.rs[0]) / 2, (raw.ls[1] + raw.rs[1]) / 2 - 10];
+  lastTwinPoints = raw;
   setTwinPoints(svg, raw);
 }
 
 function setTwinPoints(svg, points) {
   Object.entries(points).forEach(([name, [x, y]]) => { const joint = svg.querySelector(`#joint-${name}`); if (joint) { joint.setAttribute("cx", x); joint.setAttribute("cy", y); } });
-  [["ls","rs"],["ls","le"],["le","lw"],["rs","re"],["re","rw"],["ls","lh"],["rs","rh"],["lh","rh"],["lh","lk"],["lk","la"],["rh","rk"],["rk","ra"],["neck","head"]].forEach(([a,b]) => {
+  [["ls","rs"],["ls","le"],["le","lw"],["rs","re"],["re","rw"],["ls","lh"],["rs","rh"],["lh","rh"],["lh","lk"],["lk","la"],["la","lf"],["rh","rk"],["rk","ra"],["ra","rf"],["neck","head"]].forEach(([a,b]) => {
     const bone = svg.querySelector(`#bone-${a}-${b}`);
-    if (bone) { bone.setAttribute("x1", points[a][0]); bone.setAttribute("y1", points[a][1]); bone.setAttribute("x2", points[b][0]); bone.setAttribute("y2", points[b][1]); }
+    if (bone && points[a] && points[b]) { bone.setAttribute("x1", points[a][0]); bone.setAttribute("y1", points[a][1]); bone.setAttribute("x2", points[b][0]); bone.setAttribute("y2", points[b][1]); }
   });
+}
+
+function updateTwinAngleOverlay(svg, points, joint = "knee", angleValue = null) {
+  if (!svg || !points) return;
+  const triplets = {
+    knee: ["lh", "lk", "la"],
+    hip: ["ls", "lh", "lk"],
+    ankle: ["lk", "la", "lf"],
+  };
+  const [aKey, bKey, cKey] = triplets[joint] || triplets.knee;
+  const a = points[aKey], b = points[bKey], c = points[cKey];
+  if (!a || !b || !c) return;
+  const normalize = ([x, y]) => { const length = Math.hypot(x, y) || 1; return [x / length, y / length]; };
+  const u = normalize([a[0] - b[0], a[1] - b[1]]);
+  const v = normalize([c[0] - b[0], c[1] - b[1]]);
+  const radius = 30;
+  const start = [b[0] + u[0] * radius, b[1] + u[1] * radius];
+  const end = [b[0] + v[0] * radius, b[1] + v[1] * radius];
+  const sweep = u[0] * v[1] - u[1] * v[0] > 0 ? 1 : 0;
+  const bisectorRaw = [u[0] + v[0], u[1] + v[1]];
+  const bisector = Math.hypot(...bisectorRaw) < .15 ? normalize([-u[1], u[0]]) : normalize(bisectorRaw);
+  const textPoint = [b[0] + bisector[0] * 48, b[1] + bisector[1] * 48];
+  const arc = svg.querySelector("#twin-angle-arc");
+  const anchor = svg.querySelector("#twin-angle-anchor");
+  const label = svg.querySelector("#twin-angle");
+  arc?.setAttribute("d", `M ${start[0].toFixed(1)} ${start[1].toFixed(1)} A ${radius} ${radius} 0 0 ${sweep} ${end[0].toFixed(1)} ${end[1].toFixed(1)}`);
+  anchor?.setAttribute("cx", b[0]); anchor?.setAttribute("cy", b[1]);
+  if (label) { label.setAttribute("x", textPoint[0]); label.setAttribute("y", textPoint[1]); label.textContent = Number.isFinite(angleValue) ? `${Math.round(angleValue)}°` : "—"; }
 }
 
 function replaySelectedRep() {
@@ -1426,7 +1631,33 @@ function bindEvents() {
   document.querySelector("#connection-form")?.addEventListener("submit", submitConnectionCode);
   document.querySelector("#invite-patient-form")?.addEventListener("submit", submitPatientInvitation);
   document.querySelector("#plan-builder-form")?.addEventListener("submit", submitPersonalPlan);
+  document.querySelectorAll("[data-therapist-section]").forEach((element) => element.addEventListener("click", () => {
+    therapistSection = element.dataset.therapistSection;
+    therapistView();
+  }));
+  document.querySelectorAll(".prescription-toggle").forEach((toggle) => toggle.addEventListener("change", () => {
+    const selected = [...document.querySelectorAll(".prescription-toggle:checked")];
+    if (selected.length > 12) {
+      toggle.checked = false;
+      document.querySelector("#plan-result").textContent = "Choose no more than 12 exercises for one roadmap.";
+    }
+    const row = toggle.closest("[data-prescription-row]");
+    row?.querySelectorAll("input:not(.prescription-toggle):not([type='hidden'])").forEach((input) => { input.disabled = !toggle.checked; });
+    const count = document.querySelectorAll(".prescription-toggle:checked").length;
+    setText("#selected-exercise-count", `${count} selected`);
+    row?.classList.toggle("selected", toggle.checked);
+  }));
+  document.querySelector("#exercise-library-search")?.addEventListener("input", (event) => {
+    exerciseLibraryQuery = event.currentTarget.value;
+    const query = exerciseLibraryQuery.trim().toLowerCase();
+    document.querySelectorAll("[data-library-exercise]").forEach((card) => { card.hidden = Boolean(query) && !card.textContent.toLowerCase().includes(query); });
+  });
   document.querySelectorAll("[data-approve-patient]").forEach((element) => element.addEventListener("click", approvePatient));
+  document.querySelector("[data-open-roadmap]")?.addEventListener("click", () => {
+    roadmapExpanded = !roadmapExpanded;
+    patientView();
+    if (roadmapExpanded) requestAnimationFrame(() => document.querySelector("#patient-exercises")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  });
   document.querySelectorAll("[data-start-assignment]").forEach((element) => element.addEventListener("click", () => {
     currentAssignment = patientWorkspace?.assignments?.find((assignment) => assignment.id === element.dataset.startAssignment) || null;
     if (currentAssignment) labView();

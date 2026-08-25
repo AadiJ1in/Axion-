@@ -1,11 +1,34 @@
 export const ONBOARDING_VERSION = 1;
 
 export const exerciseCatalog = {
-  bodyweight_squat: { name: "Bodyweight Squat", trackingMode: "pose_reps", focus: ["Depth", "Tempo", "Symmetry"] },
-  wall_sit: { name: "Wall Sit", trackingMode: "timed_hold", focus: ["Hold time", "Alignment", "Stability"] },
-  heel_raise: { name: "Heel Raises", trackingMode: "guided_reps", focus: ["Range", "Rhythm", "Control"] },
-  single_leg_balance: { name: "Single-leg Balance", trackingMode: "timed_hold", focus: ["Hold time", "Sway", "Control"] },
-  step_up: { name: "Step-ups", trackingMode: "guided_reps", focus: ["Tempo", "Control", "Symmetry"] },
+  bodyweight_squat: { name: "Bodyweight Squat", region: "Knee & hip", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee bend", "Tempo", "Symmetry"] },
+  half_squat: { name: "Half Squat", region: "Knee & hip", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee bend", "Control", "Alignment"] },
+  wall_sit: { name: "Wall Sit", region: "Knee & hip", trackingMode: "timed_hold", joint: "knee", defaultSets: 3, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Knee angle", "Stability"] },
+  step_up: { name: "Step-up", region: "Knee & hip", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee bend", "Tempo", "Symmetry"] },
+  hamstring_curl: { name: "Standing Hamstring Curl", region: "Knee", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee bend", "Control", "Tempo"] },
+  leg_extension: { name: "Leg Extension", region: "Knee", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee angle", "Control", "Tempo"] },
+  straight_leg_raise: { name: "Straight-Leg Raise", region: "Hip & knee", trackingMode: "pose_reps", joint: "hip", defaultSets: 3, defaultReps: 10, focus: ["Hip angle", "Control", "Alignment"] },
+  prone_hip_extension: { name: "Prone Hip Extension", region: "Hip", trackingMode: "pose_reps", joint: "hip", defaultSets: 3, defaultReps: 10, focus: ["Hip angle", "Control", "Tempo"] },
+  hip_abduction: { name: "Side-Lying Hip Abduction", region: "Hip", trackingMode: "pose_reps", joint: "hip", defaultSets: 3, defaultReps: 10, focus: ["Hip angle", "Pelvic control", "Tempo"] },
+  hip_adduction: { name: "Side-Lying Hip Adduction", region: "Hip", trackingMode: "pose_reps", joint: "hip", defaultSets: 3, defaultReps: 10, focus: ["Hip angle", "Control", "Tempo"] },
+  clamshell: { name: "Clamshell", region: "Hip", trackingMode: "guided_reps", joint: "hip", defaultSets: 1, defaultReps: 12, focus: ["Hip rotation", "Pelvic control", "Tempo"] },
+  reverse_clamshell: { name: "Reverse Clamshell", region: "Hip", trackingMode: "guided_reps", joint: "hip", defaultSets: 1, defaultReps: 12, focus: ["Hip rotation", "Control", "Tempo"] },
+  heel_raise: { name: "Calf Raise", region: "Foot & ankle", trackingMode: "pose_reps", joint: "ankle", defaultSets: 2, defaultReps: 10, focus: ["Ankle angle", "Rhythm", "Control"] },
+  ankle_dorsiflexion: { name: "Ankle Dorsiflexion", region: "Foot & ankle", trackingMode: "pose_reps", joint: "ankle", defaultSets: 3, defaultReps: 10, focus: ["Ankle angle", "Control", "Tempo"] },
+  ankle_plantar_flexion: { name: "Ankle Plantar Flexion", region: "Foot & ankle", trackingMode: "pose_reps", joint: "ankle", defaultSets: 3, defaultReps: 10, focus: ["Ankle angle", "Control", "Tempo"] },
+  single_leg_balance: { name: "Single-Leg Balance", region: "Balance", trackingMode: "timed_hold", joint: "knee", defaultSets: 3, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Sway", "Control"] },
+  heel_cord_stretch: { name: "Heel Cord Stretch", region: "Foot & ankle", trackingMode: "timed_hold", joint: "ankle", defaultSets: 2, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Ankle angle", "Alignment"] },
+  bent_knee_heel_cord_stretch: { name: "Bent-Knee Heel Cord Stretch", region: "Foot & ankle", trackingMode: "timed_hold", joint: "ankle", defaultSets: 2, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Ankle angle", "Control"] },
+  standing_quad_stretch: { name: "Standing Quadriceps Stretch", region: "Knee", trackingMode: "timed_hold", joint: "knee", defaultSets: 2, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Knee angle", "Balance"] },
+  supine_hamstring_stretch: { name: "Supine Hamstring Stretch", region: "Knee & hip", trackingMode: "timed_hold", joint: "hip", defaultSets: 2, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Hip angle", "Control"] },
+  towel_curl: { name: "Towel Curl", region: "Foot & ankle", trackingMode: "guided_reps", joint: "ankle", defaultSets: 2, defaultReps: 10, focus: ["Completion", "Control", "Tempo"] },
+  ankle_range_of_motion: { name: "Ankle Range of Motion", region: "Foot & ankle", trackingMode: "guided_reps", joint: "ankle", defaultSets: 2, defaultReps: 10, focus: ["Range", "Control", "Tempo"] },
+};
+
+export const exerciseCatalogSource = {
+  name: "AAOS OrthoInfo conditioning programs",
+  url: "https://orthoinfo.aaos.org/en/recovery/",
+  note: "Therapist selection and dosage are required. Patients should stop if an exercise causes pain and contact their clinician.",
 };
 
 export function assignmentDetails(assignment = {}) {
@@ -15,6 +38,8 @@ export function assignmentDetails(assignment = {}) {
     display_name: assignment.display_name || catalog.name || "Assigned exercise",
     tracking_mode: assignment.tracking_mode || catalog.trackingMode || "guided_reps",
     focus: catalog.focus || ["Range", "Rhythm", "Control"],
+    joint: catalog.joint || "knee",
+    region: catalog.region || "General",
   };
 }
 
@@ -115,6 +140,49 @@ export async function loadTherapistConnections(client, therapistId) {
   return relationships.map((relationship) => ({ ...relationship, profile: byId.get(relationship.patient_id) })).filter((item) => item.profile);
 }
 
+export async function loadTherapistWorkspace(client, therapistId, patientIds = []) {
+  const plans = await throwIfError(
+    await client.from("exercise_plans")
+      .select("id, therapist_id, patient_id, title, program_label, phase_label, instructions, status, start_date, created_at")
+      .eq("therapist_id", therapistId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    "Could not load recovery roadmaps"
+  ) || [];
+  const planIds = plans.map((plan) => plan.id);
+  const assignments = planIds.length
+    ? await throwIfError(
+      await client.from("exercise_assignments")
+        .select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, target_sets, target_repetitions, duration_seconds, instructions, status")
+        .in("plan_id", planIds)
+        .order("sequence"),
+      "Could not load roadmap exercises"
+    ) || []
+    : [];
+  const sessions = patientIds.length
+    ? await throwIfError(
+      await client.from("exercise_sessions")
+        .select("id, patient_id, assignment_id, exercise_key, repetitions, duration_seconds, difficulty, discomfort, completed_at, created_at")
+        .in("patient_id", patientIds)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      "Could not load patient check-ins"
+    ) || []
+    : [];
+  const alertsResult = await client.from("therapist_alerts")
+    .select("id, therapist_id, patient_id, alert_type, title, explanation, status, created_at")
+    .eq("therapist_id", therapistId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  return {
+    plans,
+    assignments: assignments.map(assignmentDetails),
+    sessions,
+    alerts: alertsResult.error ? [] : (alertsResult.data || []),
+  };
+}
+
 export async function loadMovementReport(client, patientId) {
   if (!patientId) throw new Error("Choose a patient before opening a movement report.");
   return throwIfError(
@@ -138,19 +206,30 @@ export async function approvePatientConnection(client, therapistId, patientId, i
 }
 
 export async function createPersonalPlan(client, therapistId, patientId, input) {
-  const exerciseKeys = [...new Set((input.exerciseKeys?.length ? input.exerciseKeys : [input.exerciseKey || "bodyweight_squat"]).filter((key) => exerciseCatalog[key]))];
-  if (!exerciseKeys.length) throw new Error("Choose at least one supported exercise.");
+  const seen = new Set();
+  const exercises = (input.exercises || []).filter((item) => {
+    if (!exerciseCatalog[item.exerciseKey] || seen.has(item.exerciseKey)) return false;
+    seen.add(item.exerciseKey);
+    return true;
+  }).map((item) => {
+    const catalog = exerciseCatalog[item.exerciseKey];
+    return {
+      exercise_key: item.exerciseKey,
+      sets: Number(item.sets) || catalog.defaultSets,
+      repetitions: Number(item.repetitions) || catalog.defaultReps,
+      duration_seconds: catalog.trackingMode === "timed_hold" ? (Number(item.durationSeconds) || catalog.defaultDuration || 30) : null,
+    };
+  });
+  if (!exercises.length) throw new Error("Choose at least one supported exercise.");
+  if (exercises.length > 12) throw new Error("Choose no more than 12 exercises for one roadmap.");
   return throwIfError(
-    await client.rpc("publish_patient_plan", {
+    await client.rpc("publish_patient_plan_v2", {
       p_patient_id: patientId,
       p_title: input.title.trim() || "Personal recovery roadmap",
       p_program_label: input.programLabel.trim() || "Personal recovery plan",
       p_phase_label: input.phaseLabel.trim() || "Getting started",
       p_instructions: input.instructions.trim() || "",
-      p_exercise_keys: exerciseKeys,
-      p_sets: Number(input.sets) || 3,
-      p_repetitions: Number(input.repetitions) || 10,
-      p_duration_seconds: Number(input.durationSeconds) || 30,
+      p_exercises: exercises,
     }),
     "Could not publish the recovery plan"
   );
