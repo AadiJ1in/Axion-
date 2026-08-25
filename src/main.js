@@ -15,6 +15,7 @@ import {
 
 const app = document.querySelector("#app");
 const uiScenario = new URLSearchParams(window.location.search).get("state");
+let passwordRecoveryMode = new URLSearchParams(window.location.search).get("reset") === "1";
 
 const previousSession = [
   { index: 1, depthAngle: 108, tempo: 3.2, symmetryDelta: 8.1, consistency: 76 },
@@ -704,7 +705,7 @@ function authView() {
       <section class="auth-card auth-card--portal">
         <div class="auth-brand"><span class="brand-symbol"><i></i><i></i></span><b>AXION</b></div>
         <span class="section-kicker">RECOVERY PLATFORM ACCESS</span><h1>Your care starts with your account.</h1><p>Every patient gets a private identity, one-time walkthrough, therapist-verified connection, personal roadmap, and their own Movement Science Lab.</p>
-        ${isConfigured ? `<form id="auth-form"><label>Email<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="password" type="password" minlength="8" required autocomplete="current-password"/></label><div id="auth-message" class="form-message"></div><button class="button button--primary" type="submit">Sign in securely ${icon("arrow", 16)}</button></form>` : `<div class="config-note"><span>Authentication is unavailable, but both synthetic demo roles are ready below.</span></div>`}
+        ${isConfigured ? `<form id="auth-form"><label>Email<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="password" type="password" minlength="8" required autocomplete="current-password"/></label><div id="auth-message" class="form-message"></div><button class="button button--primary" type="submit">Sign in securely ${icon("arrow", 16)}</button><button class="text-link" type="button" data-forgot-password>Forgot your password?</button></form>` : `<div class="config-note"><span>Authentication is unavailable, but both synthetic demo roles are ready below.</span></div>`}
         ${isConfigured ? `<details class="signup-panel"><summary>Create a new patient account</summary><form id="signup-form"><label>Full name<input id="signup-name" minlength="2" maxlength="80" required autocomplete="name" placeholder="Your name"/></label><label>Email<input id="signup-email" type="email" required autocomplete="email" placeholder="you@example.com"/></label><label>Password<input id="signup-password" type="password" minlength="12" maxlength="128" required autocomplete="new-password" aria-describedby="password-rules"/></label><small id="password-rules">Use 12+ characters with uppercase, lowercase, a number, and a symbol.</small><div id="signup-message" class="form-message"></div><button class="button button--ghost" type="submit">Create patient account ${icon("arrow",16)}</button></form></details>` : ""}
         <div class="demo-divider"><span>OR EXPLORE A SYNTHETIC ROLE</span></div>
         <div class="role-demo-grid">
@@ -1098,6 +1099,81 @@ function replaySelectedRep() {
   const timer = setInterval(() => { phase += 0.08; updateSyntheticTwin(Math.sin(Math.min(1, phase) * Math.PI) * 0.68); if (phase >= 1) { clearInterval(timer); button?.classList.remove("playing"); } }, 40);
 }
 
+function passwordResetView() {
+  currentView = "auth";
+  app.innerHTML = layout(`
+    <main class="auth-page container-wide">
+      <section class="auth-card auth-card--portal">
+        <div class="auth-brand"><span class="brand-symbol"><i></i><i></i></span><b>AXION</b></div>
+        <span class="section-kicker">SECURE ACCOUNT RECOVERY</span>
+        <h1>Choose a new password.</h1>
+        <p>This recovery link is tied to your authenticated account. Axion never receives your password.</p>
+        <form id="password-reset-form">
+          <label>New password<input id="new-password" type="password" minlength="12" maxlength="128" required autocomplete="new-password" aria-describedby="reset-password-rules"/></label>
+          <label>Confirm password<input id="confirm-password" type="password" minlength="12" maxlength="128" required autocomplete="new-password"/></label>
+          <small id="reset-password-rules">Use 12+ characters with uppercase, lowercase, a number, and a symbol.</small>
+          <div id="password-reset-message" class="form-message"></div>
+          <button class="button button--primary" type="submit">Save new password ${icon("arrow", 16)}</button>
+        </form>
+      </section>
+    </main>
+  `, { full: true });
+  bindEvents();
+}
+
+async function requestPasswordReset() {
+  const email = document.querySelector("#email")?.value.trim().toLowerCase();
+  const message = document.querySelector("#auth-message");
+  if (!email) {
+    message.textContent = "Enter your account email first, then request a password reset.";
+    document.querySelector("#email")?.focus();
+    return;
+  }
+  message.textContent = "Sending a secure recovery email…";
+  const redirectTo = `${window.location.origin}${window.location.pathname}?reset=1`;
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  message.textContent = error
+    ? error.message
+    : "If that account exists, a secure password-reset email is on the way. Open it in this browser.";
+}
+
+async function submitNewPassword(event) {
+  event.preventDefault();
+  const password = document.querySelector("#new-password").value;
+  const confirmation = document.querySelector("#confirm-password").value;
+  const message = document.querySelector("#password-reset-message");
+  if (password !== confirmation) {
+    message.textContent = "The passwords do not match.";
+    return;
+  }
+  if (password.length < 12 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    message.textContent = "Use at least 12 characters with uppercase, lowercase, a number, and a symbol.";
+    return;
+  }
+  message.textContent = "Securing your account…";
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    message.textContent = error.message;
+    return;
+  }
+  passwordRecoveryMode = false;
+  window.history.replaceState({}, "", window.location.pathname);
+  const { data: profile, error: profileError } = await supabase.from("profiles")
+    .select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days")
+    .eq("id", currentSession.user.id).single();
+  if (profileError) {
+    message.textContent = profileError.message;
+    return;
+  }
+  currentProfile = profile;
+  if (profile.role === "therapist") {
+    await loadAssignedPatients();
+    therapistView();
+  } else {
+    await routePatientPortal();
+  }
+}
+
 async function submitSignIn(event) {
   event.preventDefault();
   const email = document.querySelector("#email").value.trim();
@@ -1198,6 +1274,8 @@ function bindEvents() {
   }));
   document.querySelector("#replay-button")?.addEventListener("click", replaySelectedRep);
   document.querySelector("#auth-form")?.addEventListener("submit", submitSignIn);
+  document.querySelector("[data-forgot-password]")?.addEventListener("click", requestPasswordReset);
+  document.querySelector("#password-reset-form")?.addEventListener("submit", submitNewPassword);
   document.querySelector("#signup-form")?.addEventListener("submit", submitPatientSignUp);
   document.querySelector("#connection-form")?.addEventListener("submit", submitConnectionCode);
   document.querySelector("#invite-patient-form")?.addEventListener("submit", submitPatientInvitation);
@@ -1232,8 +1310,19 @@ async function bootstrap() {
   if (supabase) {
     const { data } = await supabase.auth.getSession();
     currentSession = data.session;
-    supabase.auth.onAuthStateChange((_event, session) => { currentSession = session; if (!session) currentProfile = null; });
+    supabase.auth.onAuthStateChange((event, session) => {
+      currentSession = session;
+      if (!session) currentProfile = null;
+      if (event === "PASSWORD_RECOVERY") {
+        passwordRecoveryMode = true;
+        passwordResetView();
+      }
+    });
     if (currentSession?.user) {
+      if (passwordRecoveryMode) {
+        passwordResetView();
+        return;
+      }
       const { data: profile } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", currentSession.user.id).single();
       currentProfile = profile;
       if (profile?.role === "therapist") {
