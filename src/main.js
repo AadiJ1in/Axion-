@@ -1367,7 +1367,7 @@ function updateLiveSession() {
   const joint = currentAssignment?.joint || exerciseCatalog[currentAssignment?.exercise_key]?.joint || "knee";
   const angleValue = last ? (last.jointAngle ?? last.depthAngle) : null;
   setText("#live-angle-label", `${joint.toUpperCase()} ANGLE`);
-  setText("#live-reps", sessionReps.length); setText("#live-depth", angleValue === null ? "—" : `${Math.round(angleValue)}°`); setText("#live-tempo", last ? `${last.movementRangeDegrees ?? "—"}°` : "—"); setText("#live-symmetry", last ? `${last.symmetryDelta ?? "—"}°` : "—");
+  setText("#live-reps", sessionReps.length);\n  setText("#live-depth", angleValue === null ? "—" : `${Math.round(angleValue)}°`);\n  setText("#live-tempo", last?.movementRangeDegrees == null ? "—" : `${last.movementRangeDegrees}°`);\n  setText("#live-symmetry", last?.symmetryDelta == null ? "—" : `${last.symmetryDelta}°`);
   const targetReps = demoScriptActive ? 5 : (currentAssignment?.target_repetitions || 10);
   setText("#energy-value", `${Math.min(100, Math.round((sessionReps.length / targetReps) * 100))}%`);
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
