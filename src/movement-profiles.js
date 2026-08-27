@@ -36,6 +36,8 @@ export const movementProfiles = {
   shoulder_external_rotation: rep("forearm_rotation", 10, { label: "Shoulder rotation", cameraHint: "Face the camera; keep elbow tucked and forearm visible." }),
   shoulder_internal_rotation: rep("forearm_rotation", 10, { label: "Shoulder rotation", cameraHint: "Face the camera; keep elbow tucked and forearm visible." }),
   scapular_retraction: rep("shoulder_span", 5, { label: "Shoulder-blade motion", unit: "%", cameraHint: "Face the camera with shoulders and hips visible." }),
+  assisted_shoulder_flexion: rep("wrist_elevation", 18, { label: "Shoulder elevation", cameraHint: "Use a side or front view with both hands and shoulders visible." }),
+  standing_shoulder_abduction: rep("wrist_elevation", 16, { label: "Shoulder elevation", cameraHint: "Face the camera with the working arm, shoulder, and hip visible." }),
 
   doorway_chest_stretch: hold("shoulder_opening", 8, { label: "Chest opening", cameraHint: "Use a front view with elbows and shoulders visible." }),
   wall_push_up: rep("elbow_flexion", 24, { label: "Elbow bend", cameraHint: "Use a side or ¾ view with shoulders, elbows, and wrists visible." }),
@@ -71,6 +73,7 @@ export const movementProfiles = {
   figure_four_stretch: hold("figure_four", 12, { label: "Hip position", cameraHint: "Use a front/¾ view with both knees and ankles visible." }),
 
   half_squat: rep("knee_bend", 22, { label: "Knee bend", cameraHint: "Use a front or ¾ full-body view." }),
+  sit_to_stand: rep("knee_bend", 24, { label: "Knee bend", cameraHint: "Use a side or ¾ full-body view with the entire chair visible." }),
   wall_sit: hold("knee_bend", 28, { label: "Knee bend", cameraHint: "Use a side or ¾ full-body view." }),
   leg_extension: rep("knee_extension", 24, { label: "Knee extension", cameraHint: "Use a side view with hip, knee, and ankle visible." }),
   straight_leg_raise: rep("hip_flexion", 16, { label: "Hip flexion", cameraHint: "Use a side view with shoulder, hip, knee, and ankle visible." }),
@@ -81,22 +84,27 @@ export const movementProfiles = {
   seated_hamstring_stretch: hold("torso_flexion", 8, { label: "Forward hinge", cameraHint: "Use a side view with ear, shoulder, hip, and knee visible." }),
 
   bodyweight_squat: rep("knee_bend", 28, { label: "Knee bend", cameraHint: "Use a front or ¾ full-body view." }),
+  forward_lunge: rep("knee_bend", 22, { label: "Front-knee bend", cameraHint: "Use a side or ¾ full-body view with both feet visible." }),
   step_up: rep("step_height", 12, { label: "Step height", bilateral: "alternate", cameraHint: "Use a side/¾ view with the step and both legs visible." }),
+  standing_hip_abduction: rep("hip_abduction", 10, { label: "Hip abduction", cameraHint: "Face the camera with both hips, knees, and ankles visible." }),
   terminal_knee_extension: rep("knee_extension", 14, { label: "Knee extension", cameraHint: "Use a side/¾ view with hip, knee, and ankle visible." }),
   heel_slide: rep("knee_bend", 20, { label: "Knee bend", cameraHint: "Use a side view with hip, knee, and heel visible." }),
 
   heel_raise: rep("heel_lift", 7, { label: "Heel lift", unit: "%", cameraHint: "Use a side/¾ full-body view with heels visible." }),
+  seated_calf_raise: rep("heel_lift", 5, { label: "Heel lift", unit: "%", cameraHint: "Use a close side/¾ view with knees, ankles, and heels visible." }),
   heel_cord_stretch: hold("ankle_dorsiflexion", 7, { label: "Ankle bend", cameraHint: "Use a side view with knee, ankle, heel, and toes visible." }),
   bent_knee_heel_cord_stretch: hold("ankle_dorsiflexion", 7, { label: "Ankle bend", cameraHint: "Use a side view with knee, ankle, heel, and toes visible." }),
   tibialis_raise: rep("toe_lift", 5, { label: "Toe lift", unit: "%", cameraHint: "Use a close side/¾ view with ankles, heels, and toes visible." }),
 
   ankle_dorsiflexion: rep("ankle_dorsiflexion", 7, { label: "Ankle bend", cameraHint: "Use a close side view with knee, ankle, heel, and toes visible." }),
+  ankle_pumps: rep("ankle_dorsiflexion", 7, { label: "Ankle motion", cameraHint: "Use a close side view with the working knee, ankle, heel, and toes visible." }),
   ankle_plantar_flexion: rep("ankle_plantarflexion", 7, { label: "Ankle point", cameraHint: "Use a close side view with knee, ankle, heel, and toes visible." }),
   ankle_range_of_motion: rep("foot_orbit", 8, { label: "Ankle path", unit: "%", cameraHint: "Use a close side/¾ view with the working foot visible." }),
   towel_curl: rep("toe_motion", 3, { label: "Forefoot motion", unit: "%", cameraHint: "Use a close side view of the working foot. Pose tracking may miss very small toe motion." }),
   toe_yoga: rep("toe_motion", 3, { label: "Forefoot motion", unit: "%", cameraHint: "Use a close side view of the working foot. Pose tracking may miss isolated toes." }),
 
   single_leg_balance: hold("single_leg_support", 10, { label: "Foot clearance", unit: "%", cameraHint: "Use a front full-body view with a stable support nearby." }),
+  marching_in_place: rep("step_height", 10, { label: "Alternating step height", unit: "%", bilateral: "alternate", cameraHint: "Use a front full-body view with both feet and a stable support visible." }),
   tandem_stance: hold("tandem_stance", 7, { label: "Stance position", unit: "%", cameraHint: "Use a front/¾ full-body view with both feet visible." }),
   heel_to_toe_walk: rep("gait_step", 8, { label: "Step motion", unit: "%", bilateral: "alternate", cameraHint: "Use a front full-body view with the walking path visible." }),
 };
