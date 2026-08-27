@@ -584,18 +584,19 @@ function labView() {
             <div class="tracking-chips">
               <span id="body-state"><i></i> Waiting for body</span>
               <span id="quality-state">Tracking quality: —</span>
+              <span>${icon("activity", 12)} ${movementProfile.mode === "hold" ? "Measured hold" : "Rep counter"}</span>
               <span>${icon("shield", 12)} On-device</span>
             </div>
           </div>
           <div class="motion-stage">
-            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera preview</b><small>Full body · front or ¾ view</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button><button id="recovery-demo">Use Demo Mode</button></div></div><span class="pane-label">YOU</span></div>
-            <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> Target range</div></div>
+            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera setup</b><small>${escapeHtml(movementProfile.cameraHint)}</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button><button id="recovery-demo">View tracker simulation</button></div></div><span class="pane-label">YOU</span></div>
+            <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> <span id="twin-target-label">${movementProfile.overlayJoint ? `${escapeHtml(movementProfile.overlayJoint)} angle` : "Movement path"}</span></div></div>
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
           <div class="live-metrics"><div><span>${timedExercise ? "HOLD" : "REPS"}</span><b><i id="live-reps">0</i><small>/ ${timedExercise ? `${assignment.duration_seconds || 30}s` : (demoScriptActive ? 5 : targetReps)}</small></b></div><div><span id="live-angle-label">${escapeHtml(jointLabel.toUpperCase())}</span><b id="live-depth">—</b></div><div><span>MOVEMENT RANGE</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
           <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S AXION COACH</small><p id="coach-message" aria-live="polite">${escapeHtml(assignment.instructions || "Stand naturally for three seconds. Axion will learn your baseline for this session.")}</p></div><span id="coach-state">READY</span></div>
           <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: demoScriptActive ? 5 : Math.min(targetReps, 30) }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
-          <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Restart camera scan</button><button class="button button--primary" id="run-demo">${icon("play", 17)} ${currentSession?.demo ? "Demo Mode" : "Preview movement tracking"} <small>${currentSession?.demo ? "70 sec" : "guided"}</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
+          <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Restart camera scan</button><button class="button button--primary" id="run-demo">${icon("play", 17)} ${currentSession?.demo ? "Synthetic product demo" : "View tracker simulation"} <small>${currentSession?.demo ? "70 sec" : "not saved"}</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
         </div>
         <aside class="journey-panel">
           <div class="journey-head"><span class="section-kicker">${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S ROADMAP</span><span>${escapeHtml(patientWorkspace?.plan?.phase_label || "Current phase")}</span></div>
@@ -1297,8 +1298,12 @@ async function initializeLab() {
       sessionReps.push({ ...rep, consistency });
       updateLiveSession();
     },
-    onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, message, stage, elapsedSeconds }) => {
-      setText("#live-angle-label", (angleLabel || "Joint angle").toUpperCase());
+    onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
+      const sideLabel = measurementSide ? `${measurementSide} ` : "";
+      setText("#live-angle-label", `${sideLabel}${angleLabel || "Joint angle"}`.toUpperCase());
+      setText("#twin-target-label", activeProfile.overlayJoint
+        ? `${measurementSide ? `${measurementSide} ` : ""}${activeProfile.overlayJoint} angle`
+        : "Movement path");
       setText("#live-reps", stage === "hold" ? Math.min(currentAssignment?.duration_seconds || 30, Math.round(elapsedSeconds || 0)) : reps);
       setText("#live-depth", jointAngle === null ? "—" : `${jointAngle}${measurementUnit}`);
       setText("#live-tempo", movementRange === null ? "—" : `${movementRange}${measurementUnit}`);
@@ -1309,6 +1314,7 @@ async function initializeLab() {
         activeProfile.overlayJoint,
         jointAngle,
         Boolean(activeProfile.overlayJoint),
+        measurementSide,
       );
       setText("#coach-message", message);
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
@@ -1672,7 +1678,7 @@ function updateSyntheticTwin(depth = 0, pulse = false) {
   twins.forEach((svg) => {
     setTwinPoints(svg, points);
     const profile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
-    updateTwinAngleOverlay(svg, points, profile.overlayJoint, Math.round(d * 90), Boolean(profile.overlayJoint));
+    updateTwinAngleOverlay(svg, points, profile.overlayJoint, Math.round(d * 90), Boolean(profile.overlayJoint), "left");
     svg.classList.toggle("pulse", pulse);
     if (pulse) setTimeout(() => svg.classList.remove("pulse"), 300);
   });
@@ -1697,25 +1703,29 @@ function setTwinPoints(svg, points) {
   });
 }
 
-function updateTwinAngleOverlay(svg, points, joint = null, angleValue = null, showAngle = true) {
+function updateTwinAngleOverlay(svg, points, joint = null, angleValue = null, showAngle = true, measurementSide = "left") {
   if (!svg || !points) return;
   const orbit = svg.querySelector(".angle-orbit");
   if (!showAngle) {
     orbit?.setAttribute("visibility", "hidden");
     return;
   }
-  orbit?.setAttribute("visibility", "visible");
+  const side = measurementSide === "right" ? "right" : "left";
   const triplets = {
-    knee: ["lh", "lk", "la"],
-    hip: ["ls", "lh", "lk"],
-    ankle: ["lk", "la", "lf"],
-    elbow: ["ls", "le", "lw"],
-    shoulder: ["le", "ls", "lh"],
-    torso: ["neck", "ls", "lh"],
+    knee: { left: ["lh", "lk", "la"], right: ["rh", "rk", "ra"] },
+    hip: { left: ["ls", "lh", "lk"], right: ["rs", "rh", "rk"] },
+    ankle: { left: ["lk", "la", "lf"], right: ["rk", "ra", "rf"] },
+    elbow: { left: ["ls", "le", "lw"], right: ["rs", "re", "rw"] },
+    shoulder: { left: ["le", "ls", "lh"], right: ["re", "rs", "rh"] },
+    torso: { left: ["neck", "ls", "lh"], right: ["neck", "rs", "rh"] },
   };
-  const [aKey, bKey, cKey] = triplets[joint] || triplets.knee;
+  const [aKey, bKey, cKey] = (triplets[joint] || triplets.knee)[side];
   const a = points[aKey], b = points[bKey], c = points[cKey];
-  if (!a || !b || !c) return;
+  if (!a || !b || !c || !Number.isFinite(angleValue)) {
+    orbit?.setAttribute("visibility", "hidden");
+    return;
+  }
+  orbit?.setAttribute("visibility", "visible");
   const normalize = ([x, y]) => { const length = Math.hypot(x, y) || 1; return [x / length, y / length]; };
   const u = normalize([a[0] - b[0], a[1] - b[1]]);
   const v = normalize([c[0] - b[0], c[1] - b[1]]);
@@ -1863,7 +1873,7 @@ async function requestPasswordReset() {
   const redirectTo = `${window.location.origin}/reset-password`;
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
   message.textContent = error
-    ? error.message
+    ? safeAuthMessage(error, "The recovery request could not be completed. Wait a moment and try again.")
     : "If that account exists, a secure password-reset email is on the way. Open it in this browser.";
 }
 
@@ -1883,7 +1893,7 @@ async function submitNewPassword(event) {
   message.textContent = "Securing your account…";
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
-    message.textContent = error.message;
+    message.textContent = safeAuthMessage(error, "The password could not be updated. Request a fresh recovery link and try again.");
     return;
   }
   passwordRecoveryMode = false;
@@ -1909,19 +1919,30 @@ async function submitSignIn(event) {
   const email = document.querySelector("#email").value.trim();
   const password = document.querySelector("#password").value;
   const message = document.querySelector("#auth-message");
+  const button = event.currentTarget.querySelector('[type="submit"]');
+  button.disabled = true;
   message.textContent = "Signing in…";
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) { message.textContent = error.message; return; }
-  currentSession = data.session;
-  const { data: profile } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", currentSession.user.id).single();
-  currentProfile = profile;
-  if (profile?.role === "therapist") { await loadAssignedPatients(); therapistView(); }
-  else { await routePatientPortal(); }
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) { message.textContent = safeAuthMessage(error, "Sign-in failed. Check your email and password, then try again."); return; }
+    currentSession = data.session;
+    const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", currentSession.user.id).single();
+    if (profileError || !profile) throw profileError || new Error("Profile unavailable");
+    currentProfile = profile;
+    if (profile.role === "therapist") { await loadAssignedPatients(); therapistView(); }
+    else { await routePatientPortal(); }
+  } catch (error) {
+    console.error("Secure sign-in routing failed:", error);
+    message.textContent = "Your account signed in, but the private workspace could not load. Try again.";
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function submitPatientSignUp(event) {
   event.preventDefault();
   const message = document.querySelector("#signup-message");
+  const button = event.currentTarget.querySelector('[type="submit"]');
   message.textContent = "Creating your private patient account…";
   const displayName = document.querySelector("#signup-name").value.trim();
   const email = document.querySelector("#signup-email").value.trim().toLowerCase();
@@ -1930,18 +1951,37 @@ async function submitPatientSignUp(event) {
     message.textContent = "Use at least 12 characters with uppercase, lowercase, a number, and a symbol.";
     return;
   }
-  const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } });
-  if (error) { message.textContent = error.message; return; }
-  if (!data.session) {
-    message.textContent = "Account created. Check your email to verify it, then return here to sign in and begin the one-time walkthrough.";
-    event.currentTarget.reset();
-    return;
+  button.disabled = true;
+  try {
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } });
+    if (error) { message.textContent = safeAuthMessage(error, "The account could not be created. Review the fields and try again."); return; }
+    if (!data.session) {
+      message.textContent = "If this address can be registered, check its inbox for the verification email, then return here to sign in.";
+      event.currentTarget.reset();
+      return;
+    }
+    currentSession = data.session;
+    const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", data.user.id).single();
+    if (profileError || !profile) throw profileError || new Error("Profile unavailable");
+    currentProfile = profile;
+    await routePatientPortal();
+  } catch (error) {
+    console.error("Secure signup routing failed:", error);
+    message.textContent = "Your account was created, but the private workspace could not load. Verify your email, then sign in.";
+  } finally {
+    button.disabled = false;
   }
-  currentSession = data.session;
-  const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", data.user.id).single();
-  if (profileError) { message.textContent = profileError.message; return; }
-  currentProfile = profile;
-  await routePatientPortal();
+}
+
+function safeAuthMessage(error, fallback) {
+  const code = String(error?.code || "").toLowerCase();
+  const status = Number(error?.status || 0);
+  if (code.includes("invalid_credentials")) return "Sign-in failed. Check your email and password, then try again.";
+  if (code.includes("email_not_confirmed")) return "Verify your email before signing in.";
+  if (code.includes("over_request_rate_limit") || status === 429) return "Too many attempts. Wait a few minutes before trying again.";
+  if (code.includes("weak_password")) return "Use 12+ characters with uppercase, lowercase, a number, and a symbol.";
+  if (code.includes("signup_disabled")) return "New account creation is temporarily unavailable.";
+  return fallback;
 }
 
 function setText(selector, text) { const element = document.querySelector(selector); if (element) element.textContent = text; }
