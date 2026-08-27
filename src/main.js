@@ -10,6 +10,7 @@ import {
   createPersonalPlan,
   createTherapistNote,
   exerciseCatalog,
+  exerciseCategoryOrder,
   exerciseCatalogSource,
   loadPatientWorkspace,
   loadMovementReport,
@@ -75,6 +76,7 @@ let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] 
 let therapistSection = "overview";
 let patientFilter = "all";
 let exerciseLibraryQuery = "";
+let exerciseLibraryCategory = "All";
 let roadmapExpanded = false;
 let patientRealtimeChannel = null;
 let patientRealtimeKey = null;
@@ -481,6 +483,34 @@ function roadmapPresentation(roadmap, completedSessions) {
   };
 }
 
+function exerciseGuideMarkup(exercise, { open = false, compact = false } = {}) {
+  const details = assignmentDetails(exercise.exercise_key ? exercise : { exercise_key: exercise.key, ...exercise });
+  return `<details class="exercise-guide ${compact ? "compact" : ""}" ${open ? "open" : ""}>
+    <summary>${icon("play", 14)} How to do this exercise</summary>
+    <div class="exercise-guide-body">
+      <div class="guide-setup"><span>${icon("activity", 15)}</span><div><small>SETUP & EQUIPMENT</small><p>${escapeHtml(details.equipment)}</p></div></div>
+      <p class="guide-summary">${escapeHtml(details.summary)}</p>
+      <ol>${details.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+      <div class="guide-columns"><div><small>FORM CUES</small><ul>${details.cues.map((cue) => `<li>${escapeHtml(cue)}</li>`).join("")}</ul></div><div class="guide-avoid"><small>AVOID</small><p>${escapeHtml(details.avoid)}</p></div></div>
+      <div class="guide-safety">${icon("shield", 14)}<span>${escapeHtml(details.safety)}</span></div>
+      <a class="guide-video" href="${escapeHtml(details.resourceUrl)}" target="_blank" rel="noopener noreferrer">${icon("play", 14)} Open trusted visual/video guide <span>${escapeHtml(details.resourceLabel)}</span></a>
+    </div>
+  </details>`;
+}
+
+function patientExerciseCard(assignment, index, sessions) {
+  const completed = sessions.some((session) => session.assignment_id === assignment.id);
+  const target = assignment.tracking_mode === "timed_hold"
+    ? `${assignment.target_sets || 1} sets · ${assignment.duration_seconds || 30} second hold`
+    : `${assignment.target_sets || 1} sets · ${assignment.target_repetitions || 10} repetitions`;
+  return `<article class="exercise-card ${index === 0 ? "exercise-card--primary" : ""} ${completed ? "complete" : ""}">
+    <div class="exercise-order">${String(index + 1).padStart(2, "0")}</div>
+    ${index === 0 ? `<div class="exercise-visual">${twinSvg()}</div>` : `<span class="exercise-icon">${icon(completed ? "check" : "activity", 24)}</span>`}
+    <div class="exercise-copy"><span class="live-pill">${completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${escapeHtml(assignment.summary)}</p><p>${target} · ${assignment.tracking_mode === "pose_reps" ? "automatic pose tracking" : assignment.tracking_mode.replace("_", " ")}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div>${assignment.instructions ? `<small><b>Therapist note:</b> ${escapeHtml(assignment.instructions)}</small>` : ""}${exerciseGuideMarkup(assignment, { compact: true })}</div>
+    <button class="button button--primary" data-start-assignment="${assignment.id}">${completed ? "Do again" : "Start exercise"} ${icon("arrow", 16)}</button>
+  </article>`;
+}
+
 function patientView() {
   currentView = "patient";
   stopDemo();
@@ -510,7 +540,7 @@ function patientView() {
         <div class="roadmap-focus"><span class="focus-icon">${icon("activity",19)}</span><div><small>CURRENT FOCUS</small><h3>${escapeHtml(activeStage?.title || "Your next milestone")}</h3><p>${escapeHtml(activeStage?.detail || "Complete your prescribed movements with control.")}</p></div><div class="focus-action"><small>${nextStage ? `${sessionsToReview} SESSION${sessionsToReview === 1 ? "" : "S"} TO REVIEW` : "FINAL MILESTONE"}</small><button class="roadmap-open-button" data-open-roadmap>${roadmapExpanded ? "Hide exercises" : `View ${assignments.length} prescribed exercise${assignments.length === 1 ? "" : "s"}`} ${icon(roadmapExpanded ? "back" : "arrow",16)}</button></div></div>
         <div class="roadmap-governance">${icon("shield",15)} <span><b>Clinician controlled</b> · ${escapeHtml(therapistName)} reviews milestones and unlocks progression.</span><strong id="roadmap-live-state">Updated live</strong></div>
       </article><aside class="patient-side-stack"><article class="daily-goal-card"><div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32"/></svg><b>${Math.min(weeklySessions,3)}/3</b></div><div><span class="section-kicker">WEEKLY GOAL</span><h3>${weeklySessions >= 3 ? "Weekly goal complete." : `${3 - weeklySessions} session${3 - weeklySessions === 1 ? "" : "s"} to your goal.`}</h3><p>Only completed sessions from your account count here.</p></div></article><article class="reward-card"><span>${icon("activity",24)}</span><div><small>MY MOVEMENT SCIENCE LAB</small><h3>Calibrated per session</h3><p>Your assignment, camera landmarks, and movement summary stay tied to your patient ID.</p></div></article></aside></section>
-      <section id="patient-exercises" class="today-plan ${roadmapExpanded ? "expanded" : "collapsed"}"><div class="section-heading compact"><div><span class="section-kicker">YOUR PRESCRIPTION</span><h2>${assignments.length} exercise${assignments.length === 1 ? "" : "s"} from your therapist.</h2></div><p>Prescribed by ${escapeHtml(therapistName)}</p></div><div class="exercise-list">${assignments.length ? assignments.map((assignment,index) => { const completed = sessions.some((session) => session.assignment_id === assignment.id); const target = assignment.tracking_mode === "timed_hold" ? `${assignment.target_sets || 1} sets · ${assignment.duration_seconds || 30} second hold` : `${assignment.target_sets || 1} sets · ${assignment.target_repetitions || 10} repetitions`; return `<article class="exercise-card ${index === 0 ? "exercise-card--primary" : ""} ${completed ? "complete" : ""}"><div class="exercise-order">${String(index+1).padStart(2,"0")}</div>${index === 0 ? `<div class="exercise-visual">${twinSvg()}</div>` : `<span class="exercise-icon">${icon(completed ? "check" : "activity",24)}</span>`}<div class="exercise-copy"><span class="live-pill">${completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${target} · ${assignment.tracking_mode === "pose_reps" ? "automatic pose tracking" : assignment.tracking_mode.replace("_", " ")}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div>${assignment.instructions ? `<small>${escapeHtml(assignment.instructions)}</small>` : ""}</div><button class="button button--primary" data-start-assignment="${assignment.id}">${completed ? "Do again" : "Start exercise"} ${icon("arrow",16)}</button></article>`; }).join("") : `<div class="empty-state"><span>${icon("map",24)}</span><h3>Your prescription is being prepared</h3><p>${escapeHtml(therapistName)} has not added an active exercise yet.</p></div>`}</div></section>
+      <section id="patient-exercises" class="today-plan ${roadmapExpanded ? "expanded" : "collapsed"}"><div class="section-heading compact"><div><span class="section-kicker">YOUR PRESCRIPTION</span><h2>${assignments.length} exercise${assignments.length === 1 ? "" : "s"} from your therapist.</h2></div><p>Prescribed by ${escapeHtml(therapistName)}</p></div><div class="exercise-list">${assignments.length ? assignments.map((assignment, index) => patientExerciseCard(assignment, index, sessions)).join("") : `<div class="empty-state"><span>${icon("map",24)}</span><h3>Your prescription is being prepared</h3><p>${escapeHtml(therapistName)} has not added an active exercise yet.</p></div>`}</div></section>
     </main>
   `, { full: true });
   bindEvents();
@@ -540,6 +570,7 @@ function labView() {
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
       </div>
       <div class="personal-lab-banner container-wide">${icon("shield", 17)}<div><small>PRIVATE PATIENT LAB</small><b>${escapeHtml(patientName)} · ${escapeHtml(patientWorkspace?.plan?.title || "Personal recovery plan")}</b></div><span>Session summaries save only to this patient account</span></div>
+      <section class="lab-exercise-guide container-wide"><div><span class="section-kicker">BEFORE YOU MOVE</span><h2>Review your setup and technique</h2><p>Axion can help count supported movements, but your therapist’s form and safety instructions come first.</p></div>${exerciseGuideMarkup(assignment, { open: true })}</section>
       <section class="motion-workspace container-wide">
         <div class="capture-panel">
           <div class="panel-topline">
@@ -970,8 +1001,20 @@ function renderTherapistAlerts(isDemoTherapist) {
 
 function renderExerciseLibrary() {
   const query = exerciseLibraryQuery.trim().toLowerCase();
-  const entries = Object.entries(exerciseCatalog).filter(([, exercise]) => !query || `${exercise.name} ${exercise.region} ${exercise.focus.join(" ")}`.toLowerCase().includes(query));
-  return `<section class="exercise-library-card"><div class="library-head"><div><span class="section-kicker">EXERCISE LIBRARY</span><h2>${Object.keys(exerciseCatalog).length} therapist-prescribed movements</h2><p>Search by movement, body region, or tracked metric.</p></div><label>${icon("search",16)}<input id="exercise-library-search" value="${escapeHtml(exerciseLibraryQuery)}" placeholder="Search exercises"/></label></div><div class="library-grid">${entries.map(([key, exercise]) => `<article data-library-exercise="${key}"><span>${escapeHtml(exercise.region)}</span><h3>${escapeHtml(exercise.name)}</h3><p>${escapeHtml(exercise.focus.join(" · "))}</p><div><small>${exercise.defaultSets} sets</small><small>${exercise.trackingMode === "timed_hold" ? `${exercise.defaultDuration || 30}s hold` : `${exercise.defaultReps} reps`}</small><small>${escapeHtml(exercise.joint)} angle</small></div></article>`).join("") || `<div class="empty-state"><h3>No exercises match that search.</h3></div>`}</div><footer>Source: <a href="${exerciseCatalogSource.url}" target="_blank" rel="noreferrer">${escapeHtml(exerciseCatalogSource.name)}</a>. ${escapeHtml(exerciseCatalogSource.note)}</footer></section>`;
+  const filtered = Object.entries(exerciseCatalog).filter(([, exercise]) => {
+    const categoryMatch = exerciseLibraryCategory === "All" || exercise.category === exerciseLibraryCategory;
+    const queryMatch = !query || `${exercise.name} ${exercise.category} ${exercise.focus.join(" ")} ${exercise.summary}`.toLowerCase().includes(query);
+    return categoryMatch && queryMatch;
+  });
+  const groups = exerciseCategoryOrder.map((category) => [category, filtered.filter(([, exercise]) => exercise.category === category)]).filter(([, entries]) => entries.length);
+  const categoryButtons = ["All", ...exerciseCategoryOrder].map((category) => {
+    const count = category === "All" ? Object.keys(exerciseCatalog).length : Object.values(exerciseCatalog).filter((exercise) => exercise.category === category).length;
+    return `<button class="${exerciseLibraryCategory === category ? "active" : ""}" data-library-category="${escapeHtml(category)}">${escapeHtml(category)} <span>${count}</span></button>`;
+  }).join("");
+  return `<section class="exercise-library-card"><div class="library-head"><div><span class="section-kicker">CLINICIAN EXERCISE LIBRARY</span><h2>${Object.keys(exerciseCatalog).length} guided movements · 14 body sections</h2><p>Search or filter by anatomy. Open any card to review patient instructions before prescribing it.</p></div><label>${icon("search",16)}<input id="exercise-library-search" value="${escapeHtml(exerciseLibraryQuery)}" placeholder="Search exercise, muscle, or goal"/></label></div>
+    <div class="library-category-nav" aria-label="Exercise body sections">${categoryButtons}</div>
+    <div class="library-sections">${groups.map(([category, entries]) => `<section data-library-section="${escapeHtml(category)}"><div class="library-section-heading"><div><span>${icon("activity", 16)}</span><h3>${escapeHtml(category)}</h3></div><small>${entries.length} movement${entries.length === 1 ? "" : "s"}</small></div><div class="library-grid">${entries.map(([key, exercise]) => `<article data-library-exercise="${key}"><span>${escapeHtml(exercise.category)}</span><h3>${escapeHtml(exercise.name)}</h3><p>${escapeHtml(exercise.summary)}</p><div class="library-dose"><small>${exercise.defaultSets} sets</small><small>${exercise.trackingMode === "timed_hold" ? `${exercise.defaultDuration || 30}s hold` : `${exercise.defaultReps} reps`}</small><small>${escapeHtml(exercise.trackingMode.replaceAll("_", " "))}</small></div>${exerciseGuideMarkup({ key, ...exercise }, { compact: true })}</article>`).join("")}</div></section>`).join("") || `<div class="empty-state"><h3>No exercises match that search and body section.</h3><p>Clear the search or select another section.</p></div>`}</div>
+    <footer>Guidance reviewed from <a href="${exerciseCatalogSource.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(exerciseCatalogSource.name)}</a>. ${escapeHtml(exerciseCatalogSource.note)}</footer></section>`;
 }
 
 function therapistView() {
@@ -1978,7 +2021,15 @@ function bindEvents() {
     exerciseLibraryQuery = event.currentTarget.value;
     const query = exerciseLibraryQuery.trim().toLowerCase();
     document.querySelectorAll("[data-library-exercise]").forEach((card) => { card.hidden = Boolean(query) && !card.textContent.toLowerCase().includes(query); });
+    document.querySelectorAll("[data-library-section]").forEach((section) => {
+      section.hidden = ![...section.querySelectorAll("[data-library-exercise]")].some((card) => !card.hidden);
+    });
   });
+  document.querySelectorAll("[data-library-category]").forEach((button) => button.addEventListener("click", () => {
+    exerciseLibraryCategory = button.dataset.libraryCategory;
+    therapistView();
+    requestAnimationFrame(() => document.querySelector(".exercise-library-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }));
   document.querySelectorAll("[data-approve-patient]").forEach((element) => element.addEventListener("click", approvePatient));
   document.querySelector("[data-open-roadmap]")?.addEventListener("click", () => {
     roadmapExpanded = !roadmapExpanded;
