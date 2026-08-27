@@ -9,7 +9,7 @@ const sources = {
 };
 
 const ex = (name, category, trackingMode, joint, sets, reps, focus, summary, equipment, steps, cues, avoid, source, duration) => ({
-  name, category, region: category, trackingMode, joint, defaultSets: sets, defaultReps: reps,
+  name, category, region: category, trackingMode: trackingMode === "guided_reps" ? "pose_reps" : trackingMode, joint, defaultSets: sets, defaultReps: reps,
   ...(duration ? { defaultDuration: duration } : {}), focus, summary, equipment, steps, cues, avoid,
   safety: "Use only as prescribed. Stop for sharp or increasing pain, dizziness, new numbness, or loss of balance, and contact your care team.",
   resourceLabel: source.label, resourceUrl: source.url,
