@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 4173",
-    "check": "node --check src/main.js && node --check src/pose.js && node --check src/supabase.js && node scripts/smoke-test.mjs"
+    "check": "node --check src/main.js && node --check src/pose.js && node --check src/supabase.js && node --check src/exercise-catalog.js && node scripts/smoke-test.mjs"
   }
 }
