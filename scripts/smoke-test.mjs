@@ -34,6 +34,7 @@ const requirements = [
   [files.pose, "multiple_people", "multi-person camera state"],
   [files.pose, "permission_denied", "permission camera state"],
   [files.pose, "camera_disconnected", "disconnect camera state"],
+  [files.pose, "Starting compatibility mode", "CPU pose-model fallback"],
   [files.pose, "createMovementTracker", "exercise-specific movement tracker"],
   [files.pose, "createRepCycleDetector", "deterministic repetition cycle detector"],
   [files.pose, "profile.minActiveFrames", "profile-specific activation debounce"],
