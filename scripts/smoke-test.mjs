@@ -140,6 +140,8 @@ if (cssBalance !== 0) throw new Error("Unbalanced CSS braces.");
 
 JSON.parse(files.vercel);
 if (files.vercel.includes("kxhmrfgolttrofpumqpy")) throw new Error("CSP still references the retired Supabase project.");
+if (!files.vercel.includes("'wasm-unsafe-eval'")) throw new Error("CSP must permit WebAssembly compilation for the MediaPipe pose model.");
+if (files.vercel.includes("'unsafe-eval'")) throw new Error("CSP must not permit unrestricted JavaScript eval.");
 if (files.main.includes("onclick=")) throw new Error("Inline event handlers are blocked by the production CSP.");
 
 console.log(`Axion smoke test passed: ${requirements.length} feature markers, 70-second script, balanced CSS.`);
