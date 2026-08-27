@@ -5,6 +5,67 @@ const MODEL_URL =
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+// Pure, deterministic hysteresis used by the live tracker and the test suite.
+// A repetition requires a sustained movement away from baseline and a sustained,
+// controlled return. Brief landmark noise cannot increment the counter.
+export function createRepCycleDetector(profile) {
+  let stage = "up";
+  let activeFrames = 0;
+  let returnFrames = 0;
+  let repStart = null;
+  let lastRepFinishedAt = -Infinity;
+
+  return {
+    update(movementDelta, now) {
+      let started = false;
+      let completed = false;
+      let discarded = false;
+      let durationMs = null;
+
+      if (!Number.isFinite(movementDelta)) {
+        activeFrames = 0;
+        returnFrames = 0;
+        return { stage, started, completed, discarded, durationMs };
+      }
+
+      if (movementDelta >= profile.startThreshold) {
+        activeFrames += 1;
+        returnFrames = 0;
+        if (activeFrames >= profile.minActiveFrames && stage !== "down") {
+          stage = "down";
+          repStart = now;
+          started = true;
+        }
+      } else if (movementDelta <= profile.returnThreshold) {
+        returnFrames += 1;
+        activeFrames = 0;
+        if (stage === "down" && returnFrames >= profile.minReturnFrames) {
+          durationMs = repStart == null ? 0 : now - repStart;
+          completed = durationMs >= profile.minRepMs
+            && durationMs <= profile.maxRepMs
+            && now - lastRepFinishedAt >= 300;
+          discarded = !completed;
+          if (completed) lastRepFinishedAt = now;
+          stage = "up";
+          repStart = null;
+        }
+      } else {
+        activeFrames = 0;
+        returnFrames = 0;
+      }
+
+      return { stage, started, completed, discarded, durationMs };
+    },
+    reset() {
+      stage = "up";
+      activeFrames = 0;
+      returnFrames = 0;
+      repStart = null;
+      lastRepFinishedAt = -Infinity;
+    },
+  };
+}
+
 export async function createMovementTracker({
   video,
   canvas,
@@ -26,8 +87,7 @@ export async function createMovementTracker({
   let lastVideoTime = -1;
   let stage = "up";
   let reps = 0;
-  let lowFrames = 0;
-  let highFrames = 0;
+  const repCycle = createRepCycleDetector(profile);
   let sessionStart = null;
   let repStart = null;
   let peakAngle = null;
@@ -45,11 +105,11 @@ export async function createMovementTracker({
   let latestAngle = null;
   let latestSymmetryDelta = null;
   let latestMovementRange = null;
+  let latestMeasurementSide = null;
   let holdElapsedMs = 0;
   let holdLastFrame = null;
   let activeFrames = 0;
   let lastActiveMovementAt = 0;
-  let lastRepFinishedAt = 0;
   const repHistory = [];
 
   async function initialize() {
@@ -162,21 +222,25 @@ export async function createMovementTracker({
     }
 
     if (metrics.value === null) {
-      lowFrames = 0;
-      highFrames = 0;
       onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: profile.cameraHint });
       return;
     }
 
-    const sideDeltas = [
-      metrics.left !== null && baselineLeft !== null ? Math.abs(metrics.left - baselineLeft) : null,
-      metrics.right !== null && baselineRight !== null ? Math.abs(metrics.right - baselineRight) : null,
-    ].filter(Number.isFinite);
+    const leftDelta = metrics.left !== null && baselineLeft !== null ? Math.abs(metrics.left - baselineLeft) : null;
+    const rightDelta = metrics.right !== null && baselineRight !== null ? Math.abs(metrics.right - baselineRight) : null;
+    const sideDeltas = [leftDelta, rightDelta].filter(Number.isFinite);
     const averageDelta = Math.abs(metrics.value - baselineAngle);
-    const movementDelta = profile.bilateral === "alternate" && sideDeltas.length ? Math.max(...sideDeltas) : averageDelta;
-    latestAngle = metrics.value;
+    // Use the side actually moving most. Averaging a working limb with a still limb
+    // previously halved unilateral excursion and made valid reps harder to capture.
+    const movementDelta = sideDeltas.length ? Math.max(...sideDeltas) : averageDelta;
+    const measurementSide = Number.isFinite(leftDelta) || Number.isFinite(rightDelta)
+      ? ((leftDelta ?? -Infinity) >= (rightDelta ?? -Infinity) ? "left" : "right")
+      : null;
+    const displayValue = measurementSide && Number.isFinite(metrics[measurementSide]) ? metrics[measurementSide] : metrics.value;
+    latestAngle = displayValue;
     latestSymmetryDelta = metrics.symmetryDelta;
     latestMovementRange = movementDelta;
+    latestMeasurementSide = measurementSide;
     if (profile.mode === "hold") {
       if (profile.activeMotion && movementDelta >= profile.startThreshold) lastActiveMovementAt = now;
       const active = profile.activeMotion
@@ -194,43 +258,34 @@ export async function createMovementTracker({
         stage = "positioning";
       }
       const elapsedSeconds = holdElapsedMs / 1000;
-      onUpdate({ reps: 0, stage, angle: Math.round(metrics.value), jointAngle: Math.round(metrics.value), angleLabel: profile.label, measurementUnit: profile.unit, movementRange: Math.round(movementDelta), symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)), elapsedSeconds, message: stage === "hold" ? "Position detected. Hold steady and keep breathing." : `Move into the prescribed position. ${profile.cameraHint}` });
+      onUpdate({ reps: 0, stage, angle: Math.round(displayValue), jointAngle: Math.round(displayValue), angleLabel: profile.label, measurementUnit: profile.unit, movementRange: Math.round(movementDelta), symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)), measurementSide, elapsedSeconds, message: stage === "hold" ? "Position detected. Hold steady and keep breathing." : `Move into the prescribed position. ${profile.cameraHint}` });
       return;
     }
 
     if (repStart) {
       if (movementDelta >= peakDelta) {
         peakDelta = movementDelta;
-        peakAngle = metrics.value;
+        peakAngle = displayValue;
       }
       if (metrics.symmetryDelta !== null) symmetrySamples.push(metrics.symmetryDelta);
     }
 
-    if (movementDelta >= profile.startThreshold) {
-      lowFrames += 1;
-      highFrames = 0;
-      if (lowFrames >= profile.minActiveFrames && stage !== "down") {
-        stage = "down";
-        repStart = now;
-        peakAngle = metrics.value;
-        peakDelta = movementDelta;
-        symmetrySamples = metrics.symmetryDelta === null ? [] : [metrics.symmetryDelta];
-      }
-    } else if (movementDelta <= profile.returnThreshold) {
-      highFrames += 1;
-      lowFrames = 0;
-      if (stage === "down" && highFrames >= profile.minReturnFrames) {
-        const repDuration = repStart ? now - repStart : 0;
-        if (repDuration >= profile.minRepMs && repDuration <= profile.maxRepMs && now - lastRepFinishedAt >= 300) {
-          reps += 1;
-          lastRepFinishedAt = now;
-          finishRep(now);
-        }
-        stage = "up";
-      }
-    } else {
-      lowFrames = 0;
-      highFrames = 0;
+    const cycle = repCycle.update(movementDelta, now);
+    stage = cycle.stage;
+    if (cycle.started) {
+      repStart = now;
+      peakAngle = displayValue;
+      peakDelta = movementDelta;
+      symmetrySamples = metrics.symmetryDelta === null ? [] : [metrics.symmetryDelta];
+    }
+    if (cycle.completed) {
+      reps += 1;
+      finishRep(now);
+    } else if (cycle.discarded) {
+      repStart = null;
+      peakAngle = null;
+      peakDelta = 0;
+      symmetrySamples = [];
     }
 
     let message = "Ready for the next rep.";
@@ -251,6 +306,7 @@ export async function createMovementTracker({
       measurementUnit: profile.unit,
       movementRange: Math.round(movementDelta),
       symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)),
+      measurementSide,
       message,
     });
   }
@@ -349,8 +405,7 @@ export async function createMovementTracker({
   function reset() {
     reps = 0;
     stage = "up";
-    lowFrames = 0;
-    highFrames = 0;
+    repCycle.reset();
     repStart = null;
     peakAngle = null;
     peakDelta = 0;
@@ -359,11 +414,11 @@ export async function createMovementTracker({
     latestAngle = null;
     latestSymmetryDelta = null;
     latestMovementRange = null;
+    latestMeasurementSide = null;
     holdElapsedMs = 0;
     holdLastFrame = null;
     activeFrames = 0;
     lastActiveMovementAt = 0;
-    lastRepFinishedAt = 0;
     repHistory.length = 0;
     onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: "Session reset." });
   }
@@ -391,6 +446,7 @@ export async function createMovementTracker({
       jointAngle: latestAngle === null ? null : Math.round(latestAngle),
       movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange),
       symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)),
+      measurementSide: latestMeasurementSide,
       angleLabel: profile.label,
       measurementUnit: profile.unit,
       exerciseKey: profile.exerciseKey,
