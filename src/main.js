@@ -1,5 +1,6 @@
 import { isConfigured, supabase } from "./supabase.js";
-import { createSquatTracker } from "./pose.js";
+import { createMovementTracker } from "./pose.js";
+import { getMovementProfile } from "./movement-profiles.js";
 import {
   ONBOARDING_VERSION,
   approvePatientConnection,
@@ -503,10 +504,12 @@ function patientExerciseCard(assignment, index, sessions) {
   const target = assignment.tracking_mode === "timed_hold"
     ? `${assignment.target_sets || 1} sets · ${assignment.duration_seconds || 30} second hold`
     : `${assignment.target_sets || 1} sets · ${assignment.target_repetitions || 10} repetitions`;
+  const movementProfile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
+  const trackingLabel = movementProfile.mode === "hold" ? "camera-timed position hold" : "automatic exercise-specific rep tracking";
   return `<article class="exercise-card ${index === 0 ? "exercise-card--primary" : ""} ${completed ? "complete" : ""}">
     <div class="exercise-order">${String(index + 1).padStart(2, "0")}</div>
     ${index === 0 ? `<div class="exercise-visual">${twinSvg()}</div>` : `<span class="exercise-icon">${icon(completed ? "check" : "activity", 24)}</span>`}
-    <div class="exercise-copy"><span class="live-pill">${completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${escapeHtml(assignment.summary)}</p><p>${target} · ${assignment.tracking_mode === "pose_reps" ? "automatic pose tracking" : assignment.tracking_mode.replace("_", " ")}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div>${assignment.instructions ? `<small><b>Therapist note:</b> ${escapeHtml(assignment.instructions)}</small>` : ""}${exerciseGuideMarkup(assignment, { compact: true })}</div>
+    <div class="exercise-copy"><span class="live-pill">${completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${escapeHtml(assignment.summary)}</p><p>${target} · ${trackingLabel}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div><small><b>Camera setup:</b> ${escapeHtml(movementProfile.cameraHint)}</small>${assignment.instructions ? `<small><b>Therapist note:</b> ${escapeHtml(assignment.instructions)}</small>` : ""}${exerciseGuideMarkup(assignment, { compact: true })}</div>
     <button class="button button--primary" data-start-assignment="${assignment.id}">${completed ? "Do again" : "Start exercise"} ${icon("arrow", 16)}</button>
   </article>`;
 }
@@ -556,7 +559,8 @@ function labView() {
   const therapistName = patientWorkspace?.therapist?.display_name || "your physical therapist";
   const targetReps = assignment.target_repetitions || 10;
   const timedExercise = assignment.tracking_mode === "timed_hold";
-  const jointLabel = `${assignment.joint || "knee"} angle`;
+  const movementProfile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
+  const jointLabel = movementProfile.label;
   const dosageLabel = timedExercise
     ? `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${assignment.duration_seconds || 30} second hold`
     : `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${targetReps} repetition${targetReps === 1 ? "" : "s"}`;
@@ -570,7 +574,7 @@ function labView() {
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
       </div>
       <div class="personal-lab-banner container-wide">${icon("shield", 17)}<div><small>PRIVATE PATIENT LAB</small><b>${escapeHtml(patientName)} · ${escapeHtml(patientWorkspace?.plan?.title || "Personal recovery plan")}</b></div><span>Session summaries save only to this patient account</span></div>
-      <section class="lab-exercise-guide container-wide"><div><span class="section-kicker">BEFORE YOU MOVE</span><h2>Review your setup and technique</h2><p>Axion can help count supported movements, but your therapist’s form and safety instructions come first.</p></div>${exerciseGuideMarkup(assignment, { open: true })}</section>
+      <section class="lab-exercise-guide container-wide"><div><span class="section-kicker">BEFORE YOU MOVE</span><h2>Review your setup and technique</h2><p>Axion tracks <b>${escapeHtml(movementProfile.label.toLowerCase())}</b> for this exercise. ${escapeHtml(movementProfile.cameraHint)}</p><small class="tracking-boundary">The camera detects movement cycles—not pain, muscle activation, clinical safety, or treatment quality.</small></div>${exerciseGuideMarkup(assignment, { open: true })}</section>
       <section class="motion-workspace container-wide">
         <div class="capture-panel">
           <div class="panel-topline">
@@ -611,11 +615,11 @@ function summaryFor(reps) {
   return {
     depth,
     jointAngle: depth,
-    kneeBend: kneeBendDegrees(depth),
+    kneeBend: Math.round(average(reps.map((r) => Number.isFinite(r.kneeBendDegrees) ? r.kneeBendDegrees : 0))),
     movementRange: Math.round(average(reps.map((r) => r.movementRangeDegrees ?? Math.abs(180 - (r.jointAngle ?? r.depthAngle))))),
     tempo: average(reps.map((r) => r.tempo)).toFixed(1),
     symmetry: average(reps.map((r) => r.symmetryDelta ?? 0)).toFixed(1),
-    consistency: Math.round(average(reps.map((r) => r.consistency ?? Math.max(45, 100 - Math.abs(r.depthAngle - 98) * 2 - (r.symmetryDelta ?? 5))))),
+    consistency: Math.round(average(reps.map((r) => r.consistency ?? Math.max(45, 100 - Math.abs((r.jointAngle ?? depth) - depth) * 2 - (r.symmetryDelta ?? 5))))),
   };
 }
 
@@ -935,9 +939,10 @@ function prescriptionTarget(exercise) {
 function exercisePrescriptionRows() {
   return Object.entries(exerciseCatalog).map(([key, exercise], index) => {
     const timed = exercise.trackingMode === "timed_hold";
+    const movementProfile = getMovementProfile(key, exercise.trackingMode);
     return `<label class="prescription-row" data-prescription-row="${key}">
       <input class="prescription-toggle" type="checkbox" value="${key}" ${index === 0 ? "checked" : ""}/>
-      <span class="prescription-name"><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(exercise.region)} · ${escapeHtml(exercise.focus.join(" · "))}</small></span>
+      <span class="prescription-name"><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(exercise.region)} · ${movementProfile.mode === "hold" ? "times" : "counts"} ${escapeHtml(movementProfile.label.toLowerCase())}</small></span>
       <span class="dosage-control"><small>SETS</small><input class="prescription-sets" type="number" min="1" max="20" value="${exercise.defaultSets}" ${index === 0 ? "" : "disabled"}/></span>
       ${timed
         ? `<span class="dosage-control"><small>HOLD (SEC)</small><input class="prescription-duration" type="number" min="5" max="3600" value="${exercise.defaultDuration || 30}" ${index === 0 ? "" : "disabled"}/><input class="prescription-reps" type="hidden" value="1"/></span>`
@@ -1276,7 +1281,9 @@ async function initializeLab() {
   sessionStartedAt = Date.now();
   sessionClientId = crypto.randomUUID();
   updateSyntheticTwin(0);
-  tracker = await createSquatTracker({
+  const activeProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
+  setText("#calibration-copy", activeProfile.cameraHint);
+  tracker = await createMovementTracker({
     video, canvas,
     exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
     trackingMode: currentAssignment?.tracking_mode || "pose_reps",
@@ -1288,15 +1295,21 @@ async function initializeLab() {
       sessionReps.push({ ...rep, consistency });
       updateLiveSession();
     },
-    onUpdate: ({ reps, jointAngle, angleLabel, movementRange, symmetryDelta, message, stage, elapsedSeconds }) => {
+    onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, message, stage, elapsedSeconds }) => {
       setText("#live-angle-label", (angleLabel || "Joint angle").toUpperCase());
       setText("#live-reps", stage === "hold" ? Math.min(currentAssignment?.duration_seconds || 30, Math.round(elapsedSeconds || 0)) : reps);
-      setText("#live-depth", jointAngle === null ? "—" : `${jointAngle}°`);
-      setText("#live-tempo", movementRange === null ? "—" : `${movementRange}°`);
-      setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}°`);
-      updateTwinAngleOverlay(document.querySelector("#movement-twin"), lastTwinPoints, currentAssignment?.joint || "knee", jointAngle);
+      setText("#live-depth", jointAngle === null ? "—" : `${jointAngle}${measurementUnit}`);
+      setText("#live-tempo", movementRange === null ? "—" : `${movementRange}${measurementUnit}`);
+      setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}${measurementUnit}`);
+      updateTwinAngleOverlay(
+        document.querySelector("#movement-twin"),
+        lastTwinPoints,
+        activeProfile.overlayJoint,
+        jointAngle,
+        Boolean(activeProfile.overlayJoint),
+      );
       setText("#coach-message", message);
-      setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
+      setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
       if (stage === "hold" && (elapsedSeconds || 0) >= Math.min(5, currentAssignment?.duration_seconds || 30)) document.querySelector("#finish-session")?.removeAttribute("disabled");
     },
     onError: (message) => {
@@ -1508,22 +1521,23 @@ function celebrateMilestone() {
 function updateLiveSession() {
   const last = sessionReps.at(-1);
   const stats = summaryFor(sessionReps);
-  const joint = currentAssignment?.joint || exerciseCatalog[currentAssignment?.exercise_key]?.joint || "knee";
+  const trackingProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
+  const unit = last?.measurementUnit || trackingProfile.unit || "°";
   const angleValue = last ? (last.jointAngle ?? last.depthAngle) : null;
-  setText("#live-angle-label", `${joint.toUpperCase()} ANGLE`);
+  setText("#live-angle-label", trackingProfile.label.toUpperCase());
   setText("#live-reps", sessionReps.length);
-  setText("#live-depth", angleValue === null ? "—" : `${Math.round(angleValue)}°`);
-  setText("#live-tempo", last?.movementRangeDegrees == null ? "—" : `${last.movementRangeDegrees}°`);
-  setText("#live-symmetry", last?.symmetryDelta == null ? "—" : `${last.symmetryDelta}°`);
+  setText("#live-depth", angleValue === null ? "—" : `${Math.round(angleValue)}${unit}`);
+  setText("#live-tempo", last?.movementRangeDegrees == null ? "—" : `${last.movementRangeDegrees}${unit}`);
+  setText("#live-symmetry", last?.symmetryDelta == null ? "—" : `${last.symmetryDelta}${unit}`);
   const targetReps = demoScriptActive ? 5 : (currentAssignment?.target_repetitions || 10);
   setText("#energy-value", `${Math.min(100, Math.round((sessionReps.length / targetReps) * 100))}%`);
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
   if (last) {
-    let message = `Rep ${last.index} captured at ${Math.round(angleValue)}° ${joint} angle. Keep that rhythm.`;
+    let message = `Rep ${last.index} captured at ${Math.round(angleValue)}${unit} ${trackingProfile.label.toLowerCase()}. Keep that rhythm.`;
     if (last.index === 4) message = "Rep 4 is your most consistent so far.";
     if (last.index >= 8) message = "Depth has decreased across the late set. Finish with control.";
-    setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${Math.round(angleValue)}°`);
+    setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${Math.round(angleValue)}${unit}`);
     updateSyntheticTwin(jointAngleToTwinDepth(angleValue, last.movementRangeDegrees), true);
   }
   const finish = document.querySelector("#finish-session"); if (finish) finish.disabled = sessionReps.length === 0;
@@ -1555,7 +1569,8 @@ async function finishSession() {
       jointAngle: liveMetrics.jointAngle,
       movementRangeDegrees: liveMetrics.movementRangeDegrees,
       symmetryDelta: liveMetrics.symmetryDelta,
-      tempo: liveMetrics.durationSeconds,
+      tempo: liveMetrics.holdSeconds || liveMetrics.durationSeconds,
+      measurementUnit: liveMetrics.measurementUnit,
       consistency: Math.max(45, Math.round(100 - (liveMetrics.symmetryDelta ?? 4) * 2)),
     }];
   }
@@ -1591,6 +1606,8 @@ async function saveSessionSummary(reps, feedback = {}) {
   if (!supabase || !currentSession?.user || currentSession.demo || !reps.length) return null;
 
   const stats = summaryFor(reps);
+  const trackingProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
+  const degreeMetric = trackingProfile.unit === "°";
 
   const { data, error } = await supabase
     .from("exercise_sessions")
@@ -1599,15 +1616,21 @@ async function saveSessionSummary(reps, feedback = {}) {
       client_session_id: sessionClientId || crypto.randomUUID(),
       assignment_id: currentAssignment?.id?.startsWith?.("demo-") ? null : (currentAssignment?.id || null),
       exercise_key: currentAssignment?.exercise_key || "bodyweight_squat",
-      repetitions: currentAssignment?.tracking_mode === "timed_hold" ? 0 : reps.length,
+      repetitions: trackingProfile.mode === "hold" ? 0 : reps.length,
       duration_seconds: sessionStartedAt ? Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)) : null,
       started_at: sessionStartedAt ? new Date(sessionStartedAt).toISOString() : null,
       movement_summary: {
-        average_depth_angle: stats.depth,
+        average_depth_angle: degreeMetric ? stats.depth : null,
         tracked_joint: currentAssignment?.joint || exerciseCatalog[currentAssignment?.exercise_key]?.joint || "knee",
-        average_joint_angle_degrees: stats.jointAngle,
-        average_joint_movement_range_degrees: stats.movementRange,
-        average_knee_bend_degrees: (currentAssignment?.joint || exerciseCatalog[currentAssignment?.exercise_key]?.joint || "knee") === "knee" ? stats.kneeBend : null,
+        tracking_signal: trackingProfile.signal,
+        metric_label: trackingProfile.label,
+        measurement_unit: trackingProfile.unit,
+        average_signal_value: stats.jointAngle,
+        average_signal_excursion: stats.movementRange,
+        average_joint_angle_degrees: degreeMetric ? stats.jointAngle : null,
+        average_joint_movement_range_degrees: degreeMetric ? stats.movementRange : null,
+        average_knee_bend_degrees: trackingProfile.signal === "knee_bend" ? stats.kneeBend : null,
+        measured_hold_seconds: trackingProfile.mode === "hold" ? (tracker?.getMetrics?.().holdSeconds || 0) : null,
         average_tempo_seconds: Number(stats.tempo),
         average_symmetry_delta: Number(stats.symmetry),
         movement_consistency: stats.consistency
@@ -1646,7 +1669,8 @@ function updateSyntheticTwin(depth = 0, pulse = false) {
   };
   twins.forEach((svg) => {
     setTwinPoints(svg, points);
-    updateTwinAngleOverlay(svg, points, currentAssignment?.joint || "knee", Math.round(180 - d * 90));
+    const profile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
+    updateTwinAngleOverlay(svg, points, profile.overlayJoint, Math.round(d * 90), Boolean(profile.overlayJoint));
     svg.classList.toggle("pulse", pulse);
     if (pulse) setTimeout(() => svg.classList.remove("pulse"), 300);
   });
@@ -1671,12 +1695,21 @@ function setTwinPoints(svg, points) {
   });
 }
 
-function updateTwinAngleOverlay(svg, points, joint = "knee", angleValue = null) {
+function updateTwinAngleOverlay(svg, points, joint = null, angleValue = null, showAngle = true) {
   if (!svg || !points) return;
+  const orbit = svg.querySelector(".angle-orbit");
+  if (!showAngle) {
+    orbit?.setAttribute("visibility", "hidden");
+    return;
+  }
+  orbit?.setAttribute("visibility", "visible");
   const triplets = {
     knee: ["lh", "lk", "la"],
     hip: ["ls", "lh", "lk"],
     ankle: ["lk", "la", "lf"],
+    elbow: ["ls", "le", "lw"],
+    shoulder: ["le", "ls", "lh"],
+    torso: ["neck", "ls", "lh"],
   };
   const [aKey, bKey, cKey] = triplets[joint] || triplets.knee;
   const a = points[aKey], b = points[bKey], c = points[cKey];
