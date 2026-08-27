@@ -16,7 +16,9 @@ The public synthetic demo works without configuration:
 
 - three-second session calibration using locally estimated pose landmarks;
 - live Movement Twin reconstructed from MediaPipe coordinates;
-- bodyweight squat state tracking and rep-level 3D knee-bend, tempo, and symmetry-delta summaries;
+- 61 explicit exercise-tracking profiles: 42 calibrated rep-cycle counters and 19 camera-timed position holds;
+- movement-specific signals for the neck, shoulders, arms, trunk, hips, knees, ankles, feet, balance, and gait;
+- rep-level excursion, tempo, and bilateral-difference summaries using each exercise's relevant landmarks;
 - sequence-aware coaching messages;
 - one-click 70-second synthetic pitch mode that does not depend on camera conditions;
 - visible body-detection, confidence-quality, and real-camera recovery states;
@@ -77,6 +79,7 @@ The applied production migration sequence is:
 8. `202608250008_individual_exercise_prescriptions.sql`
 9. `202608270001_enable_roadmap_realtime.sql`
 10. `202608270002_expand_exercise_catalog.sql`
+11. `202608270003_exercise_specific_pose_tracking.sql`
 
 The migrations hash invitation codes at rest, move multi-table mutations behind transactional RPCs, validate session-to-assignment ownership, add workflow audit events, make session writes idempotent, and keep the server-authoritative exercise allowlist in the unexposed `private` schema. Promote therapist accounts only through a trusted administrative workflow; public signup always creates a patient.
 
@@ -88,6 +91,6 @@ See [`SECURITY_READINESS.md`](SECURITY_READINESS.md) for the operator controls s
 
 ## Scope and boundaries
 
-This repository is a UI prototype, technical proof of concept, nonclinical MVP using synthetic data, and HIPAA-readiness starting point subject to independent legal, privacy, security, operational, regulatory, accessibility, human-factors, and clinical review.
+This repository is a UI prototype, technical proof of concept, nonclinical MVP using synthetic data, and HIPAA-readiness starting point subject to independent legal, privacy, security, operational, regulatory, accessibility, human-factors, and clinical review. Each tracker uses a three-second patient-specific baseline, hysteresis, visibility checks, and minimum/maximum rep timing. It detects repeatable landmark motion—not pain, muscle activation, resistance, load, or clinical safety. Small isolated movements such as toe curls may be below normal webcam-pose resolution and require therapist observation.
 
 It does not claim HIPAA compliance, medical-device status, clinical accuracy, diagnostic capability, treatment efficacy, or security certification. Thresholds and derived movement metrics are heuristic and unvalidated. The Recovery Pulse is an engagement/performance summary, not a prognosis. Do not use real patient information with this proof of concept.
