@@ -159,8 +159,11 @@ export function measureMovementSignal(landmarks, profile) {
   if (!landmarks?.length) return pair(null, null);
   const scale = bodyScale(landmarks);
   const knee = () => pair(joint(landmarks, [23, 25, 27], true), joint(landmarks, [24, 26, 28], true));
+  const kneeInternal = () => pair(joint(landmarks, [23, 25, 27]), joint(landmarks, [24, 26, 28]));
   const hip = () => pair(joint(landmarks, [11, 23, 25], true), joint(landmarks, [12, 24, 26], true));
+  const hipInternal = () => pair(joint(landmarks, [11, 23, 25]), joint(landmarks, [12, 24, 26]));
   const elbow = () => pair(joint(landmarks, [11, 13, 15], true), joint(landmarks, [12, 14, 16], true));
+  const elbowInternal = () => pair(joint(landmarks, [11, 13, 15]), joint(landmarks, [12, 14, 16]));
   const ankle = () => pair(joint(landmarks, [25, 27, 31]), joint(landmarks, [26, 28, 32]));
   const wristHeight = () => pair(
     visible(landmarks, [11, 15]) ? scaled(point(landmarks, 11).y - point(landmarks, 15).y, scale) : null,
@@ -175,21 +178,13 @@ export function measureMovementSignal(landmarks, profile) {
 
   switch (profile.signal) {
     case "knee_bend": return knee();
-    case "knee_extension": {
-      const values = knee(); return pair(values.left == null ? null : -values.left, values.right == null ? null : -values.right);
-    }
+    case "knee_extension": return kneeInternal();
     case "hip_flexion": return hip();
-    case "hip_extension": {
-      const values = hip(); return pair(values.left == null ? null : -values.left, values.right == null ? null : -values.right);
-    }
+    case "hip_extension": return hipInternal();
     case "elbow_flexion": return elbow();
-    case "arm_extension": {
-      const values = elbow(); return pair(values.left == null ? null : -values.left, values.right == null ? null : -values.right);
-    }
+    case "arm_extension": return elbowInternal();
     case "ankle_dorsiflexion": return ankle();
-    case "ankle_plantarflexion": {
-      const values = ankle(); return pair(values.left == null ? null : -values.left, values.right == null ? null : -values.right);
-    }
+    case "ankle_plantarflexion": return ankle();
     case "wrist_elevation": return wristHeight();
     case "head_yaw": {
       if (!visible(landmarks, [0, 7, 8])) return pair(null, null);
@@ -233,7 +228,7 @@ export function measureMovementSignal(landmarks, profile) {
       const shoulderMid = midpoint(point(landmarks, 11), point(landmarks, 12));
       const hipMid = midpoint(point(landmarks, 23), point(landmarks, 24));
       const value = 180 - angle(earMid, shoulderMid, hipMid);
-      return pair(profile.signal === "torso_extension" ? -value : value, null);
+      return pair(Math.abs(value), null);
     }
     case "hip_lift": return hipLift();
     case "side_plank_lift": return hipLift();
