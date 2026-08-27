@@ -1,6 +1,8 @@
 import { isConfigured, supabase } from "./supabase.js";
 import { createMovementTracker } from "./pose.js";
 import { getMovementProfile } from "./movement-profiles.js";
+
+const FLEXION_ARC_SIGNALS = new Set(["knee_bend", "hip_flexion", "elbow_flexion", "torso_flexion"]);
 import {
   ONBOARDING_VERSION,
   approvePatientConnection,
@@ -590,7 +592,7 @@ function labView() {
           </div>
           <div class="motion-stage">
             <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera setup</b><small>${escapeHtml(movementProfile.cameraHint)}</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button><button id="recovery-demo">View tracker simulation</button></div></div><span class="pane-label">YOU</span></div>
-            <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> <span id="twin-target-label">${movementProfile.overlayJoint ? `${escapeHtml(movementProfile.overlayJoint)} angle` : "Movement path"}</span></div></div>
+            <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> <span id="twin-target-label">${movementProfile.overlayJoint && movementProfile.unit === "°" ? `${escapeHtml(movementProfile.overlayJoint)} angle` : "Movement path"}</span></div></div>
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
           <div class="live-metrics"><div><span>${timedExercise ? "HOLD" : "REPS"}</span><b><i id="live-reps">0</i><small>/ ${timedExercise ? `${assignment.duration_seconds || 30}s` : (demoScriptActive ? 5 : targetReps)}</small></b></div><div><span id="live-angle-label">${escapeHtml(jointLabel.toUpperCase())}</span><b id="live-depth">—</b></div><div><span>MOVEMENT RANGE</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
@@ -1301,7 +1303,7 @@ async function initializeLab() {
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
       const sideLabel = measurementSide ? `${measurementSide} ` : "";
       setText("#live-angle-label", `${sideLabel}${angleLabel || "Joint angle"}`.toUpperCase());
-      setText("#twin-target-label", activeProfile.overlayJoint
+      setText("#twin-target-label", activeProfile.overlayJoint && measurementUnit === "°"
         ? `${measurementSide ? `${measurementSide} ` : ""}${activeProfile.overlayJoint} angle`
         : "Movement path");
       setText("#live-reps", stage === "hold" ? Math.min(currentAssignment?.duration_seconds || 30, Math.round(elapsedSeconds || 0)) : reps);
@@ -1313,8 +1315,9 @@ async function initializeLab() {
         lastTwinPoints,
         activeProfile.overlayJoint,
         jointAngle,
-        Boolean(activeProfile.overlayJoint),
+        Boolean(activeProfile.overlayJoint) && measurementUnit === "°",
         measurementSide,
+        activeProfile.signal,
       );
       setText("#coach-message", message);
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
@@ -1678,7 +1681,7 @@ function updateSyntheticTwin(depth = 0, pulse = false) {
   twins.forEach((svg) => {
     setTwinPoints(svg, points);
     const profile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
-    updateTwinAngleOverlay(svg, points, profile.overlayJoint, Math.round(d * 90), Boolean(profile.overlayJoint), "left");
+    updateTwinAngleOverlay(svg, points, profile.overlayJoint, Math.round(d * 90), Boolean(profile.overlayJoint) && profile.unit === "°", "left", profile.signal);
     svg.classList.toggle("pulse", pulse);
     if (pulse) setTimeout(() => svg.classList.remove("pulse"), 300);
   });
@@ -1703,7 +1706,7 @@ function setTwinPoints(svg, points) {
   });
 }
 
-function updateTwinAngleOverlay(svg, points, joint = null, angleValue = null, showAngle = true, measurementSide = "left") {
+function updateTwinAngleOverlay(svg, points, joint = null, angleValue = null, showAngle = true, measurementSide = "left", signal = null) {
   if (!svg || !points) return;
   const orbit = svg.querySelector(".angle-orbit");
   if (!showAngle) {
@@ -1727,7 +1730,11 @@ function updateTwinAngleOverlay(svg, points, joint = null, angleValue = null, sh
   }
   orbit?.setAttribute("visibility", "visible");
   const normalize = ([x, y]) => { const length = Math.hypot(x, y) || 1; return [x / length, y / length]; };
-  const u = normalize([a[0] - b[0], a[1] - b[1]]);
+  // Flexion is measured as deviation from straight, so its first ray follows
+  // the proximal segment through the joint rather than pointing back toward it.
+  const u = FLEXION_ARC_SIGNALS.has(signal)
+    ? normalize([b[0] - a[0], b[1] - a[1]])
+    : normalize([a[0] - b[0], a[1] - b[1]]);
   const v = normalize([c[0] - b[0], c[1] - b[1]]);
   const radius = 30;
   const start = [b[0] + u[0] * radius, b[1] + u[1] * radius];
