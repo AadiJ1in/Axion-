@@ -1,35 +1,7 @@
 export const ONBOARDING_VERSION = 1;
 
-export const exerciseCatalog = {
-  bodyweight_squat: { name: "Bodyweight Squat", region: "Knee & hip", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee bend", "Tempo", "Symmetry"] },
-  half_squat: { name: "Half Squat", region: "Knee & hip", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee bend", "Control", "Alignment"] },
-  wall_sit: { name: "Wall Sit", region: "Knee & hip", trackingMode: "timed_hold", joint: "knee", defaultSets: 3, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Knee angle", "Stability"] },
-  step_up: { name: "Step-up", region: "Knee & hip", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee bend", "Tempo", "Symmetry"] },
-  hamstring_curl: { name: "Standing Hamstring Curl", region: "Knee", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee bend", "Control", "Tempo"] },
-  leg_extension: { name: "Leg Extension", region: "Knee", trackingMode: "pose_reps", joint: "knee", defaultSets: 3, defaultReps: 10, focus: ["Knee angle", "Control", "Tempo"] },
-  straight_leg_raise: { name: "Straight-Leg Raise", region: "Hip & knee", trackingMode: "pose_reps", joint: "hip", defaultSets: 3, defaultReps: 10, focus: ["Hip angle", "Control", "Alignment"] },
-  prone_hip_extension: { name: "Prone Hip Extension", region: "Hip", trackingMode: "pose_reps", joint: "hip", defaultSets: 3, defaultReps: 10, focus: ["Hip angle", "Control", "Tempo"] },
-  hip_abduction: { name: "Side-Lying Hip Abduction", region: "Hip", trackingMode: "pose_reps", joint: "hip", defaultSets: 3, defaultReps: 10, focus: ["Hip angle", "Pelvic control", "Tempo"] },
-  hip_adduction: { name: "Side-Lying Hip Adduction", region: "Hip", trackingMode: "pose_reps", joint: "hip", defaultSets: 3, defaultReps: 10, focus: ["Hip angle", "Control", "Tempo"] },
-  clamshell: { name: "Clamshell", region: "Hip", trackingMode: "guided_reps", joint: "hip", defaultSets: 1, defaultReps: 12, focus: ["Hip rotation", "Pelvic control", "Tempo"] },
-  reverse_clamshell: { name: "Reverse Clamshell", region: "Hip", trackingMode: "guided_reps", joint: "hip", defaultSets: 1, defaultReps: 12, focus: ["Hip rotation", "Control", "Tempo"] },
-  heel_raise: { name: "Calf Raise", region: "Foot & ankle", trackingMode: "pose_reps", joint: "ankle", defaultSets: 2, defaultReps: 10, focus: ["Ankle angle", "Rhythm", "Control"] },
-  ankle_dorsiflexion: { name: "Ankle Dorsiflexion", region: "Foot & ankle", trackingMode: "pose_reps", joint: "ankle", defaultSets: 3, defaultReps: 10, focus: ["Ankle angle", "Control", "Tempo"] },
-  ankle_plantar_flexion: { name: "Ankle Plantar Flexion", region: "Foot & ankle", trackingMode: "pose_reps", joint: "ankle", defaultSets: 3, defaultReps: 10, focus: ["Ankle angle", "Control", "Tempo"] },
-  single_leg_balance: { name: "Single-Leg Balance", region: "Balance", trackingMode: "timed_hold", joint: "knee", defaultSets: 3, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Sway", "Control"] },
-  heel_cord_stretch: { name: "Heel Cord Stretch", region: "Foot & ankle", trackingMode: "timed_hold", joint: "ankle", defaultSets: 2, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Ankle angle", "Alignment"] },
-  bent_knee_heel_cord_stretch: { name: "Bent-Knee Heel Cord Stretch", region: "Foot & ankle", trackingMode: "timed_hold", joint: "ankle", defaultSets: 2, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Ankle angle", "Control"] },
-  standing_quad_stretch: { name: "Standing Quadriceps Stretch", region: "Knee", trackingMode: "timed_hold", joint: "knee", defaultSets: 2, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Knee angle", "Balance"] },
-  supine_hamstring_stretch: { name: "Supine Hamstring Stretch", region: "Knee & hip", trackingMode: "timed_hold", joint: "hip", defaultSets: 2, defaultReps: 1, defaultDuration: 30, focus: ["Hold time", "Hip angle", "Control"] },
-  towel_curl: { name: "Towel Curl", region: "Foot & ankle", trackingMode: "guided_reps", joint: "ankle", defaultSets: 2, defaultReps: 10, focus: ["Completion", "Control", "Tempo"] },
-  ankle_range_of_motion: { name: "Ankle Range of Motion", region: "Foot & ankle", trackingMode: "guided_reps", joint: "ankle", defaultSets: 2, defaultReps: 10, focus: ["Range", "Control", "Tempo"] },
-};
-
-export const exerciseCatalogSource = {
-  name: "AAOS OrthoInfo conditioning programs",
-  url: "https://orthoinfo.aaos.org/en/recovery/",
-  note: "Therapist selection and dosage are required. Patients should stop if an exercise causes pain and contact their clinician.",
-};
+export { exerciseCatalog, exerciseCatalogSource, exerciseCategoryOrder } from "./exercise-catalog.js";
+import { exerciseCatalog, exerciseCatalogSource } from "./exercise-catalog.js";
 
 export function assignmentDetails(assignment = {}) {
   const catalog = exerciseCatalog[assignment.exercise_key] || {};
@@ -40,6 +12,15 @@ export function assignmentDetails(assignment = {}) {
     focus: catalog.focus || ["Range", "Rhythm", "Control"],
     joint: catalog.joint || "knee",
     region: catalog.region || "General",
+    category: catalog.category || catalog.region || "General",
+    summary: catalog.summary || "Follow the movement and dosage provided by your physical therapist.",
+    equipment: catalog.equipment || "None",
+    steps: catalog.steps || ["Set up as directed by your therapist.", "Move slowly through the prescribed range.", "Stop and contact your care team if symptoms increase."],
+    cues: catalog.cues || ["Move with control"],
+    avoid: catalog.avoid || "Do not push through pain.",
+    safety: catalog.safety || "Use only as prescribed by your physical therapist.",
+    resourceLabel: catalog.resourceLabel || exerciseCatalogSource.name,
+    resourceUrl: catalog.resourceUrl || exerciseCatalogSource.url,
   };
 }
 
