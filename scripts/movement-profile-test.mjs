@@ -24,6 +24,7 @@ for (const key of keys) {
   const measurement = measureMovementSignal(syntheticPose, profile);
   assert.ok(measurement.value === null || Number.isFinite(measurement.value), `${key} produced an invalid measurement.`);
   assert.ok(measurement.value !== null, `${key} could not measure a complete synthetic pose.`);
+  if (profile.unit === "°") assert.ok(measurement.value >= 0, `${key} exposed a negative angle to the patient UI.`);
 
   if (profile.mode === "reps") {
     const noiseDetector = createRepCycleDetector(profile);
