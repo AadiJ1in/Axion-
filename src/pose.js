@@ -1,47 +1,11 @@
+import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
+
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-function angle(a, b, c) {
-  const ab = { x: a.x - b.x, y: a.y - b.y, z: (a.z ?? 0) - (b.z ?? 0) };
-  const cb = { x: c.x - b.x, y: c.y - b.y, z: (c.z ?? 0) - (b.z ?? 0) };
-  const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
-  const magnitude = Math.hypot(ab.x, ab.y, ab.z) * Math.hypot(cb.x, cb.y, cb.z);
-  if (!magnitude) return 180;
-  return (Math.acos(clamp(dot / magnitude, -1, 1)) * 180) / Math.PI;
-}
-
-function sideAngle(landmarks, indices) {
-  if (!indices.every((index) => (landmarks[index]?.visibility ?? 0) > 0.55)) return null;
-  return angle(landmarks[indices[0]], landmarks[indices[1]], landmarks[indices[2]]);
-}
-
-const TRACKING_PROFILES = {
-  knee: { left: [23, 25, 27], right: [24, 26, 28], label: "Knee angle", rangeLabel: "Knee movement", startThreshold: 28, returnThreshold: 12 },
-  hip: { left: [11, 23, 25], right: [12, 24, 26], label: "Hip angle", rangeLabel: "Hip movement", startThreshold: 18, returnThreshold: 8 },
-  ankle: { left: [25, 27, 31], right: [26, 28, 32], label: "Ankle angle", rangeLabel: "Ankle movement", startThreshold: 10, returnThreshold: 5 },
-};
-
-const EXERCISE_JOINTS = {
-  straight_leg_raise: "hip", prone_hip_extension: "hip", hip_abduction: "hip", hip_adduction: "hip", clamshell: "hip", reverse_clamshell: "hip", supine_hamstring_stretch: "hip",
-  heel_raise: "ankle", ankle_dorsiflexion: "ankle", ankle_plantar_flexion: "ankle", heel_cord_stretch: "ankle", bent_knee_heel_cord_stretch: "ankle", towel_curl: "ankle", ankle_range_of_motion: "ankle",
-};
-
-function movementMetrics(landmarks, profile) {
-  const left = sideAngle(landmarks, profile.left);
-  const right = sideAngle(landmarks, profile.right);
-  const visible = [left, right].filter((value) => value !== null);
-  if (!visible.length) return { angle: null, left, right, symmetryDelta: null };
-  return {
-    angle: visible.reduce((sum, value) => sum + value, 0) / visible.length,
-    left,
-    right,
-    symmetryDelta: left !== null && right !== null ? Math.abs(left - right) : null,
-  };
-}
-
-export async function createSquatTracker({
+export async function createMovementTracker({
   video,
   canvas,
   exerciseKey = "bodyweight_squat",
@@ -53,7 +17,7 @@ export async function createSquatTracker({
   onTrackingState = () => {},
   onError = () => {},
 }) {
-  const profile = TRACKING_PROFILES[EXERCISE_JOINTS[exerciseKey] || "knee"];
+  const profile = getMovementProfile(exerciseKey, trackingMode);
   let landmarker;
   const trackerApi = {};
   let stream;
@@ -72,11 +36,20 @@ export async function createSquatTracker({
   let calibrationStart = null;
   let calibrated = false;
   let baselineAngle = null;
+  let baselineLeft = null;
+  let baselineRight = null;
   let calibrationSamples = [];
+  let calibrationLeftSamples = [];
+  let calibrationRightSamples = [];
   let noPoseFrames = 0;
   let latestAngle = null;
   let latestSymmetryDelta = null;
   let latestMovementRange = null;
+  let holdElapsedMs = 0;
+  let holdLastFrame = null;
+  let activeFrames = 0;
+  let lastActiveMovementAt = 0;
+  let lastRepFinishedAt = 0;
   const repHistory = [];
 
   async function initialize() {
@@ -102,7 +75,24 @@ export async function createSquatTracker({
   }
 
   function trackingQuality(landmarks) {
-    const keyIndices = [0, 11, 12, 23, 24, 25, 26, 27, 28];
+    const groups = {
+      head: [0, 7, 8, 11, 12],
+      arms: [11, 12, 13, 14, 15, 16, 23, 24],
+      torso: [7, 8, 11, 12, 23, 24],
+      legs: [11, 12, 23, 24, 25, 26, 27, 28],
+      feet: [23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
+      full: [0, 11, 12, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32],
+    };
+    const headSignals = ["head_retraction", "head_yaw", "head_tilt"];
+    const armSignals = ["wrist_motion", "wrist_elevation", "cross_body_reach", "forearm_rotation", "wrist_orbit", "shoulder_span", "shoulder_opening", "elbow_flexion", "arm_extension"];
+    const torsoSignals = ["torso_rotation", "torso_extension", "torso_flexion", "hip_lift", "plank_alignment", "plank_position", "side_plank_lift", "pelvis_rotation", "trunk_stability"];
+    const footSignals = ["ankle_dorsiflexion", "ankle_plantarflexion", "heel_lift", "toe_lift", "toe_motion", "foot_orbit", "tandem_stance", "gait_step"];
+    const keyIndices = headSignals.includes(profile.signal) ? groups.head
+      : armSignals.includes(profile.signal) ? groups.arms
+        : torsoSignals.includes(profile.signal) ? groups.torso
+          : footSignals.includes(profile.signal) ? groups.feet
+            : ["opposite_limb_reach", "step_height", "single_leg_support"].includes(profile.signal) ? groups.full
+              : groups.legs;
     const score = keyIndices.reduce((sum, index) => sum + (landmarks[index]?.visibility ?? 0), 0) / keyIndices.length;
     if (score >= 0.78) return { label: "High", score };
     if (score >= 0.62) return { label: "Moderate", score };
@@ -123,13 +113,17 @@ export async function createSquatTracker({
   }
 
   function calibrate(metrics, now) {
-    if (calibrated || metrics.angle === null) return calibrated;
+    if (calibrated || metrics.value === null) return calibrated;
     if (!calibrationStart) calibrationStart = now;
-    calibrationSamples.push(metrics.angle);
+    calibrationSamples.push(metrics.value);
+    if (metrics.left !== null) calibrationLeftSamples.push(metrics.left);
+    if (metrics.right !== null) calibrationRightSamples.push(metrics.right);
     const progress = clamp((now - calibrationStart) / 3000, 0, 1);
     onCalibration({ progress, status: progress < 1 ? "Learning your session baseline" : "Body calibrated" });
     if (progress >= 1) {
       baselineAngle = calibrationSamples.reduce((sum, value) => sum + value, 0) / calibrationSamples.length;
+      baselineLeft = calibrationLeftSamples.length ? calibrationLeftSamples.reduce((sum, value) => sum + value, 0) / calibrationLeftSamples.length : null;
+      baselineRight = calibrationRightSamples.length ? calibrationRightSamples.reduce((sum, value) => sum + value, 0) / calibrationRightSamples.length : null;
       calibrated = true;
     }
     return calibrated;
@@ -146,7 +140,8 @@ export async function createSquatTracker({
       jointAngle: Math.round(peakAngle ?? baselineAngle ?? 180),
       movementRangeDegrees: Math.round(peakDelta),
       angleLabel: profile.label,
-      kneeBendDegrees: profile.label === "Knee angle" ? Math.round(180 - (peakAngle ?? baselineAngle ?? 180)) : null,
+      measurementUnit: profile.unit,
+      kneeBendDegrees: profile.signal === "knee_bend" ? Math.round(peakAngle ?? baselineAngle ?? 0) : null,
       tempo: Number(duration.toFixed(1)),
       symmetryDelta: symmetryDelta === null ? null : Number(symmetryDelta.toFixed(1)),
       capturedAt: now,
@@ -162,31 +157,51 @@ export async function createSquatTracker({
   function updateState(metrics, now) {
     if (!calibrated) {
       calibrate(metrics, now);
-      onUpdate({ reps, stage: "calibrating", angle: metrics.angle, jointAngle: metrics.angle === null ? null : Math.round(metrics.angle), angleLabel: profile.label, movementRange: null, symmetryDelta: metrics.symmetryDelta, message: "Hold still while Axion calibrates." });
+      onUpdate({ reps, stage: "calibrating", angle: metrics.value, jointAngle: metrics.value === null ? null : Math.round(metrics.value), angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: metrics.symmetryDelta, message: `Hold still while Axion calibrates. ${profile.cameraHint}` });
       return;
     }
 
-    if (metrics.angle === null) {
+    if (metrics.value === null) {
       lowFrames = 0;
       highFrames = 0;
-      onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, movementRange: null, symmetryDelta: null, message: "Move your full body into frame." });
+      onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: profile.cameraHint });
       return;
     }
 
-    const movementDelta = Math.abs(metrics.angle - baselineAngle);
-    latestAngle = metrics.angle;
+    const sideDeltas = [
+      metrics.left !== null && baselineLeft !== null ? Math.abs(metrics.left - baselineLeft) : null,
+      metrics.right !== null && baselineRight !== null ? Math.abs(metrics.right - baselineRight) : null,
+    ].filter(Number.isFinite);
+    const averageDelta = Math.abs(metrics.value - baselineAngle);
+    const movementDelta = profile.bilateral === "alternate" && sideDeltas.length ? Math.max(...sideDeltas) : averageDelta;
+    latestAngle = metrics.value;
     latestSymmetryDelta = metrics.symmetryDelta;
     latestMovementRange = movementDelta;
-    if (trackingMode === "timed_hold") {
-      const elapsedSeconds = sessionStart ? Math.max(0, (now - sessionStart) / 1000 - 3) : 0;
-      onUpdate({ reps: 0, stage: "hold", angle: Math.round(metrics.angle), jointAngle: Math.round(metrics.angle), angleLabel: profile.label, movementRange: Math.round(movementDelta), symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)), elapsedSeconds, message: elapsedSeconds > 0 ? "Hold the prescribed position with steady control." : "Move into the prescribed hold position." });
+    if (profile.mode === "hold") {
+      if (profile.activeMotion && movementDelta >= profile.startThreshold) lastActiveMovementAt = now;
+      const active = profile.activeMotion
+        ? now - lastActiveMovementAt <= 750
+        : profile.stability
+          ? movementDelta <= profile.startThreshold
+          : movementDelta >= profile.startThreshold;
+      if (active) activeFrames += 1; else activeFrames = 0;
+      if (activeFrames >= profile.minActiveFrames) {
+        if (holdLastFrame) holdElapsedMs += Math.max(0, now - holdLastFrame);
+        holdLastFrame = now;
+        stage = "hold";
+      } else {
+        holdLastFrame = null;
+        stage = "positioning";
+      }
+      const elapsedSeconds = holdElapsedMs / 1000;
+      onUpdate({ reps: 0, stage, angle: Math.round(metrics.value), jointAngle: Math.round(metrics.value), angleLabel: profile.label, measurementUnit: profile.unit, movementRange: Math.round(movementDelta), symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)), elapsedSeconds, message: stage === "hold" ? "Position detected. Hold steady and keep breathing." : `Move into the prescribed position. ${profile.cameraHint}` });
       return;
     }
 
     if (repStart) {
       if (movementDelta >= peakDelta) {
         peakDelta = movementDelta;
-        peakAngle = metrics.angle;
+        peakAngle = metrics.value;
       }
       if (metrics.symmetryDelta !== null) symmetrySamples.push(metrics.symmetryDelta);
     }
@@ -194,20 +209,24 @@ export async function createSquatTracker({
     if (movementDelta >= profile.startThreshold) {
       lowFrames += 1;
       highFrames = 0;
-      if (lowFrames >= 3 && stage !== "down") {
+      if (lowFrames >= profile.minActiveFrames && stage !== "down") {
         stage = "down";
         repStart = now;
-        peakAngle = metrics.angle;
+        peakAngle = metrics.value;
         peakDelta = movementDelta;
         symmetrySamples = metrics.symmetryDelta === null ? [] : [metrics.symmetryDelta];
       }
     } else if (movementDelta <= profile.returnThreshold) {
       highFrames += 1;
       lowFrames = 0;
-      if (stage === "down" && highFrames >= 3) {
-        reps += 1;
+      if (stage === "down" && highFrames >= profile.minReturnFrames) {
+        const repDuration = repStart ? now - repStart : 0;
+        if (repDuration >= profile.minRepMs && repDuration <= profile.maxRepMs && now - lastRepFinishedAt >= 300) {
+          reps += 1;
+          lastRepFinishedAt = now;
+          finishRep(now);
+        }
         stage = "up";
-        finishRep(now);
       }
     } else {
       lowFrames = 0;
@@ -216,7 +235,7 @@ export async function createSquatTracker({
 
     let message = "Ready for the next rep.";
     if (stage === "down") message = "Depth captured. Return with control.";
-    else if (movementDelta > profile.returnThreshold) message = `Keep the ${profile.rangeLabel.toLowerCase()} controlled.`;
+    else if (movementDelta > profile.returnThreshold) message = `Keep the ${profile.label.toLowerCase()} controlled.`;
     else if (repHistory.length >= 3) {
       const recent = repHistory.slice(-3);
       const slowing = recent[2].tempo > recent[0].tempo * 1.15;
@@ -226,9 +245,10 @@ export async function createSquatTracker({
     onUpdate({
       reps,
       stage,
-      angle: Math.round(metrics.angle),
-      jointAngle: Math.round(metrics.angle),
+      angle: Math.round(metrics.value),
+      jointAngle: Math.round(metrics.value),
       angleLabel: profile.label,
+      measurementUnit: profile.unit,
       movementRange: Math.round(movementDelta),
       symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)),
       message,
@@ -266,7 +286,7 @@ export async function createSquatTracker({
       }
       if (landmarks) onPose(landmarks);
       const measurementLandmarks = result.worldLandmarks?.[0] || landmarks;
-      updateState(measurementLandmarks ? movementMetrics(measurementLandmarks, profile) : { angle: null, symmetryDelta: null }, now);
+      updateState(measurementLandmarks ? measureMovementSignal(measurementLandmarks, profile) : { value: null, left: null, right: null, symmetryDelta: null }, now);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -296,6 +316,16 @@ export async function createSquatTracker({
       sessionStart = performance.now();
       calibrationStart = null;
       calibrated = false;
+      baselineAngle = null;
+      baselineLeft = null;
+      baselineRight = null;
+      calibrationSamples = [];
+      calibrationLeftSamples = [];
+      calibrationRightSamples = [];
+      holdElapsedMs = 0;
+      holdLastFrame = null;
+      activeFrames = 0;
+      lastActiveMovementAt = 0;
       frame();
     } catch (error) {
       const code = error?.name === "NotAllowedError"
@@ -329,8 +359,13 @@ export async function createSquatTracker({
     latestAngle = null;
     latestSymmetryDelta = null;
     latestMovementRange = null;
+    holdElapsedMs = 0;
+    holdLastFrame = null;
+    activeFrames = 0;
+    lastActiveMovementAt = 0;
+    lastRepFinishedAt = 0;
     repHistory.length = 0;
-    onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, movementRange: null, symmetryDelta: null, message: "Session reset." });
+    onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: "Session reset." });
   }
 
   function stop() {
@@ -357,6 +392,15 @@ export async function createSquatTracker({
       movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange),
       symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)),
       angleLabel: profile.label,
+      measurementUnit: profile.unit,
+      exerciseKey: profile.exerciseKey,
+      trackingSignal: profile.signal,
+      holdSeconds: Math.round(holdElapsedMs / 1000),
+      cameraHint: profile.cameraHint,
     }),
   };
 }
+
+// Backward-compatible export for older imports while callers migrate to the
+// exercise-agnostic name.
+export const createSquatTracker = createMovementTracker;
