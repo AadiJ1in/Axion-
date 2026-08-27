@@ -5,6 +5,15 @@ const MODEL_URL =
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+function supportsWebGL() {
+  try {
+    const probe = document.createElement("canvas");
+    return Boolean(probe.getContext("webgl2") || probe.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
 // Pure, deterministic hysteresis used by the live tracker and the test suite.
 // A repetition requires a sustained movement away from baseline and a sustained,
 // controlled return. Brief landmark noise cannot increment the counter.
@@ -123,15 +132,27 @@ export async function createMovementTracker({
     const vision = await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm",
     );
-    landmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+    const options = {
+      baseOptions: { modelAssetPath: MODEL_URL, delegate: supportsWebGL() ? "GPU" : "CPU" },
       runningMode: "VIDEO",
       numPoses: 2,
       minPoseDetectionConfidence: 0.55,
       minPosePresenceConfidence: 0.55,
       minTrackingConfidence: 0.55,
-    });
-    onTrackingState({ code: "model_ready", label: "Movement model ready", quality: null });
+    };
+    let activeDelegate = options.baseOptions.delegate;
+    try {
+      landmarker = await PoseLandmarker.createFromOptions(vision, options);
+    } catch (gpuError) {
+      if (options.baseOptions.delegate !== "GPU") throw gpuError;
+      onTrackingState({ code: "model_fallback", label: "Starting compatibility mode", quality: null });
+      activeDelegate = "CPU";
+      landmarker = await PoseLandmarker.createFromOptions(vision, {
+        ...options,
+        baseOptions: { ...options.baseOptions, delegate: "CPU" },
+      });
+    }
+    onTrackingState({ code: "model_ready", label: `Movement model ready · ${activeDelegate}`, quality: null });
   }
 
   function trackingQuality(landmarks) {
