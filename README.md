@@ -26,6 +26,7 @@ The public synthetic demo works without configuration:
 - Movement Signature and descriptive joint-consistency map;
 - therapist dashboard, Recovery Pulse, and therapist-review suggestion;
 - role-aware patient recovery portal with XP, streaks, milestones, daily prescriptions, momentum, and achievements;
+- three-biome Treatment Roadmap with milestone-level progress, clinician-controlled unlocks, and patient-scoped live updates;
 - functional therapist workspace sections for patients, recovery roadmaps, check-ins, attention alerts, and the exercise library;
 - live therapist statistics, patient filtering, actionable check-ins, and descriptive review alerts derived from authorized session data;
 - working session-summary export, replay/trajectory switching, and private therapist notes;
@@ -70,6 +71,8 @@ The applied production migration sequence is:
 5. `202608250005_security_advisor_cleanup.sql`
 6. `202608250006_claim_invitation_constraint.sql`
 7. `202608250007_profile_onboarding_grants.sql`
+8. `202608250008_individual_exercise_prescriptions.sql`
+9. `202608270001_enable_roadmap_realtime.sql`
 
 The final migration hashes invitation codes at rest, moves multi-table mutations behind transactional RPCs, validates session-to-assignment ownership, adds workflow audit events, and makes session writes idempotent. Promote therapist accounts only through a trusted administrative workflow; public signup always creates a patient.
 
