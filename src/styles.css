@@ -82,5 +82,6 @@
 /* Movement Lab clarity: exercise-specific setup copy stays readable without
    covering the capture area, and the expanded tracker chips can wrap safely. */
 .camera-placeholder small{max-width:260px;padding:0 1rem;font-size:.62rem;line-height:1.5}
+.tracking-chips .verified-frames{color:#9fb2ab}.tracking-chips .verified-frames svg{color:var(--mint)}
 .panel-topline{gap:.65rem;flex-wrap:wrap}
 .tracking-chips{flex-wrap:wrap}
