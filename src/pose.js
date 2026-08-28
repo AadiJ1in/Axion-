@@ -4,6 +4,31 @@ const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+export const MIN_TRACKING_SCORE = 0.62;
+
+const median = (values) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+// Calibration is accepted only when enough reliable frames agree on a stable
+// starting position. A median baseline is intentionally resistant to one-frame
+// landmark spikes that would otherwise shift every threshold in the session.
+export function assessCalibrationWindow(samples, startThreshold) {
+  const finite = samples.filter(Number.isFinite);
+  if (finite.length < 20) return { stable: false, baseline: null, spread: null };
+  const sorted = [...finite].sort((a, b) => a - b);
+  const percentile = (ratio) => sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * ratio))];
+  const spread = percentile(0.9) - percentile(0.1);
+  const maxSpread = Math.max(3, Math.min(10, startThreshold * 0.35));
+  return { stable: spread <= maxSpread, baseline: median(finite), spread };
+}
+
+export function acceptsTrackingQuality(score) {
+  return Number.isFinite(score) && score >= MIN_TRACKING_SCORE;
+}
 
 function supportsWebGL() {
   try {
@@ -71,6 +96,12 @@ export function createRepCycleDetector(profile) {
       returnFrames = 0;
       repStart = null;
       lastRepFinishedAt = -Infinity;
+    },
+    cancelPending() {
+      stage = "up";
+      activeFrames = 0;
+      returnFrames = 0;
+      repStart = null;
     },
   };
 }
@@ -176,7 +207,7 @@ export async function createMovementTracker({
               : groups.legs;
     const score = keyIndices.reduce((sum, index) => sum + (landmarks[index]?.visibility ?? 0), 0) / keyIndices.length;
     if (score >= 0.78) return { label: "High", score };
-    if (score >= 0.62) return { label: "Moderate", score };
+    if (score >= MIN_TRACKING_SCORE) return { label: "Moderate", score };
     return { label: "Low", score };
   }
 
@@ -202,12 +233,43 @@ export async function createMovementTracker({
     const progress = clamp((now - calibrationStart) / 3000, 0, 1);
     onCalibration({ progress, status: progress < 1 ? "Learning your session baseline" : "Body calibrated" });
     if (progress >= 1) {
-      baselineAngle = calibrationSamples.reduce((sum, value) => sum + value, 0) / calibrationSamples.length;
-      baselineLeft = calibrationLeftSamples.length ? calibrationLeftSamples.reduce((sum, value) => sum + value, 0) / calibrationLeftSamples.length : null;
-      baselineRight = calibrationRightSamples.length ? calibrationRightSamples.reduce((sum, value) => sum + value, 0) / calibrationRightSamples.length : null;
+      const window = assessCalibrationWindow(calibrationSamples, profile.startThreshold);
+      if (!window.stable) {
+        calibrationStart = now;
+        calibrationSamples = [];
+        calibrationLeftSamples = [];
+        calibrationRightSamples = [];
+        onCalibration({ progress: 0, status: "Hold your starting position still so Axion can set a reliable baseline." });
+        return false;
+      }
+      baselineAngle = window.baseline;
+      baselineLeft = calibrationLeftSamples.length ? median(calibrationLeftSamples) : null;
+      baselineRight = calibrationRightSamples.length ? median(calibrationRightSamples) : null;
       calibrated = true;
     }
     return calibrated;
+  }
+
+  function pauseMeasurement(message) {
+    repCycle.cancelPending();
+    stage = calibrated ? "positioning" : "calibrating";
+    repStart = null;
+    peakAngle = null;
+    peakDelta = 0;
+    symmetrySamples = [];
+    holdLastFrame = null;
+    activeFrames = 0;
+    onUpdate({
+      reps,
+      stage,
+      angle: null,
+      jointAngle: null,
+      angleLabel: profile.label,
+      measurementUnit: profile.unit,
+      movementRange: null,
+      symmetryDelta: null,
+      message,
+    });
   }
 
   function finishRep(now) {
@@ -341,11 +403,12 @@ export async function createMovementTracker({
       draw(result);
       if ((result.landmarks?.length ?? 0) > 1) {
         onTrackingState({ code: "multiple_people", label: "Multiple people detected", quality: "Low" });
-        onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, movementRange: null, symmetryDelta: null, message: "Only one person should be visible during the session." });
+        pauseMeasurement("Only one person should be visible during the session. Rep counting is paused.");
         rafId = requestAnimationFrame(frame);
         return;
       }
       const landmarks = result.landmarks?.[0];
+      let quality = null;
       if (!landmarks) {
         noPoseFrames += 1;
         if (noPoseFrames > 12) {
@@ -353,7 +416,7 @@ export async function createMovementTracker({
         }
       } else {
         noPoseFrames = 0;
-        const quality = trackingQuality(landmarks);
+        quality = trackingQuality(landmarks);
         onTrackingState({
           code: quality.label === "Low" ? "low_confidence" : "body_detected",
           label: quality.label === "Low" ? "Improve camera position" : "Body detected",
@@ -362,6 +425,13 @@ export async function createMovementTracker({
         });
       }
       if (landmarks) onPose(landmarks);
+      if (!landmarks || !acceptsTrackingQuality(quality?.score)) {
+        pauseMeasurement(landmarks
+          ? `Reposition for a clearer ${profile.label.toLowerCase()} view. Rep counting is paused.`
+          : `Return to frame. ${profile.cameraHint}`);
+        rafId = requestAnimationFrame(frame);
+        return;
+      }
       const measurementLandmarks = result.worldLandmarks?.[0] || landmarks;
       updateState(measurementLandmarks ? measureMovementSignal(measurementLandmarks, profile) : { value: null, left: null, right: null, symmetryDelta: null }, now);
     }
