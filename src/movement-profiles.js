@@ -1,13 +1,14 @@
 const ANGLE_SIGNALS = new Set([
   "knee_bend", "knee_extension", "hip_flexion", "hip_extension", "elbow_flexion",
   "arm_extension", "ankle_dorsiflexion", "ankle_plantarflexion", "shoulder_opening",
-  "torso_extension", "torso_flexion",
+  "torso_extension", "torso_flexion", "torso_side_bend",
 ]);
 const OVERLAY_JOINTS = {
   knee_bend: "knee", knee_extension: "knee", hip_flexion: "hip", hip_extension: "hip",
   hip_lift: "hip", side_plank_lift: "hip", ankle_dorsiflexion: "ankle",
   ankle_plantarflexion: "ankle", elbow_flexion: "elbow", arm_extension: "elbow",
   shoulder_opening: "shoulder", torso_extension: "torso", torso_flexion: "torso",
+  torso_side_bend: "torso",
 };
 
 const rep = (signal, threshold, options = {}) => ({
@@ -38,6 +39,8 @@ export const movementProfiles = {
   scapular_retraction: rep("shoulder_span", 5, { label: "Shoulder-blade motion", unit: "%", cameraHint: "Face the camera with shoulders and hips visible." }),
   assisted_shoulder_flexion: rep("wrist_elevation", 18, { label: "Shoulder elevation", cameraHint: "Use a side or front view with both hands and shoulders visible." }),
   standing_shoulder_abduction: rep("wrist_elevation", 16, { label: "Shoulder elevation", cameraHint: "Face the camera with the working arm, shoulder, and hip visible." }),
+  shoulder_scaption: rep("wrist_elevation", 16, { label: "Scaption elevation", cameraHint: "Use a front/¾ view with the working hand, shoulder, and hip visible." }),
+  serratus_wall_slide: rep("wrist_elevation", 16, { label: "Wall-slide elevation", cameraHint: "Use a side/¾ view with both wrists, shoulders, and hips visible." }),
 
   doorway_chest_stretch: hold("shoulder_opening", 8, { label: "Chest opening", cameraHint: "Use a front view with elbows and shoulders visible." }),
   wall_push_up: rep("elbow_flexion", 24, { label: "Elbow bend", cameraHint: "Use a side or ¾ view with shoulders, elbows, and wrists visible." }),
@@ -59,17 +62,21 @@ export const movementProfiles = {
   bird_dog: rep("opposite_limb_reach", 14, { label: "Opposite-limb reach", cameraHint: "Use a side/¾ view with hands, hips, and ankles visible." }),
   modified_front_plank: hold("plank_position", 45, { label: "Body orientation", unit: "°", cameraHint: "Use a side view with shoulders, hips, and knees visible." }),
   side_plank_knees: hold("side_plank_lift", 10, { label: "Hip lift", cameraHint: "Use a front/¾ view with shoulder, hip, and knee visible." }),
+  standing_side_bend: rep("torso_side_bend", 8, { label: "Side bend", bilateral: "alternate", cameraHint: "Face the camera with both shoulders and hips visible." }),
 
   pelvic_tilt: rep("pelvis_rotation", 5, { label: "Pelvic motion", unit: "%", cameraHint: "Use a close side view with shoulders and hips visible; small tilts may require therapist review." }),
   knee_to_chest: hold("hip_flexion", 18, { label: "Hip bend", cameraHint: "Use a side/¾ view with hip and knee visible." }),
   cat_camel: rep("torso_flexion", 9, { label: "Spine motion", cameraHint: "Use a side view with shoulders, hips, and head visible." }),
   seated_trunk_rotation: rep("torso_rotation", 12, { label: "Trunk rotation", bilateral: "alternate", cameraHint: "Face the camera with shoulders and hips visible." }),
+  quadruped_rock_back: rep("hip_flexion", 14, { label: "Hip bend", cameraHint: "Use a side/¾ view with shoulders, hips, knees, and hands visible." }),
 
   clamshell: rep("knee_separation", 10, { label: "Knee separation", cameraHint: "Use a front/¾ view with both hips and knees visible." }),
   reverse_clamshell: rep("ankle_separation", 8, { label: "Foot separation", cameraHint: "Use a front/¾ view with knees and feet visible." }),
   hip_abduction: rep("hip_abduction", 12, { label: "Hip abduction", cameraHint: "Use a front view with hips, knees, and ankles visible." }),
   hip_adduction: rep("hip_adduction", 10, { label: "Hip adduction", cameraHint: "Use a front view with hips, knees, and ankles visible." }),
   prone_hip_extension: rep("hip_extension", 10, { label: "Hip extension", cameraHint: "Use a side view with shoulder, hip, knee, and ankle visible." }),
+  standing_hip_flexion: rep("hip_flexion", 14, { label: "Hip flexion", cameraHint: "Use a side/¾ full-body view with stable support visible." }),
+  standing_hip_extension: rep("hip_extension", 9, { label: "Hip extension", cameraHint: "Use a side view with shoulder, hip, knee, ankle, and support visible." }),
   figure_four_stretch: hold("figure_four", 12, { label: "Hip position", cameraHint: "Use a front/¾ view with both knees and ankles visible." }),
 
   half_squat: rep("knee_bend", 22, { label: "Knee bend", cameraHint: "Use a front or ¾ full-body view." }),
@@ -86,6 +93,7 @@ export const movementProfiles = {
   bodyweight_squat: rep("knee_bend", 28, { label: "Knee bend", cameraHint: "Use a front or ¾ full-body view." }),
   forward_lunge: rep("knee_bend", 22, { label: "Front-knee bend", cameraHint: "Use a side or ¾ full-body view with both feet visible." }),
   step_up: rep("step_height", 12, { label: "Step height", bilateral: "alternate", cameraHint: "Use a side/¾ view with the step and both legs visible." }),
+  lateral_step_up: rep("step_height", 10, { label: "Lateral step height", bilateral: "alternate", cameraHint: "Face the camera at a ¾ angle with the step, hips, knees, and feet visible." }),
   standing_hip_abduction: rep("hip_abduction", 10, { label: "Hip abduction", cameraHint: "Face the camera with both hips, knees, and ankles visible." }),
   terminal_knee_extension: rep("knee_extension", 14, { label: "Knee extension", cameraHint: "Use a side/¾ view with hip, knee, and ankle visible." }),
   heel_slide: rep("knee_bend", 20, { label: "Knee bend", cameraHint: "Use a side view with hip, knee, and heel visible." }),
@@ -105,6 +113,7 @@ export const movementProfiles = {
 
   single_leg_balance: hold("single_leg_support", 10, { label: "Foot clearance", unit: "%", cameraHint: "Use a front full-body view with a stable support nearby." }),
   marching_in_place: rep("step_height", 10, { label: "Alternating step height", unit: "%", bilateral: "alternate", cameraHint: "Use a front full-body view with both feet and a stable support visible." }),
+  seated_march: rep("hip_flexion", 12, { label: "Alternating hip flexion", bilateral: "alternate", cameraHint: "Use a side/¾ view with shoulders, hips, and knees visible." }),
   tandem_stance: hold("tandem_stance", 7, { label: "Stance position", unit: "%", cameraHint: "Use a front/¾ full-body view with both feet visible." }),
   heel_to_toe_walk: rep("gait_step", 8, { label: "Step motion", unit: "%", bilateral: "alternate", cameraHint: "Use a front full-body view with the walking path visible." }),
 };
@@ -229,6 +238,12 @@ export function measureMovementSignal(landmarks, profile) {
       const hipMid = midpoint(point(landmarks, 23), point(landmarks, 24));
       const value = 180 - angle(earMid, shoulderMid, hipMid);
       return pair(Math.abs(value), null);
+    }
+    case "torso_side_bend": {
+      if (!visible(landmarks, [11, 12, 23, 24])) return pair(null, null);
+      const shoulderMid = midpoint(point(landmarks, 11), point(landmarks, 12));
+      const hipMid = midpoint(point(landmarks, 23), point(landmarks, 24));
+      return pair(Math.atan2(Math.abs(shoulderMid.x - hipMid.x), Math.max(0.001, Math.abs(shoulderMid.y - hipMid.y))) * 180 / Math.PI, null);
     }
     case "hip_lift": return hipLift();
     case "side_plank_lift": return hipLift();
