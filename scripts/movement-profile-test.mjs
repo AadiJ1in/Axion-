@@ -1,10 +1,23 @@
 import assert from "node:assert/strict";
 import { exerciseCatalog } from "../src/exercise-catalog.js";
 import { assertMovementProfileCoverage, getMovementProfile, measureMovementSignal, movementProfiles } from "../src/movement-profiles.js";
-import { createRepCycleDetector } from "../src/pose.js";
+import { acceptsTrackingQuality, assessCalibrationWindow, createRepCycleDetector } from "../src/pose.js";
+
+assert.equal(acceptsTrackingQuality(0.61), false, "Low-confidence frames must never advance movement state.");
+assert.equal(acceptsTrackingQuality(0.62), true, "Moderate-confidence frames should be accepted.");
+assert.deepEqual(
+  assessCalibrationWindow([100, 101, 99, 100, 101, 99, 100, 100, 101, 99, 100, 100, 99, 101, 100, 99, 100, 101, 100, 170], 20),
+  { stable: true, baseline: 100, spread: 2 },
+  "Calibration should resist a single landmark spike.",
+);
+assert.equal(
+  assessCalibrationWindow(Array.from({ length: 24 }, (_, index) => index % 2 ? 80 : 120), 20).stable,
+  false,
+  "Calibration must reject a moving starting position.",
+);
 
 const keys = Object.keys(exerciseCatalog);
-assert.equal(keys.length, 69, "The exercise catalog count changed; update tracker coverage intentionally.");
+assert.equal(keys.length, 77, "The exercise catalog count changed; update tracker coverage intentionally.");
 assert.deepEqual(assertMovementProfileCoverage(keys), [], "Every catalog exercise must have an explicit tracker profile.");
 assert.deepEqual(Object.keys(movementProfiles).filter((key) => !exerciseCatalog[key]), [], "Tracker profiles must map to real catalog exercises.");
 
@@ -43,7 +56,12 @@ for (const key of keys) {
       result = detector.update(profile.startThreshold + 1, frame * 100);
     }
     assert.equal(result.stage, "down", `${key} did not recognize its active movement phase.`);
-    const returnStart = (profile.minActiveFrames - 1) * 100 + Math.max(profile.minRepMs, 600);
+    detector.cancelPending();
+    assert.equal(detector.update(0, 1_000).stage, "up", `${key} did not cancel a partial rep after tracking loss.`);
+    for (let frame = 0; frame < profile.minActiveFrames; frame += 1) {
+      result = detector.update(profile.startThreshold + 1, 1_100 + frame * 100);
+    }
+    const returnStart = 1_100 + (profile.minActiveFrames - 1) * 100 + Math.max(profile.minRepMs, 600);
     for (let frame = 0; frame < profile.minReturnFrames; frame += 1) {
       result = detector.update(0, returnStart + frame * 100);
     }
