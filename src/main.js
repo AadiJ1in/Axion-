@@ -586,6 +586,7 @@ function labView() {
             <div class="tracking-chips">
               <span id="body-state"><i></i> Waiting for body</span>
               <span id="quality-state">Tracking quality: —</span>
+              <span class="verified-frames">${icon("check", 12)} Verified frames only</span>
               <span>${icon("activity", 12)} ${movementProfile.mode === "hold" ? "Measured hold" : "Rep counter"}</span>
               <span>${icon("shield", 12)} On-device</span>
             </div>
@@ -1359,7 +1360,7 @@ function handleTrackingState({ code, label, quality, confidence }) {
 
   const guidance = {
     out_of_frame: "Step back so your full body is visible.",
-    low_confidence: "Improve the lighting and keep your ankles in frame.",
+    low_confidence: "Counting is paused. Improve the lighting and follow the camera setup shown above.",
     multiple_people: "Only one person should be visible during the session.",
   };
   if (guidance[code]) setText("#coach-message", guidance[code]);
