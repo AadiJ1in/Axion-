@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { exerciseCatalog } from "../src/exercise-catalog.js";
+import { exerciseCatalog, exerciseFacets } from "../src/exercise-catalog.js";
 import { assertMovementProfileCoverage, getMovementProfile, measureMovementSignal, movementProfiles } from "../src/movement-profiles.js";
 import { acceptsTrackingQuality, assessCalibrationWindow, createRepCycleDetector } from "../src/pose.js";
 
@@ -17,9 +17,12 @@ assert.equal(
 );
 
 const keys = Object.keys(exerciseCatalog);
-assert.equal(keys.length, 77, "The exercise catalog count changed; update tracker coverage intentionally.");
+assert.equal(keys.length, 84, "The exercise catalog count changed; update tracker coverage intentionally.");
 assert.deepEqual(assertMovementProfileCoverage(keys), [], "Every catalog exercise must have an explicit tracker profile.");
 assert.deepEqual(Object.keys(movementProfiles).filter((key) => !exerciseCatalog[key]), [], "Tracker profiles must map to real catalog exercises.");
+assert.deepEqual(exerciseFacets(exerciseCatalog.band_shoulder_extension), { goals: ["Strength", "Motor control"], equipment: ["Resistance band"], position: "Standing" }, "Band shoulder extension facets changed unexpectedly.");
+assert.deepEqual(exerciseFacets(exerciseCatalog.short_arc_quad), { goals: ["Strength", "Mobility", "Motor control"], equipment: ["Mat / towel"], position: "Lying" }, "Short-arc quadriceps facets changed unexpectedly.");
+assert.ok(exerciseFacets(exerciseCatalog.supported_side_stepping).goals.includes("Balance"), "Supported side stepping must remain discoverable under Balance.");
 
 const syntheticPose = Array.from({ length: 33 }, (_, index) => ({
   x: 0.2 + (index % 5) * 0.11,
@@ -30,6 +33,8 @@ const syntheticPose = Array.from({ length: 33 }, (_, index) => ({
 
 for (const key of keys) {
   const exercise = exerciseCatalog[key];
+  const facets = exerciseFacets(exercise);
+  assert.ok(facets.goals.length && facets.equipment.length && facets.position, `${key} needs complete clinical filters.`);
   const profile = getMovementProfile(key, exercise.trackingMode);
   assert.ok(["reps", "hold"].includes(profile.mode), `${key} needs a supported mode.`);
   assert.ok(profile.signal && profile.label && profile.cameraHint, `${key} needs a signal, label, and camera setup.`);
