@@ -1,6 +1,6 @@
 export const ONBOARDING_VERSION = 1;
 
-export { exerciseCatalog, exerciseCatalogSource, exerciseCategoryOrder } from "./exercise-catalog.js";
+export { exerciseCatalog, exerciseCatalogSource, exerciseCategoryOrder, exerciseFacets, exerciseFilterOptions } from "./exercise-catalog.js";
 import { exerciseCatalog, exerciseCatalogSource } from "./exercise-catalog.js";
 
 export function assignmentDetails(assignment = {}) {
