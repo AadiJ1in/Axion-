@@ -15,6 +15,8 @@ import {
   exerciseCatalog,
   exerciseCategoryOrder,
   exerciseCatalogSource,
+  exerciseFacets,
+  exerciseFilterOptions,
   loadPatientWorkspace,
   loadMovementReport,
   loadTherapistNotes,
@@ -80,6 +82,9 @@ let therapistSection = "overview";
 let patientFilter = "all";
 let exerciseLibraryQuery = "";
 let exerciseLibraryCategory = "All";
+let exerciseLibraryGoal = "All";
+let exerciseLibraryEquipment = "All";
+let exerciseLibraryPosition = "All";
 let roadmapExpanded = false;
 let patientRealtimeChannel = null;
 let patientRealtimeKey = null;
@@ -1013,18 +1018,31 @@ function renderTherapistAlerts(isDemoTherapist) {
 function renderExerciseLibrary() {
   const query = exerciseLibraryQuery.trim().toLowerCase();
   const filtered = Object.entries(exerciseCatalog).filter(([, exercise]) => {
+    const facets = exerciseFacets(exercise);
     const categoryMatch = exerciseLibraryCategory === "All" || exercise.category === exerciseLibraryCategory;
-    const queryMatch = !query || `${exercise.name} ${exercise.category} ${exercise.focus.join(" ")} ${exercise.summary}`.toLowerCase().includes(query);
-    return categoryMatch && queryMatch;
+    const goalMatch = exerciseLibraryGoal === "All" || facets.goals.includes(exerciseLibraryGoal);
+    const equipmentMatch = exerciseLibraryEquipment === "All" || facets.equipment.includes(exerciseLibraryEquipment);
+    const positionMatch = exerciseLibraryPosition === "All" || facets.position === exerciseLibraryPosition;
+    const queryMatch = !query || `${exercise.name} ${exercise.category} ${exercise.focus.join(" ")} ${exercise.summary} ${exercise.equipment} ${facets.goals.join(" ")} ${facets.position}`.toLowerCase().includes(query);
+    return categoryMatch && goalMatch && equipmentMatch && positionMatch && queryMatch;
   });
   const groups = exerciseCategoryOrder.map((category) => [category, filtered.filter(([, exercise]) => exercise.category === category)]).filter(([, entries]) => entries.length);
   const categoryButtons = ["All", ...exerciseCategoryOrder].map((category) => {
     const count = category === "All" ? Object.keys(exerciseCatalog).length : Object.values(exerciseCatalog).filter((exercise) => exercise.category === category).length;
     return `<button class="${exerciseLibraryCategory === category ? "active" : ""}" data-library-category="${escapeHtml(category)}">${escapeHtml(category)} <span>${count}</span></button>`;
   }).join("");
-  return `<section class="exercise-library-card"><div class="library-head"><div><span class="section-kicker">CLINICIAN EXERCISE LIBRARY</span><h2>${Object.keys(exerciseCatalog).length} guided movements · 14 body sections</h2><p>Search or filter by anatomy. Open any card to review patient instructions before prescribing it.</p></div><label>${icon("search",16)}<input id="exercise-library-search" value="${escapeHtml(exerciseLibraryQuery)}" placeholder="Search exercise, muscle, or goal"/></label></div>
+  const selectOptions = (options, selected) => [`<option value="All">All</option>`, ...options.map((option) => `<option value="${escapeHtml(option)}" ${selected === option ? "selected" : ""}>${escapeHtml(option)}</option>`)].join("");
+  const filtersActive = [exerciseLibraryCategory, exerciseLibraryGoal, exerciseLibraryEquipment, exerciseLibraryPosition].some((value) => value !== "All") || Boolean(query);
+  return `<section class="exercise-library-card"><div class="library-head"><div><span class="section-kicker">Exercise library</span><h2>Find the right movement</h2><p>${Object.keys(exerciseCatalog).length} therapist-prescribable exercises with setup, dosage, tracking, and patient instructions.</p></div><label class="library-search">${icon("search",16)}<input id="exercise-library-search" value="${escapeHtml(exerciseLibraryQuery)}" placeholder="Search by exercise, muscle, equipment, or goal"/></label></div>
+    <div class="library-filter-bar">
+      <label><span>Treatment goal</span><select id="exercise-library-goal">${selectOptions(exerciseFilterOptions.goals, exerciseLibraryGoal)}</select></label>
+      <label><span>Equipment</span><select id="exercise-library-equipment">${selectOptions(exerciseFilterOptions.equipment, exerciseLibraryEquipment)}</select></label>
+      <label><span>Patient position</span><select id="exercise-library-position">${selectOptions(exerciseFilterOptions.positions, exerciseLibraryPosition)}</select></label>
+      <div class="library-result-count"><strong>${filtered.length}</strong><span>of ${Object.keys(exerciseCatalog).length} exercises</span></div>
+      <button class="library-clear ${filtersActive ? "" : "hidden"}" data-clear-library-filters>Clear filters</button>
+    </div>
     <div class="library-category-nav" aria-label="Exercise body sections">${categoryButtons}</div>
-    <div class="library-sections">${groups.map(([category, entries]) => `<section data-library-section="${escapeHtml(category)}"><div class="library-section-heading"><div><span>${icon("activity", 16)}</span><h3>${escapeHtml(category)}</h3></div><small>${entries.length} movement${entries.length === 1 ? "" : "s"}</small></div><div class="library-grid">${entries.map(([key, exercise]) => `<article data-library-exercise="${key}"><span>${escapeHtml(exercise.category)}</span><h3>${escapeHtml(exercise.name)}</h3><p>${escapeHtml(exercise.summary)}</p><div class="library-dose"><small>${exercise.defaultSets} sets</small><small>${exercise.trackingMode === "timed_hold" ? `${exercise.defaultDuration || 30}s hold` : `${exercise.defaultReps} reps`}</small><small>${escapeHtml(exercise.trackingMode.replaceAll("_", " "))}</small></div>${exerciseGuideMarkup({ key, ...exercise }, { compact: true })}</article>`).join("")}</div></section>`).join("") || `<div class="empty-state"><h3>No exercises match that search and body section.</h3><p>Clear the search or select another section.</p></div>`}</div>
+    <div class="library-sections">${groups.map(([category, entries]) => `<section data-library-section="${escapeHtml(category)}"><div class="library-section-heading"><div><h3>${escapeHtml(category)}</h3></div><small>${entries.length} exercise${entries.length === 1 ? "" : "s"}</small></div><div class="library-grid">${entries.map(([key, exercise]) => { const facets = exerciseFacets(exercise); return `<article data-library-exercise="${key}"><div class="library-card-heading"><div><span>${escapeHtml(exercise.category)}</span><h3>${escapeHtml(exercise.name)}</h3></div><em>${escapeHtml(facets.position)}</em></div><p>${escapeHtml(exercise.summary)}</p><div class="library-clinical-meta"><span>${icon("activity", 13)} ${escapeHtml(facets.goals.join(" · "))}</span><span>${escapeHtml(exercise.equipment)}</span></div><div class="library-dose"><small>${exercise.defaultSets} sets</small><small>${exercise.trackingMode === "timed_hold" ? `${exercise.defaultDuration || 30}s hold` : `${exercise.defaultReps} reps`}</small><small>${exercise.trackingMode === "timed_hold" ? "Measured hold" : "Camera rep count"}</small></div>${exerciseGuideMarkup({ key, ...exercise }, { compact: true })}</article>`; }).join("")}</div></section>`).join("") || `<div class="empty-state"><h3>No exercises match these filters</h3><p>Clear one or more filters to broaden the library.</p><button class="button button--ghost" data-clear-library-filters>Clear filters</button></div>`}</div>
     <footer>Guidance reviewed from <a href="${exerciseCatalogSource.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(exerciseCatalogSource.name)}</a>. ${escapeHtml(exerciseCatalogSource.note)}</footer></section>`;
 }
 
@@ -2102,12 +2120,25 @@ function bindEvents() {
   }));
   document.querySelector("#exercise-library-search")?.addEventListener("input", (event) => {
     exerciseLibraryQuery = event.currentTarget.value;
-    const query = exerciseLibraryQuery.trim().toLowerCase();
-    document.querySelectorAll("[data-library-exercise]").forEach((card) => { card.hidden = Boolean(query) && !card.textContent.toLowerCase().includes(query); });
-    document.querySelectorAll("[data-library-section]").forEach((section) => {
-      section.hidden = ![...section.querySelectorAll("[data-library-exercise]")].some((card) => !card.hidden);
+    therapistView();
+    requestAnimationFrame(() => document.querySelector("#exercise-library-search")?.focus());
+  });
+  [["#exercise-library-goal", "goal"], ["#exercise-library-equipment", "equipment"], ["#exercise-library-position", "position"]].forEach(([selector, filter]) => {
+    document.querySelector(selector)?.addEventListener("change", (event) => {
+      if (filter === "goal") exerciseLibraryGoal = event.currentTarget.value;
+      if (filter === "equipment") exerciseLibraryEquipment = event.currentTarget.value;
+      if (filter === "position") exerciseLibraryPosition = event.currentTarget.value;
+      therapistView();
     });
   });
+  document.querySelectorAll("[data-clear-library-filters]").forEach((button) => button.addEventListener("click", () => {
+    exerciseLibraryQuery = "";
+    exerciseLibraryCategory = "All";
+    exerciseLibraryGoal = "All";
+    exerciseLibraryEquipment = "All";
+    exerciseLibraryPosition = "All";
+    therapistView();
+  }));
   document.querySelectorAll("[data-library-category]").forEach((button) => button.addEventListener("click", () => {
     exerciseLibraryCategory = button.dataset.libraryCategory;
     therapistView();
