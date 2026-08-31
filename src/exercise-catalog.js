@@ -179,10 +179,10 @@ export function exerciseFacets(exercise) {
     /weight/.test(equipment) ? "Weight" : null,
     /^none/.test(equipment) ? "No equipment" : null,
   ].filter(Boolean));
-  const position = /hands and knees|quadruped/.test(directions) ? "Hands and knees"
-    : /lie|lying|supine|prone|side-lying|stomach|back with/.test(directions) ? "Lying"
-      : /sit|seated/.test(directions) ? "Seated"
-        : /stand/.test(directions) ? "Standing"
+  const position = /\b(?:hands and knees|quadruped)\b/.test(directions) ? "Hands and knees"
+    : /\b(?:lie|lying|supine|prone|side-lying|stomach)\b|\bback with\b/.test(directions) ? "Lying"
+      : /\b(?:sit|seated|sitting)\b/.test(directions) ? "Seated"
+        : /\b(?:stand|standing)\b/.test(directions) ? "Standing"
           : "Other";
   return { goals: goals.length ? goals : ["Motor control"], equipment: equipmentTypes.length ? equipmentTypes : ["Other"], position };
 }
