@@ -16,7 +16,7 @@ The public synthetic demo works without configuration:
 
 - three-second session calibration using locally estimated pose landmarks;
 - live Movement Twin reconstructed from MediaPipe coordinates;
-- 61 explicit exercise-tracking profiles: 42 calibrated rep-cycle counters and 19 camera-timed position holds;
+- 92 explicit exercise-tracking profiles: 71 calibrated rep-cycle counters and 21 camera-timed position holds;
 - movement-specific signals for the neck, shoulders, arms, trunk, hips, knees, ankles, feet, balance, and gait;
 - rep-level excursion, tempo, and bilateral-difference summaries using each exercise's relevant landmarks;
 - sequence-aware coaching messages;
@@ -30,7 +30,7 @@ The public synthetic demo works without configuration:
 - role-aware patient recovery portal with XP, streaks, milestones, daily prescriptions, momentum, and achievements;
 - three-biome Treatment Roadmap with milestone-level progress, clinician-controlled unlocks, and patient-scoped live updates;
 - functional therapist workspace sections for patients, recovery roadmaps, check-ins, attention alerts, and the exercise library;
-- 61-movement therapist library organized into 14 anatomical sections from neck and shoulders through core, hips, quads, calves, feet, and balance;
+- 92-movement therapist library organized into 14 anatomical sections and seven curated clinical-program filters;
 - patient-ready setup, numbered technique steps, form cues, common mistakes, safety guidance, and optional AAOS/NHS visual-guide links for every exercise;
 - the same exercise guidance shown in the patient roadmap and inside Motion Lab before tracking starts;
 - live therapist statistics, patient filtering, actionable check-ins, and descriptive review alerts derived from authorized session data;
@@ -80,6 +80,10 @@ The applied production migration sequence is:
 9. `202608270001_enable_roadmap_realtime.sql`
 10. `202608270002_expand_exercise_catalog.sql`
 11. `202608270003_exercise_specific_pose_tracking.sql`
+12. `202608270004_add_trackable_exercises.sql`
+13. `202608280001_add_eight_trackable_exercises.sql`
+14. `202608290001_add_common_clinical_exercises.sql`
+15. `202608310001_add_clinical_program_exercises.sql`
 
 The migrations hash invitation codes at rest, move multi-table mutations behind transactional RPCs, validate session-to-assignment ownership, add workflow audit events, make session writes idempotent, and keep the server-authoritative exercise allowlist in the unexposed `private` schema. Promote therapist accounts only through a trusted administrative workflow; public signup always creates a patient.
 
