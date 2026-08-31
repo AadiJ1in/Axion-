@@ -9,6 +9,7 @@ import {
   assignmentDetails,
   claimCareInvitation,
   completePatientOnboarding,
+  commonlyPrescribedExerciseKeys,
   createCareInvitation,
   createPersonalPlan,
   createTherapistNote,
@@ -17,6 +18,8 @@ import {
   exerciseCatalogSource,
   exerciseFacets,
   exerciseFilterOptions,
+  exerciseProgramPresets,
+  exercisePrograms,
   loadPatientWorkspace,
   loadMovementReport,
   loadTherapistNotes,
@@ -85,6 +88,8 @@ let exerciseLibraryCategory = "All";
 let exerciseLibraryGoal = "All";
 let exerciseLibraryEquipment = "All";
 let exerciseLibraryPosition = "All";
+let exerciseLibraryProgram = "All";
+let exerciseLibraryCommonOnly = false;
 let roadmapExpanded = false;
 let patientRealtimeChannel = null;
 let patientRealtimeKey = null;
@@ -108,6 +113,8 @@ let selectedRep = 4;
 let replayMode = "replay";
 let sessionStartedAt = null;
 let sessionClientId = null;
+const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+let authIdleTimer = null;
 let lastTwinPoints = null;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
@@ -247,7 +254,7 @@ function homeView() {
           <div class="orbit orbit--one"></div><div class="orbit orbit--two"></div>
           <div class="hero-twin">${twinSvg()}</div>
           <div class="floating-card floating-card--calibrated"><span class="mini-check">${icon("check", 12)}</span><div><b>BODY CALIBRATED</b><small>Session baseline ready</small></div></div>
-          <div class="floating-card floating-card--rep"><small>BEST REP</small><b>#4</b><span>96° depth · 2.6s</span></div>
+          <div class="floating-card floating-card--rep"><small>BEST REP</small><b>#4</b><span>84° knee bend · 2.6s</span></div>
           <div class="hero-signature">${signatureSvg({ compact: true, id: "hero" })}</div>
         </div>
       </section>
@@ -256,7 +263,7 @@ function homeView() {
         <div class="section-heading"><div><span class="section-kicker">THE AXION LOOP</span><h2>From camera to clarity.</h2></div><p>One focused workflow, built around what patients feel and what therapists need to know.</p></div>
         <div class="story-grid">
           <article class="story-card story-card--feature"><span class="story-index">01</span><div class="mini-twin">${twinSvg()}</div><div><h3>Movement Twin</h3><p>A clean live reconstruction mirrors the session and makes target range visible without uploading video.</p></div></article>
-          <article class="story-card"><span class="story-index">02</span>${icon("spark", 28)}<h3>Contextual coaching</h3><p>Axion reads the sequence—depth, tempo, consistency, and where performance changes.</p><blockquote>“Rep 4 was your most consistent. Your last three reps slowed.”</blockquote></article>
+          <article class="story-card"><span class="story-index">02</span>${icon("spark", 28)}<h3>Contextual coaching</h3><p>Axion reads the sequence—joint range, tempo, consistency, and where performance changes.</p><blockquote>“Rep 4 was your most consistent. Your last three reps slowed.”</blockquote></article>
           <article class="story-card"><span class="story-index">03</span>${icon("report", 28)}<h3>Movement Report</h3><p>Best rep, least consistent rep, session trend, skeleton replay, and a clear therapist-review cue.</p><div class="report-mini"><span style="--v:82%"></span><span style="--v:90%"></span><span style="--v:96%"></span><span style="--v:88%"></span><span style="--v:72%"></span></div></article>
         </div>
       </section>
@@ -415,7 +422,7 @@ async function advanceOnboarding() {
     else if (!patientWorkspace.plan) awaitingPlanView();
     else patientView();
   } catch (error) {
-    if (message) message.textContent = error.message;
+    if (message) message.textContent = safeOperationalMessage(error, "Your onboarding could not be saved. Check your connection and try again.");
     if (button) button.disabled = false;
   }
 }
@@ -446,7 +453,7 @@ async function submitConnectionCode(event) {
     await claimCareInvitation(supabase, currentSession.user.id, document.querySelector("#invite-code").value);
     patientWorkspace = await loadPatientWorkspace(supabase, currentSession.user.id);
     verificationPendingView();
-  } catch (error) { message.textContent = error.message; }
+  } catch (error) { message.textContent = safeOperationalMessage(error, "This invitation could not be verified. Check the code or ask your therapist for a new one."); }
 }
 
 function verificationPendingView() {
@@ -951,9 +958,11 @@ function exercisePrescriptionRows() {
   return Object.entries(exerciseCatalog).map(([key, exercise], index) => {
     const timed = exercise.trackingMode === "timed_hold";
     const movementProfile = getMovementProfile(key, exercise.trackingMode);
-    return `<label class="prescription-row" data-prescription-row="${key}">
+    const programs = exercisePrograms(key);
+    const searchText = `${exercise.name} ${exercise.category} ${exercise.focus.join(" ")} ${exercise.equipment} ${programs.join(" ")}`.toLowerCase();
+    return `<label class="prescription-row" data-prescription-row="${key}" data-prescription-search="${escapeHtml(searchText)}" data-prescription-programs="${escapeHtml(programs.join("|"))}" data-prescription-common="${commonlyPrescribedExerciseKeys.includes(key) ? "true" : "false"}">
       <input class="prescription-toggle" type="checkbox" value="${key}" ${index === 0 ? "checked" : ""}/>
-      <span class="prescription-name"><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(exercise.region)} · ${movementProfile.mode === "hold" ? "times" : "counts"} ${escapeHtml(movementProfile.label.toLowerCase())}</small></span>
+      <span class="prescription-name"><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(exercise.region)} · ${movementProfile.mode === "hold" ? "times" : "counts"} ${escapeHtml(movementProfile.label.toLowerCase())}${commonlyPrescribedExerciseKeys.includes(key) ? " · Common" : ""}</small></span>
       <span class="dosage-control"><small>SETS</small><input class="prescription-sets" type="number" min="1" max="20" value="${exercise.defaultSets}" ${index === 0 ? "" : "disabled"}/></span>
       ${timed
         ? `<span class="dosage-control"><small>HOLD (SEC)</small><input class="prescription-duration" type="number" min="5" max="3600" value="${exercise.defaultDuration || 30}" ${index === 0 ? "" : "disabled"}/><input class="prescription-reps" type="hidden" value="1"/></span>`
@@ -966,7 +975,7 @@ function renderPlanBuilder(isDemoTherapist) {
   if (isDemoTherapist) return `<div class="demo-lock-note">Sign in as a verified therapist to publish a live patient roadmap.</div>`;
   if (!assignedPatients.length) return `<div class="empty-state"><span>${icon("users", 24)}</span><h3>Connect a patient first</h3><p>A therapist can prescribe only after the patient accepts an email-bound invitation and the therapist verifies it.</p></div>`;
   return `<section class="plan-builder-card plan-builder-card--v2">
-    <div><span class="section-kicker">PUBLISH A PERSONAL ROADMAP</span><h2>Choose exercises and dose each one</h2><p>Every selected exercise gets its own sets, reps, or hold time. Publishing archives the previous active plan for this patient.</p></div>
+    <div><span class="section-kicker">Build a treatment roadmap</span><h2>Choose exercises and set each dosage</h2><p>Every selected exercise gets its own sets, reps, or hold time. Publishing archives the previous active plan for this patient.</p></div>
     <form id="plan-builder-form">
       <div class="plan-basics">
         <label>Patient<select id="plan-patient" required>${assignedPatients.map((patient) => `<option value="${patient.id}">${escapeHtml(patient.display_name)}</option>`).join("")}</select></label>
@@ -975,9 +984,15 @@ function renderPlanBuilder(isDemoTherapist) {
         <label>Current phase<input id="plan-phase" value="Foundation" required/></label>
       </div>
       <div class="prescription-toolbar"><div><b>Exercise prescription</b><small>Select up to 12 exercises. Dosage is independent for each one.</small></div><span id="selected-exercise-count">1 selected</span></div>
+      <div class="prescription-filters">
+        <label><span>Find an exercise</span><input id="prescription-search" type="search" placeholder="Search movement, region, or equipment" autocomplete="off"/></label>
+        <label><span>Clinical program</span><select id="prescription-program"><option value="All">All exercises</option>${Object.keys(exerciseProgramPresets).map((program) => `<option value="${escapeHtml(program)}">${escapeHtml(program)}</option>`).join("")}</select></label>
+        <label class="prescription-common-filter"><input id="prescription-common-only" type="checkbox"/> Commonly used</label>
+        <span id="prescription-visible-count">${Object.keys(exerciseCatalog).length} shown</span>
+      </div>
       <div class="prescription-list">${exercisePrescriptionRows()}</div>
       <label class="wide">Patient instructions<textarea id="plan-instructions" rows="3" maxlength="2000" placeholder="Add patient-specific positioning, equipment, precautions, and stop criteria."></textarea></label>
-      <div class="clinical-source-note">${icon("shield", 16)}<span><b>Clinician-directed library</b> · Exercise names are drawn from AAOS OrthoInfo conditioning programs. The therapist remains responsible for suitability, dosage, and progression.</span></div>
+      <div class="clinical-source-note">${icon("shield", 16)}<span><b>Clinician-directed library</b> · Exercise guidance is sourced from AAOS OrthoInfo and NHS rehabilitation resources. The therapist remains responsible for suitability, dosage, and progression.</span></div>
       <button class="button button--primary" type="submit">Publish private plan ${icon("arrow",16)}</button>
     </form><div id="plan-result" class="form-message"></div>
   </section>`;
@@ -1017,14 +1032,17 @@ function renderTherapistAlerts(isDemoTherapist) {
 
 function renderExerciseLibrary() {
   const query = exerciseLibraryQuery.trim().toLowerCase();
-  const filtered = Object.entries(exerciseCatalog).filter(([, exercise]) => {
+  const filtered = Object.entries(exerciseCatalog).filter(([key, exercise]) => {
     const facets = exerciseFacets(exercise);
+    const programs = exercisePrograms(key);
     const categoryMatch = exerciseLibraryCategory === "All" || exercise.category === exerciseLibraryCategory;
     const goalMatch = exerciseLibraryGoal === "All" || facets.goals.includes(exerciseLibraryGoal);
     const equipmentMatch = exerciseLibraryEquipment === "All" || facets.equipment.includes(exerciseLibraryEquipment);
     const positionMatch = exerciseLibraryPosition === "All" || facets.position === exerciseLibraryPosition;
-    const queryMatch = !query || `${exercise.name} ${exercise.category} ${exercise.focus.join(" ")} ${exercise.summary} ${exercise.equipment} ${facets.goals.join(" ")} ${facets.position}`.toLowerCase().includes(query);
-    return categoryMatch && goalMatch && equipmentMatch && positionMatch && queryMatch;
+    const programMatch = exerciseLibraryProgram === "All" || programs.includes(exerciseLibraryProgram);
+    const commonMatch = !exerciseLibraryCommonOnly || commonlyPrescribedExerciseKeys.includes(key);
+    const queryMatch = !query || `${exercise.name} ${exercise.category} ${exercise.focus.join(" ")} ${exercise.summary} ${exercise.equipment} ${facets.goals.join(" ")} ${facets.position} ${programs.join(" ")}`.toLowerCase().includes(query);
+    return categoryMatch && goalMatch && equipmentMatch && positionMatch && programMatch && commonMatch && queryMatch;
   });
   const groups = exerciseCategoryOrder.map((category) => [category, filtered.filter(([, exercise]) => exercise.category === category)]).filter(([, entries]) => entries.length);
   const categoryButtons = ["All", ...exerciseCategoryOrder].map((category) => {
@@ -1032,17 +1050,19 @@ function renderExerciseLibrary() {
     return `<button class="${exerciseLibraryCategory === category ? "active" : ""}" data-library-category="${escapeHtml(category)}">${escapeHtml(category)} <span>${count}</span></button>`;
   }).join("");
   const selectOptions = (options, selected) => [`<option value="All">All</option>`, ...options.map((option) => `<option value="${escapeHtml(option)}" ${selected === option ? "selected" : ""}>${escapeHtml(option)}</option>`)].join("");
-  const filtersActive = [exerciseLibraryCategory, exerciseLibraryGoal, exerciseLibraryEquipment, exerciseLibraryPosition].some((value) => value !== "All") || Boolean(query);
+  const filtersActive = [exerciseLibraryCategory, exerciseLibraryGoal, exerciseLibraryEquipment, exerciseLibraryPosition, exerciseLibraryProgram].some((value) => value !== "All") || exerciseLibraryCommonOnly || Boolean(query);
   return `<section class="exercise-library-card"><div class="library-head"><div><span class="section-kicker">Exercise library</span><h2>Find the right movement</h2><p>${Object.keys(exerciseCatalog).length} therapist-prescribable exercises with setup, dosage, tracking, and patient instructions.</p></div><label class="library-search">${icon("search",16)}<input id="exercise-library-search" value="${escapeHtml(exerciseLibraryQuery)}" placeholder="Search by exercise, muscle, equipment, or goal"/></label></div>
     <div class="library-filter-bar">
+      <label><span>Clinical program</span><select id="exercise-library-program">${selectOptions(exerciseFilterOptions.programs, exerciseLibraryProgram)}</select></label>
       <label><span>Treatment goal</span><select id="exercise-library-goal">${selectOptions(exerciseFilterOptions.goals, exerciseLibraryGoal)}</select></label>
       <label><span>Equipment</span><select id="exercise-library-equipment">${selectOptions(exerciseFilterOptions.equipment, exerciseLibraryEquipment)}</select></label>
       <label><span>Patient position</span><select id="exercise-library-position">${selectOptions(exerciseFilterOptions.positions, exerciseLibraryPosition)}</select></label>
+      <label class="library-common-filter"><input id="exercise-library-common" type="checkbox" ${exerciseLibraryCommonOnly ? "checked" : ""}/><span>Commonly used</span></label>
       <div class="library-result-count"><strong>${filtered.length}</strong><span>of ${Object.keys(exerciseCatalog).length} exercises</span></div>
       <button class="library-clear ${filtersActive ? "" : "hidden"}" data-clear-library-filters>Clear filters</button>
     </div>
     <div class="library-category-nav" aria-label="Exercise body sections">${categoryButtons}</div>
-    <div class="library-sections">${groups.map(([category, entries]) => `<section data-library-section="${escapeHtml(category)}"><div class="library-section-heading"><div><h3>${escapeHtml(category)}</h3></div><small>${entries.length} exercise${entries.length === 1 ? "" : "s"}</small></div><div class="library-grid">${entries.map(([key, exercise]) => { const facets = exerciseFacets(exercise); return `<article data-library-exercise="${key}"><div class="library-card-heading"><div><span>${escapeHtml(exercise.category)}</span><h3>${escapeHtml(exercise.name)}</h3></div><em>${escapeHtml(facets.position)}</em></div><p>${escapeHtml(exercise.summary)}</p><div class="library-clinical-meta"><span>${icon("activity", 13)} ${escapeHtml(facets.goals.join(" · "))}</span><span>${escapeHtml(exercise.equipment)}</span></div><div class="library-dose"><small>${exercise.defaultSets} sets</small><small>${exercise.trackingMode === "timed_hold" ? `${exercise.defaultDuration || 30}s hold` : `${exercise.defaultReps} reps`}</small><small>${exercise.trackingMode === "timed_hold" ? "Measured hold" : "Camera rep count"}</small></div>${exerciseGuideMarkup({ key, ...exercise }, { compact: true })}</article>`; }).join("")}</div></section>`).join("") || `<div class="empty-state"><h3>No exercises match these filters</h3><p>Clear one or more filters to broaden the library.</p><button class="button button--ghost" data-clear-library-filters>Clear filters</button></div>`}</div>
+    <div class="library-sections">${groups.map(([category, entries]) => `<section data-library-section="${escapeHtml(category)}"><div class="library-section-heading"><div><h3>${escapeHtml(category)}</h3></div><small>${entries.length} exercise${entries.length === 1 ? "" : "s"}</small></div><div class="library-grid">${entries.map(([key, exercise]) => { const facets = exerciseFacets(exercise); const programs = exercisePrograms(key); return `<article data-library-exercise="${key}"><div class="library-card-heading"><div><span>${escapeHtml(exercise.category)}${commonlyPrescribedExerciseKeys.includes(key) ? " · Common" : ""}</span><h3>${escapeHtml(exercise.name)}</h3></div><em>${escapeHtml(facets.position)}</em></div><p>${escapeHtml(exercise.summary)}</p>${programs.length ? `<div class="library-programs">${programs.map((program) => `<span>${escapeHtml(program)}</span>`).join("")}</div>` : ""}<div class="library-clinical-meta"><span>${icon("activity", 13)} ${escapeHtml(facets.goals.join(" · "))}</span><span>${escapeHtml(exercise.equipment)}</span></div><div class="library-dose"><small>${exercise.defaultSets} sets</small><small>${exercise.trackingMode === "timed_hold" ? `${exercise.defaultDuration || 30}s hold` : `${exercise.defaultReps} reps`}</small><small>${exercise.trackingMode === "timed_hold" ? "Measured hold" : "Camera rep count"}</small></div>${exerciseGuideMarkup({ key, ...exercise }, { compact: true })}</article>`; }).join("")}</div></section>`).join("") || `<div class="empty-state"><h3>No exercises match these filters</h3><p>Clear one or more filters to broaden the library.</p><button class="button button--ghost" data-clear-library-filters>Clear filters</button></div>`}</div>
     <footer>Guidance reviewed from <a href="${exerciseCatalogSource.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(exerciseCatalogSource.name)}</a>. ${escapeHtml(exerciseCatalogSource.note)}</footer></section>`;
 }
 
@@ -1071,13 +1091,13 @@ function therapistView() {
   app.innerHTML = layout(`
     <main class="therapist-page container-wide">
       <section class="pt-workspace-nav">
-        <div><span>${icon("activity", 17)}</span><b>Clinical command center</b></div>
+        <div><span>${icon("activity", 17)}</span><b>Therapist workspace</b></div>
         <nav>${[["overview","Overview"],["patients","Patients"],["roadmaps","Recovery roadmaps"],["checkins","Check-ins"],["alerts","Alerts"],["library","Exercise library"]].map(([section,label]) => `<button class="${therapistSection === section ? "active" : ""}" data-therapist-section="${section}">${label}${section === "alerts" && (isDemoTherapist || therapistWorkspace.alerts.filter((alert) => alert.status === "open").length) ? `<i>${isDemoTherapist ? 2 : therapistWorkspace.alerts.filter((alert) => alert.status === "open").length}</i>` : ""}</button>`).join("")}</nav>
         <button data-portal-signout>Sign out</button>
       </section>
       <div class="${therapistPanelClass("overview")}">
       <div class="dashboard-head">
-        <div><span class="section-kicker">THERAPIST WORKSPACE</span><h1>Good afternoon, ${escapeHtml(currentProfile?.display_name || "Dr. Ava Patel")}.</h1><p>Here is what changed across your patient panel since your last review.</p></div>
+        <div><span class="section-kicker">Patient panel</span><h1>Good afternoon, ${escapeHtml(currentProfile?.display_name || "Dr. Ava Patel")}.</h1><p>Here is what changed across your patient panel since your last review.</p></div>
         <div class="date-card"><span>${dayName}</span><b>${dateLabel}</b></div>
       </div>
       <section class="dashboard-stats">
@@ -1136,7 +1156,7 @@ async function submitPatientInvitation(event) {
     const invitation = await createCareInvitation(supabase, currentSession.user.id, document.querySelector("#invite-patient-email").value);
     result.innerHTML = `<b>Invitation ready:</b> <code>${escapeHtml(invitation.invite_code)}</code><br/><span>Share this code only with ${escapeHtml(invitation.patient_email)}. It expires ${new Date(invitation.expires_at).toLocaleString()}.</span>`;
     document.querySelector("#invite-patient-form").reset();
-  } catch (error) { result.textContent = error.message; }
+  } catch (error) { result.textContent = safeOperationalMessage(error, "The invitation could not be created. Check the email and try again."); }
 }
 
 async function approvePatient(event) {
@@ -1147,7 +1167,7 @@ async function approvePatient(event) {
     await approvePatientConnection(supabase, currentSession.user.id, button.dataset.approvePatient, button.dataset.invitationId || null);
     await loadAssignedPatients();
     therapistView();
-  } catch (error) { button.disabled = false; button.textContent = error.message; }
+  } catch (error) { button.disabled = false; button.textContent = safeOperationalMessage(error, "Verification failed — retry"); }
 }
 
 async function submitPersonalPlan(event) {
@@ -1177,7 +1197,7 @@ async function submitPersonalPlan(event) {
     therapistView();
     const updatedResult = document.querySelector("#plan-result");
     if (updatedResult) updatedResult.textContent = "Plan published. It is now visible only to this patient and your therapist account.";
-  } catch (error) { result.textContent = error.message; }
+  } catch (error) { result.textContent = safeOperationalMessage(error, "The roadmap could not be published. Review the selected exercises and try again."); }
   finally { button.disabled = false; }
 }
 
@@ -1201,7 +1221,7 @@ function accountView() {
           <div id="account-message" class="form-message"></div>
           <button class="button button--primary" type="submit">Save account name ${icon("arrow",16)}</button>
         </form>
-        <div class="account-security"><span>${icon("shield",22)}</span><div><b>Security controls</b><p>Passwords are handled by Supabase Auth. Patient and therapist authorization is enforced separately by database policies.</p></div>${currentSession.demo ? "" : `<button class="button button--ghost" type="button" data-send-account-reset>Send password-reset email</button>`}</div>
+        <div class="account-security"><span>${icon("shield",22)}</span><div><b>Security controls</b><p>Passwords are handled by Supabase Auth, authorization is enforced by database policies, and live accounts sign out after 15 minutes without activity.</p></div>${currentSession.demo ? "" : `<button class="button button--ghost" type="button" data-send-account-reset>Send password-reset email</button>`}</div>
         <button class="button button--quiet account-signout" data-portal-signout>Sign out of Axion</button>
       </section>
     </main>
@@ -1232,7 +1252,7 @@ async function updateAccountProfile(event) {
     setText("#account-message", "Account name updated.");
   } catch (error) {
     button.disabled = false;
-    message.textContent = error.message;
+    message.textContent = safeOperationalMessage(error, "Your account name could not be updated. Try again.");
   }
 }
 
@@ -1241,7 +1261,7 @@ async function sendAccountPasswordReset() {
   if (!currentSession?.user?.email) return;
   message.textContent = "Sending a secure reset email…";
   const { error } = await supabase.auth.resetPasswordForEmail(currentSession.user.email, { redirectTo: `${window.location.origin}/reset-password` });
-  message.textContent = error ? error.message : "Password-reset email sent. Open the newest link in this browser.";
+  message.textContent = error ? safeAuthMessage(error, "The reset email could not be sent. Wait a moment and try again.") : "Password-reset email sent. Open the newest link in this browser.";
 }
 
 function authView() {
@@ -1276,7 +1296,9 @@ function enterDemoPortal(role) {
   else routePatientPortal();
 }
 
-async function signOutPortal() {
+async function signOutPortal(reason = null) {
+  clearTimeout(authIdleTimer);
+  authIdleTimer = null;
   if (supabase && !currentSession?.demo) await supabase.auth.signOut();
   tracker?.stop?.();
   currentSession = null;
@@ -1294,7 +1316,10 @@ async function signOutPortal() {
   reportSessions = [];
   therapistNotes = [];
   reportReps = [];
-  homeView();
+  if (reason === "idle") {
+    authView();
+    setText("#auth-message", "You were signed out after 15 minutes without activity to protect patient information.");
+  } else homeView();
 }
 
 async function initializeLab() {
@@ -1840,7 +1865,7 @@ function showTherapistNoteModal() {
       reportView();
     } catch (error) {
       button.disabled = false;
-      message.textContent = error.message;
+      message.textContent = safeOperationalMessage(error, "The private note could not be saved. Check the connection and try again.");
     }
   });
   modal.querySelector("#therapist-note-text")?.focus();
@@ -1928,7 +1953,10 @@ async function submitNewPassword(event) {
     .select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days")
     .eq("id", currentSession.user.id).single();
   if (profileError) {
-    message.textContent = profileError.message;
+    message.textContent = safeOperationalMessage(
+      profileError,
+      "Your password was updated, but the private workspace could not load. Sign in again."
+    );
     return;
   }
   currentProfile = profile;
@@ -1952,6 +1980,7 @@ async function submitSignIn(event) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) { message.textContent = safeAuthMessage(error, "Sign-in failed. Check your email and password, then try again."); return; }
     currentSession = data.session;
+    armAuthIdleTimeout();
     const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", currentSession.user.id).single();
     if (profileError || !profile) throw profileError || new Error("Profile unavailable");
     currentProfile = profile;
@@ -1987,6 +2016,7 @@ async function submitPatientSignUp(event) {
       return;
     }
     currentSession = data.session;
+    armAuthIdleTimeout();
     const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", data.user.id).single();
     if (profileError || !profile) throw profileError || new Error("Profile unavailable");
     currentProfile = profile;
@@ -2010,6 +2040,18 @@ function safeAuthMessage(error, fallback) {
   return fallback;
 }
 
+function safeOperationalMessage(error, fallback) {
+  const code = String(error?.code || "").toLowerCase();
+  const status = Number(error?.status || error?.statusCode || 0);
+  const message = String(error?.message || "").toLowerCase();
+  if (status === 401 || code.includes("jwt") || message.includes("not authenticated")) return "Your secure session expired. Sign in again to continue.";
+  if (status === 403 || code === "42501" || message.includes("permission denied")) return "This account is not authorized for that action.";
+  if (status === 409 || code === "23505") return "That change was already saved. Refresh the workspace before trying again.";
+  if (status === 429 || code.includes("rate_limit")) return "Too many requests. Wait a moment, then try again.";
+  if (message.includes("failed to fetch") || message.includes("network")) return "Axion could not reach the secure service. Check your connection and try again.";
+  return fallback;
+}
+
 function setText(selector, text) { const element = document.querySelector(selector); if (element) element.textContent = text; }
 function animateNumber(element, target, duration = 650) {
   if (!element || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -2030,6 +2072,28 @@ function emptyMarkup() {
     return `<div class="empty-state"><span>${icon("users", 24)}</span><h3>No connected patients yet</h3><p>Create a private invitation above. The patient must claim it, then you verify the connection before any care data is shared.</p></div>`;
   }
   return `<div class="empty-state"><span>${icon("report", 24)}</span><h3>No sessions yet</h3><p>Completed movement sessions will appear here with signatures, rep summaries, and progression context.</p><button class="button button--primary" data-nav="lab">Start a synthetic session</button></div>`;
+}
+
+function applyPrescriptionFilters() {
+  const query = (document.querySelector("#prescription-search")?.value || "").trim().toLowerCase();
+  const program = document.querySelector("#prescription-program")?.value || "All";
+  const commonOnly = Boolean(document.querySelector("#prescription-common-only")?.checked);
+  let visible = 0;
+  document.querySelectorAll("[data-prescription-row]").forEach((row) => {
+    const queryMatch = !query || (row.dataset.prescriptionSearch || "").includes(query);
+    const programMatch = program === "All" || (row.dataset.prescriptionPrograms || "").split("|").includes(program);
+    const commonMatch = !commonOnly || row.dataset.prescriptionCommon === "true";
+    row.hidden = !(queryMatch && programMatch && commonMatch);
+    if (!row.hidden) visible += 1;
+  });
+  setText("#prescription-visible-count", `${visible} shown`);
+}
+
+function armAuthIdleTimeout() {
+  clearTimeout(authIdleTimer);
+  authIdleTimer = null;
+  if (!currentSession?.user || currentSession.demo || passwordRecoveryMode) return;
+  authIdleTimer = setTimeout(() => signOutPortal("idle"), AUTH_IDLE_TIMEOUT_MS);
 }
 
 function navigateTo(target) {
@@ -2056,7 +2120,7 @@ function navigateTo(target) {
   }, 180);
 }
 function showPortalError(error) {
-  app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("activity",26)}</span><h2>Your private workspace could not load</h2><p>${escapeHtml(error.message)}</p><button class="button button--primary" data-refresh-patient>Try again</button></div></main>`);
+  app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("activity",26)}</span><h2>Your private workspace could not load</h2><p>${escapeHtml(safeOperationalMessage(error, "No patient information was displayed. Check the connection and try again."))}</p><button class="button button--primary" data-refresh-patient>Try again</button></div></main>`);
   bindEvents();
 }
 function stopDemo() {
@@ -2118,18 +2182,26 @@ function bindEvents() {
     setText("#selected-exercise-count", `${count} selected`);
     row?.classList.toggle("selected", toggle.checked);
   }));
+  document.querySelector("#prescription-search")?.addEventListener("input", applyPrescriptionFilters);
+  document.querySelector("#prescription-program")?.addEventListener("change", applyPrescriptionFilters);
+  document.querySelector("#prescription-common-only")?.addEventListener("change", applyPrescriptionFilters);
   document.querySelector("#exercise-library-search")?.addEventListener("input", (event) => {
     exerciseLibraryQuery = event.currentTarget.value;
     therapistView();
     requestAnimationFrame(() => document.querySelector("#exercise-library-search")?.focus());
   });
-  [["#exercise-library-goal", "goal"], ["#exercise-library-equipment", "equipment"], ["#exercise-library-position", "position"]].forEach(([selector, filter]) => {
+  [["#exercise-library-program", "program"], ["#exercise-library-goal", "goal"], ["#exercise-library-equipment", "equipment"], ["#exercise-library-position", "position"]].forEach(([selector, filter]) => {
     document.querySelector(selector)?.addEventListener("change", (event) => {
+      if (filter === "program") exerciseLibraryProgram = event.currentTarget.value;
       if (filter === "goal") exerciseLibraryGoal = event.currentTarget.value;
       if (filter === "equipment") exerciseLibraryEquipment = event.currentTarget.value;
       if (filter === "position") exerciseLibraryPosition = event.currentTarget.value;
       therapistView();
     });
+  });
+  document.querySelector("#exercise-library-common")?.addEventListener("change", (event) => {
+    exerciseLibraryCommonOnly = event.currentTarget.checked;
+    therapistView();
   });
   document.querySelectorAll("[data-clear-library-filters]").forEach((button) => button.addEventListener("click", () => {
     exerciseLibraryQuery = "";
@@ -2137,6 +2209,8 @@ function bindEvents() {
     exerciseLibraryGoal = "All";
     exerciseLibraryEquipment = "All";
     exerciseLibraryPosition = "All";
+    exerciseLibraryProgram = "All";
+    exerciseLibraryCommonOnly = false;
     therapistView();
   }));
   document.querySelectorAll("[data-library-category]").forEach((button) => button.addEventListener("click", () => {
@@ -2166,6 +2240,7 @@ function bindEvents() {
 }
 
 document.addEventListener("keydown", (event) => {
+  armAuthIdleTimeout();
   const modal = document.querySelector(".modal-layer");
   if (event.key === "Escape" && modal) modal.remove();
   if (currentView === "report" && !event.target.matches("input, button, textarea")) {
@@ -2175,10 +2250,15 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+["pointerdown", "touchstart"].forEach((eventName) => document.addEventListener(eventName, armAuthIdleTimeout, { passive: true }));
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") armAuthIdleTimeout(); });
+window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); });
+
 async function bootstrap() {
   if (supabase) {
     supabase.auth.onAuthStateChange((event, session) => {
       currentSession = session;
+      armAuthIdleTimeout();
       if (!session) {
         currentProfile = null;
         stopPatientRealtime();
@@ -2190,6 +2270,7 @@ async function bootstrap() {
     });
     const { data } = await supabase.auth.getSession();
     currentSession = data.session;
+    armAuthIdleTimeout();
     if (recoveryErrorCode) {
       passwordResetErrorView(recoveryErrorDescription || "Supabase could not verify this one-time recovery link.");
       return;
@@ -2220,6 +2301,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
-  app.innerHTML = `<main class="fatal container-wide"><span>${icon("activity", 28)}</span><h1>Axion could not start.</h1><p>${escapeHtml(error.message)}</p><button class="button button--primary" data-reload>Try again</button><button class="button button--ghost" data-home>Open synthetic demo</button></main>`;
+  app.innerHTML = `<main class="fatal container-wide"><span>${icon("activity", 28)}</span><h1>Axion could not start.</h1><p>${escapeHtml(safeOperationalMessage(error, "The secure workspace is temporarily unavailable. No patient information was displayed."))}</p><button class="button button--primary" data-reload>Try again</button><button class="button button--ghost" data-home>Open synthetic demo</button></main>`;
   bindEvents();
 });

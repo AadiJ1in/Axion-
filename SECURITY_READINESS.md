@@ -17,6 +17,9 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 - Invitation creation, claim, therapist approval, and plan publication are transactional database RPCs.
 - Sensitive workflow mutations produce server-side audit events in a non-exposed schema.
 - Browser sessions use `sessionStorage` rather than persistent cross-restart token storage.
+- Authenticated sessions automatically sign out after 15 minutes without user activity.
+- Patient-facing operational errors are mapped to safe messages instead of exposing database or policy details.
+- Authenticated entry pages use `Cache-Control: private, no-store` and reject back-forward cached private workspaces.
 - The deployed Content Security Policy allows only the current Axion Supabase project and pinned runtime origins.
 - Row Level Security restricts patient access to their own profile and sessions.
 - The synthetic demo is explicitly labeled and does not require an account.

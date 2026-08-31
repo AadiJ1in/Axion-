@@ -19,6 +19,7 @@ const files = {
   exerciseTrackingMigration: await readFile(new URL("../supabase/migrations/202608270003_exercise_specific_pose_tracking.sql", import.meta.url), "utf8"),
   trackableExerciseMigration: await readFile(new URL("../supabase/migrations/202608270004_add_trackable_exercises.sql", import.meta.url), "utf8"),
   commonExerciseMigration: await readFile(new URL("../supabase/migrations/202608290001_add_common_clinical_exercises.sql", import.meta.url), "utf8"),
+  clinicalProgramMigration: await readFile(new URL("../supabase/migrations/202608310001_add_clinical_program_exercises.sql", import.meta.url), "utf8"),
   rlsIntegrationTest: await readFile(new URL("../supabase/tests/rls_integration.sql", import.meta.url), "utf8"),
   supabaseClient: await readFile(new URL("../src/supabase.js", import.meta.url), "utf8"),
   vercel: await readFile(new URL("../vercel.json", import.meta.url), "utf8"),
@@ -43,7 +44,7 @@ const requirements = [
   [files.movementProfiles, "measureMovementSignal", "exercise-specific signal measurement"],
   [files.css, "prefers-reduced-motion", "reduced-motion support"],
   [files.demo, "70-second automatic pitch", "presenter documentation"],
-  [files.main, "PUBLISH A PERSONAL ROADMAP", "therapist plan builder"],
+  [files.main, "Build a treatment roadmap", "therapist plan builder"],
   [files.main, "data-therapist-section", "working therapist workspace tabs"],
   [files.main, "prescription-toggle", "per-exercise dosage controls"],
   [files.main, "data-open-roadmap", "patient roadmap drill-down"],
@@ -61,7 +62,11 @@ const requirements = [
   [files.main, "exercise-library-goal", "therapist treatment-goal filter"],
   [files.main, "exercise-library-equipment", "therapist equipment filter"],
   [files.main, "exercise-library-position", "therapist patient-position filter"],
+  [files.main, "exercise-library-program", "therapist clinical-program filter"],
+  [files.main, "prescription-program", "roadmap-builder clinical-program filter"],
+  [files.main, "prescription-common-only", "roadmap-builder commonly-used filter"],
   [files.exerciseCatalog, "exerciseFacets", "consistent clinical exercise facets"],
+  [files.exerciseCatalog, "exerciseProgramPresets", "curated clinical program presets"],
   [files.main, "BEFORE YOU MOVE", "movement lab technique panel"],
   [files.main, "data-start-assignment", "patient assignment flow"],
   [files.main, "data-export-report", "movement summary export"],
@@ -117,6 +122,8 @@ const requirements = [
   [files.trackableExerciseMigration, "marching_in_place", "expanded private trackable exercise allowlist"],
   [files.commonExerciseMigration, "supported_side_stepping", "common clinical exercise allowlist"],
   [files.commonExerciseMigration, "revoke all on table private.exercise_catalog", "common exercise allowlist access restriction"],
+  [files.clinicalProgramMigration, "standing_clock_reach", "clinical program exercise allowlist"],
+  [files.clinicalProgramMigration, "revoke all on table private.exercise_catalog", "clinical program allowlist access restriction"],
   [files.productionSecurityMigration, "sessions_insert_assigned_patient", "assignment-bound session policy"],
   [files.productionSecurityMigration, "private.audit_events", "private security audit trail"],
   [files.productionSecurityMigration, "client_session_id", "idempotent patient sessions"],
@@ -127,9 +134,13 @@ const requirements = [
   [files.rlsIntegrationTest, "Patient could read private therapist notes", "therapist-note privacy regression test"],
   [files.rlsIntegrationTest, "rollback;", "non-persistent security fixtures"],
   [files.supabaseClient, "window.sessionStorage", "session-scoped auth token storage"],
+  [files.main, "AUTH_IDLE_TIMEOUT_MS", "authenticated idle-session timeout"],
+  [files.main, "safeOperationalMessage", "sanitized operational errors"],
   [files.vercel, "Content-Security-Policy", "production content security policy"],
   [files.vercel, "qjcxelpzcfmcsrpsnlrs.supabase.co", "current Supabase CSP origin"],
   [files.vercel, "Permissions-Policy", "camera permissions policy"],
+  [files.vercel, "Cross-Origin-Resource-Policy", "cross-origin resource policy"],
+  [files.vercel, "private, no-store, max-age=0", "authenticated page cache prevention"],
 ];
 
 for (const [source, marker, label] of requirements) {
@@ -151,5 +162,8 @@ if (files.vercel.includes("kxhmrfgolttrofpumqpy")) throw new Error("CSP still re
 if (!files.vercel.includes("'wasm-unsafe-eval'")) throw new Error("CSP must permit WebAssembly compilation for the MediaPipe pose model.");
 if (files.vercel.includes("'unsafe-eval'")) throw new Error("CSP must not permit unrestricted JavaScript eval.");
 if (files.main.includes("onclick=")) throw new Error("Inline event handlers are blocked by the production CSP.");
+if (/\.textContent\s*=\s*\w*error\.message/i.test(files.main)) {
+  throw new Error("Raw database or authentication errors must not be rendered to patients or therapists.");
+}
 
 console.log(`Axion smoke test passed: ${requirements.length} feature markers, 70-second script, balanced CSS.`);

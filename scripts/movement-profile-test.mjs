@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { exerciseCatalog, exerciseFacets } from "../src/exercise-catalog.js";
+import { commonlyPrescribedExerciseKeys, exerciseCatalog, exerciseFacets, exerciseProgramPresets, exercisePrograms } from "../src/exercise-catalog.js";
 import { assertMovementProfileCoverage, getMovementProfile, measureMovementSignal, movementProfiles } from "../src/movement-profiles.js";
 import { acceptsTrackingQuality, assessCalibrationWindow, createRepCycleDetector } from "../src/pose.js";
 
@@ -17,12 +17,18 @@ assert.equal(
 );
 
 const keys = Object.keys(exerciseCatalog);
-assert.equal(keys.length, 84, "The exercise catalog count changed; update tracker coverage intentionally.");
+assert.equal(keys.length, 92, "The exercise catalog count changed; update tracker coverage intentionally.");
 assert.deepEqual(assertMovementProfileCoverage(keys), [], "Every catalog exercise must have an explicit tracker profile.");
 assert.deepEqual(Object.keys(movementProfiles).filter((key) => !exerciseCatalog[key]), [], "Tracker profiles must map to real catalog exercises.");
 assert.deepEqual(exerciseFacets(exerciseCatalog.band_shoulder_extension), { goals: ["Strength", "Motor control"], equipment: ["Resistance band"], position: "Standing" }, "Band shoulder extension facets changed unexpectedly.");
 assert.deepEqual(exerciseFacets(exerciseCatalog.short_arc_quad), { goals: ["Strength", "Mobility", "Motor control"], equipment: ["Mat / towel"], position: "Lying" }, "Short-arc quadriceps facets changed unexpectedly.");
 assert.ok(exerciseFacets(exerciseCatalog.supported_side_stepping).goals.includes("Balance"), "Supported side stepping must remain discoverable under Balance.");
+assert.equal(exerciseFacets(exerciseCatalog.supported_side_stepping).position, "Standing", "Side stepping must not be misclassified by the word opposite.");
+assert.equal(exerciseFacets(exerciseCatalog.standing_clock_reach).position, "Standing", "Clock reach must not be misclassified by the word position.");
+assert.ok(exercisePrograms("quadriceps_set").includes("Knee mobility & strength"), "Quad sets must be discoverable in the knee program.");
+assert.ok(exercisePrograms("standing_clock_reach").includes("Balance & fall prevention"), "Clock reach must be discoverable in the balance program.");
+assert.ok(exerciseProgramPresets["Shoulder & upper-back strength"].includes("side_lying_shoulder_external_rotation"), "Side-lying external rotation must remain in the shoulder-strength program.");
+assert.ok(commonlyPrescribedExerciseKeys.length >= 35, "Commonly used filtering needs a clinically useful set of movements.");
 
 const syntheticPose = Array.from({ length: 33 }, (_, index) => ({
   x: 0.2 + (index % 5) * 0.11,
