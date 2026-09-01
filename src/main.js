@@ -27,7 +27,10 @@ import {
   loadTherapistNotes,
   loadTherapistConnections,
   loadTherapistWorkspace,
+  markCareMessagesRead,
   recordPatientSafetyEvent,
+  reviewClinicianRecommendation,
+  sendCareMessage,
 } from "./portal.js";
 
 const app = document.querySelector("#app");
@@ -83,8 +86,9 @@ let currentProfile = null;
 let demoRole = null;
 let assignedPatients = [];
 let therapistConnections = [];
-let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
+let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [] };
 let therapistSection = "overview";
+let messagePatientId = null;
 let patientFilter = "all";
 let exerciseLibraryQuery = "";
 let exerciseLibraryCategory = "All";
@@ -300,6 +304,7 @@ function demoPatientWorkspace() {
       { stage_number: 4, title: "Return", status: "locked", unlock_after_sessions: 14 },
     ],
     sessions: [],
+    messages: [],
   };
 }
 
@@ -330,9 +335,11 @@ function startTherapistRealtime() {
     }, 250);
   };
   therapistRealtimeChannel = supabase
-    .channel(`therapist-safety-${therapistId}`)
+    .channel(`therapist-workspace-${therapistId}`)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "therapist_alerts", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "patient_safety_events" }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "care_messages", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "clinician_recommendations", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
     .subscribe();
 }
 
@@ -376,7 +383,8 @@ function startPatientRealtime() {
     .channel(`patient-roadmap-${userId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "therapist_patients", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "exercise_plans", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
-    .on("postgres_changes", { event: "*", schema: "public", table: "exercise_sessions", filter: `patient_id=eq.${userId}` }, scheduleRefresh);
+    .on("postgres_changes", { event: "*", schema: "public", table: "exercise_sessions", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "care_messages", filter: `patient_id=eq.${userId}` }, scheduleRefresh);
 
   if (patientWorkspace?.plan?.id) {
     channel = channel
@@ -563,6 +571,19 @@ function patientExerciseCard(assignment, index, sessions) {
   </article>`;
 }
 
+function careMessageThread(messages, viewerId) {
+  if (!messages?.length) return `<div class="message-empty"><b>No messages yet</b><p>Use this private thread for questions about the assigned plan. Do not use Axion for emergencies.</p></div>`;
+  return `<div class="care-message-thread">${messages.map((message) => {
+    const own = message.sender_id === viewerId;
+    return `<article class="${own ? "mine" : "theirs"}"><div><p>${escapeHtml(message.body)}</p><small>${own ? "You" : "Care team"} · ${new Date(message.created_at).toLocaleString()}${message.read_at ? " · Read" : ""}</small></div></article>`;
+  }).join("")}</div>`;
+}
+
+function patientMessagingCard(workspace) {
+  const messages = workspace.messages || [];
+  return `<section class="care-messages-card"><div class="care-messages-head"><div><span class="section-kicker">PRIVATE CARE-TEAM MESSAGES</span><h2>Message ${escapeHtml(workspace.therapist?.display_name || "your physical therapist")}</h2><p>Messages stay inside your verified care-team connection. This is not an emergency service.</p></div><span>${messages.length} message${messages.length === 1 ? "" : "s"}</span></div>${careMessageThread(messages, currentSession?.user?.id)}<form id="patient-message-form" class="care-message-form"><label for="patient-message-body">Your message</label><textarea id="patient-message-body" rows="3" maxlength="2000" placeholder="Ask about an assigned exercise, report how a session felt, or clarify your plan." required></textarea><div><small>For urgent or emergency symptoms, contact local emergency services or your clinician directly.</small><button class="button button--primary" type="submit">Send privately ${icon("arrow",14)}</button></div></form><div id="patient-message-result" class="form-message" aria-live="polite"></div></section>`;
+}
+
 function patientView() {
   currentView = "patient";
   stopDemo();
@@ -593,6 +614,7 @@ function patientView() {
         <div class="roadmap-governance">${icon("shield",15)} <span><b>Clinician controlled</b> · ${escapeHtml(therapistName)} reviews milestones and unlocks progression.</span><strong id="roadmap-live-state">Updated live</strong></div>
       </article><aside class="patient-side-stack"><article class="daily-goal-card"><div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32"/></svg><b>${Math.min(weeklySessions,3)}/3</b></div><div><span class="section-kicker">WEEKLY GOAL</span><h3>${weeklySessions >= 3 ? "Weekly goal complete." : `${3 - weeklySessions} session${3 - weeklySessions === 1 ? "" : "s"} to your goal.`}</h3><p>Only completed sessions from your account count here.</p></div></article><article class="reward-card"><span>${icon("activity",24)}</span><div><small>MY MOVEMENT SCIENCE LAB</small><h3>Calibrated per session</h3><p>Your assignment, camera landmarks, and movement summary stay tied to your patient ID.</p></div></article></aside></section>
       <section id="patient-exercises" class="today-plan ${roadmapExpanded ? "expanded" : "collapsed"}"><div class="section-heading compact"><div><span class="section-kicker">YOUR PRESCRIPTION</span><h2>${assignments.length} exercise${assignments.length === 1 ? "" : "s"} from your therapist.</h2></div><p>Prescribed by ${escapeHtml(therapistName)}</p></div><div class="exercise-list">${assignments.length ? assignments.map((assignment, index) => patientExerciseCard(assignment, index, sessions)).join("") : `<div class="empty-state"><span>${icon("map",24)}</span><h3>Your prescription is being prepared</h3><p>${escapeHtml(therapistName)} has not added an active exercise yet.</p></div>`}</div></section>
+      ${workspace.connection?.status === "active" && !currentSession?.demo ? patientMessagingCard(workspace) : ""}
     </main>
   `, { full: true });
   bindEvents();
@@ -910,7 +932,7 @@ async function loadAssignedPatients() {
   if (!supabase || !currentSession?.user) {
     assignedPatients = [];
     therapistConnections = [];
-    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [] };
     return;
   }
   try {
@@ -922,7 +944,7 @@ async function loadAssignedPatients() {
     console.error("Failed to load therapist assignments:", error);
     assignedPatients = [];
     therapistConnections = [];
-    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [] };
   }
 }
 
@@ -1076,12 +1098,33 @@ function renderTherapistCheckins(isDemoTherapist) {
   }).join("")}</div>` : `<div class="empty-state"><span>${icon("activity",24)}</span><h3>No patient check-ins yet</h3><p>Completed private sessions will appear here without storing raw camera video.</p></div>`}</section>`;
 }
 
+function renderTherapistMessages(isDemoTherapist) {
+  if (isDemoTherapist) return `<section class="workspace-list-card"><div class="empty-state"><span>${icon("shield",24)}</span><h3>Private messaging requires a verified account</h3><p>Sign in as a therapist to message an actively connected patient.</p></div></section>`;
+  if (!assignedPatients.length) return `<section class="workspace-list-card"><div class="empty-state"><span>${icon("users",24)}</span><h3>No active patient connection</h3><p>Verify a patient connection before starting a private thread.</p></div></section>`;
+  const selectedId = messagePatientId && assignedPatients.some((patient) => patient.id === messagePatientId) ? messagePatientId : assignedPatients[0].id;
+  messagePatientId = selectedId;
+  const selected = assignedPatients.find((patient) => patient.id === selectedId);
+  const messages = (therapistWorkspace.messages || []).filter((message) => message.patient_id === selectedId);
+  const activePlan = therapistWorkspace.plans.find((plan) => plan.patient_id === selectedId && plan.status === "active");
+  return `<section class="care-messages-card therapist-messages"><div class="care-messages-head"><div><span class="section-kicker">PRIVATE CARE-TEAM MESSAGES</span><h2>Patient communication</h2><p>Only you and the actively connected patient can read this thread.</p></div><label>Patient<select id="message-patient-select">${assignedPatients.map((patient) => `<option value="${patient.id}" ${patient.id === selectedId ? "selected" : ""}>${escapeHtml(patient.display_name)}</option>`).join("")}</select></label></div>${careMessageThread(messages, currentSession?.user?.id)}<form id="therapist-message-form" class="care-message-form"><input id="therapist-message-patient" type="hidden" value="${selectedId}"/><input id="therapist-message-plan" type="hidden" value="${activePlan?.id || ""}"/><label for="therapist-message-body">Message ${escapeHtml(selected.display_name)}</label><textarea id="therapist-message-body" rows="3" maxlength="2000" placeholder="Clarify an exercise, follow up on a report, or share next steps." required></textarea><div><small>External notifications, when added, must remain generic and contain no health information.</small><button class="button button--primary" type="submit">Send privately ${icon("arrow",14)}</button></div></form><div id="therapist-message-result" class="form-message" aria-live="polite"></div></section>`;
+}
+
+function renderRecommendationQueue(isDemoTherapist) {
+  if (isDemoTherapist) return "";
+  const recommendations = therapistWorkspace.recommendations || [];
+  if (!recommendations.length) return `<section class="recommendation-card"><div class="empty-state compact"><h3>No review suggestions</h3><p>Repeated patient reports can create a descriptive review cue. Axion never edits a prescription automatically.</p></div></section>`;
+  return `<section class="recommendation-card"><div class="analysis-head"><div><span class="section-kicker">CLINICIAN-REVIEWED SUGGESTIONS</span><h2>Review before any plan decision</h2><p>These cues summarize existing records. They are not diagnoses and cannot modify a roadmap.</p></div><span class="info-pill">${recommendations.filter((item) => item.status === "pending").length} PENDING</span></div><div class="recommendation-list">${recommendations.map((item) => {
+    const count = Number(item.evidence?.report_count_30d || 0);
+    return `<article data-recommendation-card="${item.id}"><div class="recommendation-copy"><small>${escapeHtml(patientNameById(item.patient_id))} · ${escapeHtml(item.generated_by === "rules_v1" ? "Rules-based cue" : item.generated_by)}</small><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.summary)}</p><div class="recommendation-evidence"><span>${count} reports in 30 days</span>${item.exercise_key ? `<span>${escapeHtml(assignmentDetails({ exercise_key: item.exercise_key }).display_name)}</span>` : ""}<span>No automatic plan change</span></div>${item.clinician_response ? `<blockquote>${escapeHtml(item.clinician_response)}</blockquote>` : ""}</div><div class="recommendation-actions"><em class="status-${item.status}">${escapeHtml(item.status)}</em>${item.status === "pending" ? `<button class="button button--ghost" data-review-recommendation="${item.id}" data-review-status="rejected">Reject</button><button class="button button--ghost" data-review-recommendation="${item.id}" data-review-status="modified">Modify</button><button class="button button--primary" data-review-recommendation="${item.id}" data-review-status="accepted">Accept for review</button>` : `<button class="text-link" data-therapist-section-jump="roadmaps">Open roadmap builder ${icon("arrow",13)}</button>`}</div></article>`;
+  }).join("")}</div><footer>${icon("shield",14)} Accepting a cue records a clinician decision only. Publishing a different prescription remains a separate, explicit therapist action.</footer></section>`;
+}
+
 function renderTherapistAlerts(isDemoTherapist) {
   const alerts = isDemoTherapist ? [
     { id: "demo-a", title: "Adherence changed", explanation: "Sam completed fewer prescribed sessions this week.", status: "open", patient_id: "demo" },
     { id: "demo-b", title: "Movement consistency changed", explanation: "Jordan’s late-set consistency differs from their own recent sessions.", status: "open", patient_id: "demo" },
   ] : derivedTherapistAlerts();
-  return `<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Descriptive alerts</h2></div><span>${alerts.filter((alert) => alert.status === "open").length} open</span></div>${alerts.length ? `<div class="alert-list">${alerts.map((alert) => `<article><span>${icon("bell",18)}</span><div><small>${escapeHtml(isDemoTherapist ? "DEMO PATIENT" : patientNameById(alert.patient_id))}</small><b>${escapeHtml(alert.title)}</b><p>${escapeHtml(alert.explanation)}</p></div><div class="alert-actions"><em>${escapeHtml(alert.status)}</em><button class="text-link" data-report-patient-id="${escapeHtml(alert.patient_id)}" data-report-patient-name="${escapeHtml(isDemoTherapist ? "Demo patient" : patientNameById(alert.patient_id))}">Review report ${icon("arrow",14)}</button></div></article>`).join("")}</div>` : `<div class="empty-state"><span>${icon("bell",24)}</span><h3>No alerts require review</h3><p>Axion flags descriptive participation or movement changes; it does not diagnose or alter treatment.</p></div>`}</section>`;
+  return `${renderRecommendationQueue(isDemoTherapist)}<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">ATTENTION QUEUE</span><h2>Descriptive alerts</h2></div><span>${alerts.filter((alert) => alert.status === "open").length} open</span></div>${alerts.length ? `<div class="alert-list">${alerts.map((alert) => `<article><span>${icon("bell",18)}</span><div><small>${escapeHtml(isDemoTherapist ? "DEMO PATIENT" : patientNameById(alert.patient_id))}</small><b>${escapeHtml(alert.title)}</b><p>${escapeHtml(alert.explanation)}</p></div><div class="alert-actions"><em>${escapeHtml(alert.status)}</em><button class="text-link" data-report-patient-id="${escapeHtml(alert.patient_id)}" data-report-patient-name="${escapeHtml(isDemoTherapist ? "Demo patient" : patientNameById(alert.patient_id))}">Review report ${icon("arrow",14)}</button></div></article>`).join("")}</div>` : `<div class="empty-state"><span>${icon("bell",24)}</span><h3>No alerts require review</h3><p>Axion flags descriptive participation or movement changes; it does not diagnose or alter treatment.</p></div>`}</section>`;
 }
 
 function renderExerciseLibrary() {
@@ -1146,7 +1189,7 @@ function therapistView() {
     <main class="therapist-page container-wide">
       <section class="pt-workspace-nav">
         <div><span>${icon("activity", 17)}</span><b>Therapist workspace</b></div>
-        <nav>${[["overview","Overview"],["patients","Patients"],["roadmaps","Recovery roadmaps"],["checkins","Check-ins"],["alerts","Alerts"],["library","Exercise library"]].map(([section,label]) => `<button class="${therapistSection === section ? "active" : ""}" data-therapist-section="${section}">${label}${section === "alerts" && (isDemoTherapist || therapistWorkspace.alerts.filter((alert) => alert.status === "open").length) ? `<i>${isDemoTherapist ? 2 : therapistWorkspace.alerts.filter((alert) => alert.status === "open").length}</i>` : ""}</button>`).join("")}</nav>
+        <nav>${[["overview","Overview"],["patients","Patients"],["roadmaps","Recovery roadmaps"],["checkins","Check-ins"],["messages","Messages"],["alerts","Alerts"],["library","Exercise library"]].map(([section,label]) => `<button class="${therapistSection === section ? "active" : ""}" data-therapist-section="${section}">${label}${section === "messages" && (therapistWorkspace.messages || []).filter((message) => message.sender_id !== currentSession?.user?.id && !message.read_at).length ? `<i>${(therapistWorkspace.messages || []).filter((message) => message.sender_id !== currentSession?.user?.id && !message.read_at).length}</i>` : section === "alerts" && (isDemoTherapist || therapistWorkspace.alerts.filter((alert) => alert.status === "open").length) ? `<i>${isDemoTherapist ? 2 : therapistWorkspace.alerts.filter((alert) => alert.status === "open").length}</i>` : ""}</button>`).join("")}</nav>
         <button data-portal-signout>Sign out</button>
       </section>
       <div class="${therapistPanelClass("overview")}">
@@ -1175,6 +1218,7 @@ function therapistView() {
       </div>
       <div class="${therapistPanelClass("roadmaps")}">${renderPlanBuilder(isDemoTherapist)}<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">PUBLISHED ROADMAPS</span><h2>Patient exercise plans</h2></div></div>${renderRoadmapList(isDemoTherapist)}</section></div>
       <div class="${therapistPanelClass("checkins")}">${renderTherapistCheckins(isDemoTherapist)}</div>
+      <div class="${therapistPanelClass("messages")}">${renderTherapistMessages(isDemoTherapist)}</div>
       <div class="${therapistPanelClass("alerts")}">${renderTherapistAlerts(isDemoTherapist)}</div>
       <div class="${therapistPanelClass("library")}">${renderExerciseLibrary()}</div>
       <div class="${therapistPanelClass("overview")}">
@@ -1222,6 +1266,79 @@ async function approvePatient(event) {
     await loadAssignedPatients();
     therapistView();
   } catch (error) { button.disabled = false; button.textContent = safeOperationalMessage(error, "Verification failed — retry"); }
+}
+
+async function submitPatientMessage(event) {
+  event.preventDefault();
+  const result = document.querySelector("#patient-message-result");
+  const button = event.currentTarget.querySelector('[type="submit"]');
+  button.disabled = true;
+  result.textContent = "Sending securely…";
+  try {
+    const saved = await sendCareMessage(supabase, {
+      therapistId: patientWorkspace.connection.therapist_id,
+      patientId: currentSession.user.id,
+      senderId: currentSession.user.id,
+      planId: patientWorkspace.plan?.id,
+      body: document.querySelector("#patient-message-body").value,
+    });
+    patientWorkspace.messages.push(saved);
+    patientView();
+  } catch (error) {
+    button.disabled = false;
+    result.textContent = safeOperationalMessage(error, "The private message could not be sent. Check the connection and try again.");
+  }
+}
+
+async function submitTherapistMessage(event) {
+  event.preventDefault();
+  const result = document.querySelector("#therapist-message-result");
+  const button = event.currentTarget.querySelector('[type="submit"]');
+  const patientId = document.querySelector("#therapist-message-patient").value;
+  button.disabled = true;
+  result.textContent = "Sending securely…";
+  try {
+    const saved = await sendCareMessage(supabase, {
+      therapistId: currentSession.user.id,
+      patientId,
+      senderId: currentSession.user.id,
+      planId: document.querySelector("#therapist-message-plan").value || null,
+      body: document.querySelector("#therapist-message-body").value,
+    });
+    therapistWorkspace.messages.push(saved);
+    therapistView();
+  } catch (error) {
+    button.disabled = false;
+    result.textContent = safeOperationalMessage(error, "The private message could not be sent. Check the connection and try again.");
+  }
+}
+
+function showRecommendationReviewModal(recommendationId, status) {
+  const item = (therapistWorkspace.recommendations || []).find((recommendation) => recommendation.id === recommendationId);
+  if (!item) return;
+  const labels = { accepted: "Accept for plan review", modified: "Record a modification", rejected: "Reject suggestion" };
+  const modal = document.createElement("div");
+  modal.className = "modal-layer";
+  modal.innerHTML = `<section class="reflection-card recommendation-review-modal"><span class="section-kicker">CLINICIAN DECISION</span><h2>${escapeHtml(labels[status])}</h2><p>${escapeHtml(item.title)} for ${escapeHtml(patientNameById(item.patient_id))}. This records your review but does not change the patient’s prescription.</p><form id="recommendation-review-form"><label>Clinical response ${status === "modified" ? "(required)" : "(optional)"}<textarea id="recommendation-response" rows="5" maxlength="2000" ${status === "modified" ? "required" : ""} placeholder="Document your reasoning or the change you want to consider in the roadmap builder."></textarea></label><div id="recommendation-review-message" class="form-message"></div><div class="reflection-actions"><button class="button button--ghost" type="button" data-close-modal>Cancel</button><button class="button button--primary" type="submit">Save decision ${icon("arrow",14)}</button></div></form><small class="clinical-boundary">No sets, reps, milestones, or exercise assignments will be changed by this action.</small></section>`;
+  document.body.appendChild(modal);
+  modal.querySelector("[data-close-modal]")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("#recommendation-review-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('[type="submit"]');
+    const message = modal.querySelector("#recommendation-review-message");
+    button.disabled = true;
+    message.textContent = "Saving clinician decision…";
+    try {
+      const saved = await reviewClinicianRecommendation(supabase, recommendationId, status, modal.querySelector("#recommendation-response").value);
+      therapistWorkspace.recommendations = therapistWorkspace.recommendations.map((recommendation) => recommendation.id === saved.id ? saved : recommendation);
+      modal.remove();
+      therapistView();
+    } catch (error) {
+      button.disabled = false;
+      message.textContent = safeOperationalMessage(error, "The review could not be saved. Check the connection and try again.");
+    }
+  });
+  modal.querySelector("#recommendation-response")?.focus();
 }
 
 async function submitPersonalPlan(event) {
@@ -2309,9 +2426,28 @@ function bindEvents() {
   document.querySelector("[data-send-account-reset]")?.addEventListener("click", sendAccountPasswordReset);
   document.querySelector("#connection-form")?.addEventListener("submit", submitConnectionCode);
   document.querySelector("#invite-patient-form")?.addEventListener("submit", submitPatientInvitation);
+  document.querySelector("#patient-message-form")?.addEventListener("submit", submitPatientMessage);
+  document.querySelector("#therapist-message-form")?.addEventListener("submit", submitTherapistMessage);
   document.querySelector("#plan-builder-form")?.addEventListener("submit", submitPersonalPlan);
   document.querySelectorAll("[data-therapist-section]").forEach((element) => element.addEventListener("click", () => {
     therapistSection = element.dataset.therapistSection;
+    therapistView();
+  }));
+  document.querySelector("#message-patient-select")?.addEventListener("change", async (event) => {
+    messagePatientId = event.currentTarget.value;
+    const unread = (therapistWorkspace.messages || []).filter((message) => message.patient_id === messagePatientId && message.sender_id !== currentSession?.user?.id && !message.read_at);
+    if (unread.length) {
+      try {
+        const read = await markCareMessagesRead(supabase, unread.map((message) => message.id));
+        const byId = new Map(read.map((message) => [message.id, message.read_at]));
+        therapistWorkspace.messages = therapistWorkspace.messages.map((message) => byId.has(message.id) ? { ...message, read_at: byId.get(message.id) } : message);
+      } catch (error) { console.warn("Could not mark care messages read", error); }
+    }
+    therapistView();
+  });
+  document.querySelectorAll("[data-review-recommendation]").forEach((button) => button.addEventListener("click", () => showRecommendationReviewModal(button.dataset.reviewRecommendation, button.dataset.reviewStatus)));
+  document.querySelectorAll("[data-therapist-section-jump]").forEach((button) => button.addEventListener("click", () => {
+    therapistSection = button.dataset.therapistSectionJump;
     therapistView();
   }));
   document.querySelector("[data-patient-filter]")?.addEventListener("click", () => {

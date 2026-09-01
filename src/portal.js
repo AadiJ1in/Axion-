@@ -80,7 +80,14 @@ export async function loadPatientWorkspace(client, userId) {
     .eq("patient_id", userId).order("created_at", { ascending: false }).limit(50);
   const sessions = sessionsResult.error ? [] : (sessionsResult.data || []);
 
-  return { profile, connection, therapist, plan, assignments, roadmap, sessions };
+  const messagesResult = connection?.status === "active"
+    ? await client.from("care_messages")
+      .select("id, therapist_id, patient_id, sender_id, plan_id, assignment_id, session_id, body, created_at, read_at")
+      .eq("patient_id", userId).order("created_at", { ascending: true }).limit(100)
+    : { data: [], error: null };
+  const messages = messagesResult.error ? [] : (messagesResult.data || []);
+
+  return { profile, connection, therapist, plan, assignments, roadmap, sessions, messages };
 }
 
 export async function completePatientOnboarding(client, userId, displayName) {
@@ -171,6 +178,12 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
       .order("occurred_at", { ascending: false })
       .limit(100)
     : { data: [], error: null };
+  const messagesResult = await client.from("care_messages")
+    .select("id, therapist_id, patient_id, sender_id, plan_id, assignment_id, session_id, body, created_at, read_at")
+    .eq("therapist_id", therapistId).order("created_at", { ascending: true }).limit(300);
+  const recommendationsResult = await client.from("clinician_recommendations")
+    .select("id, therapist_id, patient_id, exercise_key, recommendation_type, title, summary, evidence, proposed_action, generated_by, status, clinician_response, created_at, reviewed_at, updated_at")
+    .eq("therapist_id", therapistId).order("created_at", { ascending: false }).limit(100);
 
   return {
     plans,
@@ -178,7 +191,55 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
     sessions,
     alerts: alertsResult.error ? [] : (alertsResult.data || []),
     safetyEvents: safetyEventsResult.error ? [] : (safetyEventsResult.data || []),
+    messages: messagesResult.error ? [] : (messagesResult.data || []),
+    recommendations: recommendationsResult.error ? [] : (recommendationsResult.data || []),
   };
+}
+
+export async function sendCareMessage(client, input) {
+  const body = String(input.body || "").trim().replace(/\s+/g, " ");
+  if (!input.therapistId || !input.patientId || !input.senderId) throw new Error("This message is missing its care-team context.");
+  if (body.length < 1 || body.length > 2000) throw new Error("Messages must be 1–2,000 characters.");
+  return throwIfError(
+    await client.from("care_messages").insert({
+      therapist_id: input.therapistId,
+      patient_id: input.patientId,
+      sender_id: input.senderId,
+      plan_id: input.planId || null,
+      assignment_id: input.assignmentId || null,
+      session_id: input.sessionId || null,
+      client_message_id: crypto.randomUUID(),
+      body,
+    }).select("id, therapist_id, patient_id, sender_id, plan_id, assignment_id, session_id, body, created_at, read_at").single(),
+    "Could not send the private message"
+  );
+}
+
+export async function markCareMessagesRead(client, messageIds) {
+  const ids = [...new Set(messageIds || [])].filter(Boolean).slice(0, 100);
+  if (!ids.length) return [];
+  return throwIfError(
+    await client.from("care_messages").update({ read_at: new Date().toISOString() }).in("id", ids).select("id, read_at"),
+    "Could not update message status"
+  ) || [];
+}
+
+export async function reviewClinicianRecommendation(client, recommendationId, status, response = "") {
+  if (!["accepted", "modified", "rejected"].includes(status)) throw new Error("Choose Accept, Modify, or Reject.");
+  const clinicianResponse = String(response || "").trim().replace(/\s+/g, " ");
+  if (status === "modified" && !clinicianResponse) throw new Error("Describe what you would modify before saving the review.");
+  if (clinicianResponse.length > 2000) throw new Error("Keep the clinician response under 2,000 characters.");
+  return throwIfError(
+    await client.from("clinician_recommendations").update({
+      status,
+      clinician_response: clinicianResponse || null,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", recommendationId)
+      .select("id, therapist_id, patient_id, exercise_key, recommendation_type, title, summary, evidence, proposed_action, generated_by, status, clinician_response, created_at, reviewed_at, updated_at")
+      .single(),
+    "Could not save the recommendation review"
+  );
 }
 
 export async function loadMovementReport(client, patientId) {
