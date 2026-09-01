@@ -58,6 +58,8 @@ const requirements = [
   [files.main, "roadmap-live-state", "roadmap realtime connection state"],
   [files.main, "YOUR SESSION PATH", "touchable session-based patient roadmap"],
   [files.main, "data-roadmap-node", "touchable roadmap session nodes"],
+  [files.main, "data-continue-roadmap-node", "direct current-session roadmap handoff"],
+  [files.main, "Only fully completed roadmap nodes count as sessions", "roadmap-node weekly adherence counting"],
   [files.main, "data-start-node-assignment", "roadmap node exercise handoff"],
   [files.main, "planned-node-count", "therapist cadence node preview"],
   [files.portal, "publish_patient_plan_v3", "session-cadence roadmap publication"],
