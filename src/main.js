@@ -305,6 +305,16 @@ function demoPatientWorkspace() {
     target_date: new Date(Date.now() + index * 86400000).toISOString().slice(0, 10),
     unlock_override: false,
   }));
+  const demoSessions = roadmapNodes.slice(0, 5).map((node) => ({
+    id: `demo-session-${node.session_number}`,
+    patient_id: "demo-patient",
+    assignment_id: assignment.id,
+    roadmap_node_id: node.id,
+    exercise_key: assignment.exercise_key,
+    repetitions: 10,
+    duration_seconds: 45,
+    completed_at: new Date(Date.now() - (6 - node.session_number) * 86400000).toISOString(),
+  }));
   return {
     profile: currentProfile,
     connection: { therapist_id: "demo-therapist", status: "active", therapist_verified_at: new Date().toISOString() },
@@ -320,7 +330,7 @@ function demoPatientWorkspace() {
     roadmapNodes,
     roadmapNodeAssignments: roadmapNodes.map((node) => ({ roadmap_node_id: node.id, assignment_id: assignment.id, sequence: 1 })),
     roadmapCompletions: roadmapNodes.slice(0, 5).map((node) => ({ id: `demo-completion-${node.session_number}`, roadmap_node_id: node.id, patient_id: "demo-patient", xp_awarded: 50, completed_at: new Date(Date.now() - (6 - node.session_number) * 86400000).toISOString() })),
-    sessions: [],
+    sessions: demoSessions,
     messages: [],
   };
 }
