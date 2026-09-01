@@ -170,6 +170,54 @@ select set_config('axion.session_b', es.id::text, true)
 from public.exercise_sessions es
 where es.client_session_id = '11111111-1111-4111-8111-111111111111'::uuid;
 
+-- A patient can immediately save an append-only, assignment-bound safety event.
+insert into public.patient_safety_events (
+  patient_id, assignment_id, client_session_id, exercise_key,
+  set_number, rep_number, event_type, pain_score, comment
+) values (
+  '10000000-0000-4000-8000-000000000003'::uuid,
+  current_setting('axion.assignment_b')::uuid,
+  '33333333-3333-4333-8333-333333333333'::uuid,
+  'bodyweight_squat', 1, 2, 'pain', 6, 'Synthetic safety test only'
+);
+
+select set_config('axion.safety_event_b', pse.id::text, true)
+from public.patient_safety_events pse
+where pse.client_session_id = '33333333-3333-4333-8333-333333333333'::uuid;
+
+do $test$
+begin
+  if (select count(*) from public.patient_safety_events) <> 1 then
+    raise exception 'Patient could not read their own safety event';
+  end if;
+  begin
+    update public.patient_safety_events set comment = 'Tampered' where id = current_setting('axion.safety_event_b')::uuid;
+  exception when insufficient_privilege then
+    return;
+  end;
+  raise exception 'Patient could alter an append-only safety event';
+end
+$test$;
+
+do $test$
+begin
+  begin
+    insert into public.patient_safety_events (
+      patient_id, assignment_id, client_session_id, exercise_key,
+      set_number, rep_number, event_type, comment
+    ) values (
+      '10000000-0000-4000-8000-000000000003'::uuid,
+      current_setting('axion.assignment_a')::uuid,
+      '44444444-4444-4444-8444-444444444444'::uuid,
+      'bodyweight_squat', 1, 1, 'felt_wrong', 'Cross-patient attack'
+    );
+  exception when sqlstate '42501' then
+    return;
+  end;
+  raise exception 'Cross-patient safety-event insert was allowed';
+end
+$test$;
+
 -- A patient cannot impersonate a therapist and create a therapist note.
 do $test$
 begin
@@ -206,6 +254,23 @@ values (
 
 do $test$
 begin
+  if (select count(*) from public.patient_safety_events where patient_id = '10000000-0000-4000-8000-000000000003'::uuid) <> 1 then
+    raise exception 'Connected therapist could not read the patient safety event';
+  end if;
+  if (select count(*) from public.therapist_alerts where patient_id = '10000000-0000-4000-8000-000000000003'::uuid and status = 'open') <> 1 then
+    raise exception 'Safety event did not create one therapist alert';
+  end if;
+  update public.therapist_alerts
+  set status = 'reviewed', reviewed_at = now()
+  where patient_id = '10000000-0000-4000-8000-000000000003'::uuid;
+  if (select count(*) from public.therapist_alerts where patient_id = '10000000-0000-4000-8000-000000000003'::uuid and status = 'reviewed') <> 1 then
+    raise exception 'Therapist could not review their own alert';
+  end if;
+end
+$test$;
+
+do $test$
+begin
   if (select count(*) from public.therapist_notes where patient_id = '10000000-0000-4000-8000-000000000003'::uuid) <> 1 then
     raise exception 'Connected therapist could not read the authorized note';
   end if;
@@ -224,6 +289,9 @@ do $test$
 begin
   if (select count(*) from public.therapist_notes) <> 0 then
     raise exception 'Patient could read private therapist notes';
+  end if;
+  if (select count(*) from public.therapist_alerts) <> 0 then
+    raise exception 'Patient could read therapist-only alerts';
   end if;
 end
 $test$;
@@ -289,6 +357,8 @@ select
   true as therapist_approval_required,
   true as own_assignment_session_allowed,
   true as therapist_note_authorization_enforced,
+  true as append_only_safety_events_enforced,
+  true as therapist_safety_alerts_enforced,
   true as cross_patient_assignment_blocked,
   true as duplicate_session_blocked,
   true as patient_isolation;

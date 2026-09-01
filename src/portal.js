@@ -164,12 +164,20 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
     .eq("therapist_id", therapistId)
     .order("created_at", { ascending: false })
     .limit(100);
+  const safetyEventsResult = patientIds.length
+    ? await client.from("patient_safety_events")
+      .select("id, patient_id, assignment_id, session_id, client_session_id, exercise_key, set_number, rep_number, event_type, pain_score, comment, paused_session, occurred_at, created_at")
+      .in("patient_id", patientIds)
+      .order("occurred_at", { ascending: false })
+      .limit(100)
+    : { data: [], error: null };
 
   return {
     plans,
     assignments: assignments.map(assignmentDetails),
     sessions,
     alerts: alertsResult.error ? [] : (alertsResult.data || []),
+    safetyEvents: safetyEventsResult.error ? [] : (safetyEventsResult.data || []),
   };
 }
 
@@ -177,12 +185,49 @@ export async function loadMovementReport(client, patientId) {
   if (!patientId) throw new Error("Choose a patient before opening a movement report.");
   return throwIfError(
     await client.from("exercise_sessions")
-      .select("id, patient_id, assignment_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, started_at, completed_at, created_at")
+      .select("id, patient_id, assignment_id, client_session_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, started_at, completed_at, created_at")
       .eq("patient_id", patientId)
       .order("completed_at", { ascending: false })
       .limit(50),
     "Could not load the movement report"
   ) || [];
+}
+
+export async function loadPatientSafetyEvents(client, patientId) {
+  if (!patientId) return [];
+  return throwIfError(
+    await client.from("patient_safety_events")
+      .select("id, patient_id, assignment_id, session_id, client_session_id, exercise_key, set_number, rep_number, event_type, pain_score, comment, paused_session, occurred_at, created_at")
+      .eq("patient_id", patientId)
+      .order("occurred_at", { ascending: false })
+      .limit(100),
+    "Could not load patient safety reports"
+  ) || [];
+}
+
+export async function recordPatientSafetyEvent(client, input) {
+  const comment = String(input.comment || "").trim().replace(/\s+/g, " ");
+  if (!input.assignmentId || !input.clientSessionId || !input.exerciseKey) throw new Error("This safety report is missing its exercise context.");
+  if (!["pain", "felt_wrong", "felt_different"].includes(input.eventType)) throw new Error("Choose what you noticed during the exercise.");
+  if (input.eventType === "pain" && (!Number.isInteger(input.painScore) || input.painScore < 0 || input.painScore > 10)) throw new Error("Choose a pain value from 0 to 10.");
+  if (comment.length > 1000) throw new Error("Keep the optional note under 1,000 characters.");
+  return throwIfError(
+    await client.from("patient_safety_events").insert({
+      patient_id: input.patientId,
+      assignment_id: input.assignmentId,
+      session_id: null,
+      client_session_id: input.clientSessionId,
+      exercise_key: input.exerciseKey,
+      set_number: input.setNumber || null,
+      rep_number: Number.isInteger(input.repNumber) ? input.repNumber : null,
+      event_type: input.eventType,
+      pain_score: input.eventType === "pain" ? input.painScore : null,
+      comment: comment || null,
+      paused_session: true,
+      occurred_at: new Date().toISOString(),
+    }).select("id, patient_id, assignment_id, client_session_id, exercise_key, set_number, rep_number, event_type, pain_score, comment, paused_session, occurred_at, created_at").single(),
+    "Could not save the safety report"
+  );
 }
 
 export async function loadTherapistNotes(client, patientId) {

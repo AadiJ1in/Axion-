@@ -1,6 +1,7 @@
 import { isConfigured, supabase } from "./supabase.js";
 import { createMovementTracker } from "./pose.js";
 import { getMovementProfile } from "./movement-profiles.js";
+import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "./movement-game.js";
 
 const FLEXION_ARC_SIGNALS = new Set(["knee_bend", "hip_flexion", "elbow_flexion", "torso_flexion"]);
 import {
@@ -22,9 +23,11 @@ import {
   exercisePrograms,
   loadPatientWorkspace,
   loadMovementReport,
+  loadPatientSafetyEvents,
   loadTherapistNotes,
   loadTherapistConnections,
   loadTherapistWorkspace,
+  recordPatientSafetyEvent,
 } from "./portal.js";
 
 const app = document.querySelector("#app");
@@ -80,7 +83,7 @@ let currentProfile = null;
 let demoRole = null;
 let assignedPatients = [];
 let therapistConnections = [];
-let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
+let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
 let therapistSection = "overview";
 let patientFilter = "all";
 let exerciseLibraryQuery = "";
@@ -108,11 +111,14 @@ let demoStageIndex = 0;
 let sessionReps = [];
 let reportReps = [...todaySeed];
 let reportSessions = [];
+let reportSafetyEvents = [];
 let therapistNotes = [];
 let selectedRep = 4;
 let replayMode = "replay";
 let sessionStartedAt = null;
 let sessionClientId = null;
+let sessionSafetyEvents = [];
+let movementGameController = null;
 const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 let authIdleTimer = null;
 let lastTwinPoints = null;
@@ -573,13 +579,15 @@ function labView() {
   const assignment = assignmentDetails(currentAssignment);
   const patientName = currentProfile?.display_name || "Patient";
   const therapistName = patientWorkspace?.therapist?.display_name || "your physical therapist";
-  const targetReps = assignment.target_repetitions || 10;
+  const repsPerSet = assignment.target_repetitions || 10;
+  const targetReps = Math.max(1, assignment.target_sets || 1) * repsPerSet;
   const timedExercise = assignment.tracking_mode === "timed_hold";
   const movementProfile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
+  const gameMapping = getMovementGameMapping(assignment.exercise_key);
   const jointLabel = movementProfile.label;
   const dosageLabel = timedExercise
     ? `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${assignment.duration_seconds || 30} second hold`
-    : `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${targetReps} repetition${targetReps === 1 ? "" : "s"}`;
+    : `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${repsPerSet} repetition${repsPerSet === 1 ? "" : "s"} per set`;
   const assignmentNumber = Math.max(1, (patientWorkspace?.assignments || []).findIndex((item) => item.id === assignment.id) + 1);
   const assignmentCount = Math.max(1, patientWorkspace?.assignments?.length || 1);
   const backTarget = currentProfile?.role === "patient" || demoRole === "patient" ? "patient" : "home";
@@ -610,14 +618,16 @@ function labView() {
           </div>
           <div class="live-metrics"><div><span>${timedExercise ? "HOLD" : "REPS"}</span><b><i id="live-reps">0</i><small>/ ${timedExercise ? `${assignment.duration_seconds || 30}s` : (demoScriptActive ? 5 : targetReps)}</small></b></div><div><span id="live-angle-label">${escapeHtml(jointLabel.toUpperCase())}</span><b id="live-depth">—</b></div><div><span>MOVEMENT RANGE</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
           <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S AXION COACH</small><p id="coach-message" aria-live="polite">${escapeHtml(assignment.instructions || "Stand naturally for three seconds. Axion will learn your baseline for this session.")}</p></div><span id="coach-state">READY</span></div>
+          ${gameMapping ? `<div class="movement-mode-card"><div><span class="section-kicker">SESSION VIEW</span><h3>${escapeHtml(gameMapping.title)}</h3><p>${escapeHtml(gameMapping.instruction)}</p></div><div class="mode-switch" role="group" aria-label="Session view"><button class="active" data-movement-mode="standard">Standard</button><button data-movement-mode="game">Game</button></div><div id="movement-game-stage" class="movement-game-stage" aria-live="polite"><span id="game-runner">${icon("activity",20)}</span><div><i id="game-progress"></i></div><small id="game-status">Game view is optional. Your prescribed dosage stays the same.</small></div></div>` : ""}
           <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: demoScriptActive ? 5 : Math.min(targetReps, 30) }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
+          <div class="safety-action"><button class="button button--safety" id="report-safety-event">${icon("activity",17)} Pain or movement concern</button><span>Reporting a concern pauses tracking. Stopping safely never removes progress or a streak.</span></div>
           <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Restart camera scan</button><button class="button button--primary" id="run-demo">${icon("play", 17)} ${currentSession?.demo ? "Synthetic product demo" : "View tracker simulation"} <small>${currentSession?.demo ? "70 sec" : "not saved"}</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
         </div>
         <aside class="journey-panel">
           <div class="journey-head"><span class="section-kicker">${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S ROADMAP</span><span>${escapeHtml(patientWorkspace?.plan?.phase_label || "Current phase")}</span></div>
           <div class="energy-core"><svg viewBox="0 0 160 160"><circle cx="80" cy="80" r="66"/><circle id="energy-progress" cx="80" cy="80" r="66"/></svg><div><small>CONTROLLED ENERGY</small><b id="energy-value">0%</b><span>Motion powers progress</span></div></div>
           <div class="journey-map"><div class="journey-line"><span class="done">${icon("check", 13)}</span><i></i><span class="done">${icon("check", 13)}</span><i></i><span class="current">3</span><i></i><span>4</span></div><div class="journey-labels"><span>Begin</span><span>Balance</span><span>Build</span><span>Flow</span></div></div>
-          <div class="weekly-card"><div><small>THIS PRESCRIPTION</small><b>${assignment.target_sets || 1} × ${targetReps}</b></div><div class="weekly-bars"><i></i><i class="empty"></i><i class="empty"></i></div><span>Progress is stored under ${escapeHtml(patientName)} only</span></div>
+          <div class="weekly-card"><div><small>THIS PRESCRIPTION</small><b>${assignment.target_sets || 1} × ${repsPerSet}</b></div><div class="weekly-bars"><i></i><i class="empty"></i><i class="empty"></i></div><span>Progress is stored under ${escapeHtml(patientName)} only</span></div>
           <div class="privacy-note">${icon("shield", 17)}<p><b>Private by design</b><br/>Landmarks are processed locally. The prototype stores session summaries only.</p></div>
         </aside>
       </section>
@@ -770,6 +780,17 @@ function sessionSummary(session) {
   };
 }
 
+function safetyEventLabel(event) {
+  if (event.event_type === "pain") return `Pain ${event.pain_score}/10`;
+  if (event.event_type === "felt_wrong") return "Felt wrong";
+  return "Felt different";
+}
+
+function safetyEventList(events) {
+  if (!events.length) return `<div class="empty-state compact"><h3>No rep-level concerns recorded</h3><p>The patient can pause tracking and submit a concern without losing progress.</p></div>`;
+  return `<div class="safety-event-list">${events.map((event) => `<article><span>${icon("activity",16)}</span><div><b>${escapeHtml(safetyEventLabel(event))}</b><p>${escapeHtml(assignmentDetails({ exercise_key: event.exercise_key }).display_name)} · ${event.set_number ? `Set ${event.set_number}` : "Set not recorded"}${Number.isInteger(event.rep_number) && event.rep_number > 0 ? ` · Rep ${event.rep_number}` : ""}</p>${event.comment ? `<blockquote>${escapeHtml(event.comment)}</blockquote>` : ""}</div><time>${new Date(event.occurred_at || event.created_at).toLocaleString()}</time></article>`).join("")}</div>`;
+}
+
 function realReportView() {
   const patient = currentProfile?.role === "patient" ? currentProfile : selectedPatient;
   const patientName = patient?.display_name || "Selected patient";
@@ -787,6 +808,7 @@ function realReportView() {
           <p>Axion will show measured session summaries here after this patient completes an assigned exercise. Demo measurements are never mixed into a real patient record.</p>
           <div class="empty-actions"><button class="button button--ghost" data-nav="${backTarget}">${icon("back", 16)} Back to ${currentProfile?.role === "patient" ? "my recovery" : "patient overview"}</button>${currentProfile?.role === "therapist" ? `<button class="button button--primary" data-add-therapist-note>Add patient note</button>` : ""}</div>
           ${currentProfile?.role === "therapist" && therapistNotes.length ? `<div class="therapist-note-list">${therapistNotes.map((note) => `<article><p>${escapeHtml(note.note)}</p><small>${new Date(note.created_at).toLocaleString()}</small></article>`).join("")}</div>` : ""}
+          ${reportSafetyEvents.length ? `<section class="safety-review-card"><span class="section-kicker">PATIENT-REPORTED SAFETY EVENTS</span><h3>${reportSafetyEvents.length} report${reportSafetyEvents.length === 1 ? "" : "s"} saved without a completed session</h3>${safetyEventList(reportSafetyEvents)}</section>` : ""}
         </div>
       </main>
     `);
@@ -830,6 +852,7 @@ function realReportView() {
           }).join("")}
         </div>
       </section>
+      <section class="safety-review-card"><div class="analysis-head"><div><span class="section-kicker">PATIENT-REPORTED SAFETY EVENTS</span><h3>Rep-level context for clinician review</h3><p>These are patient reports, not diagnoses. Axion never changes the prescription automatically.</p></div><span class="info-pill">${reportSafetyEvents.length} REPORT${reportSafetyEvents.length === 1 ? "" : "S"}</span></div>${safetyEventList(reportSafetyEvents.filter((event) => !latest.client_session_id || event.client_session_id === latest.client_session_id).length ? reportSafetyEvents.filter((event) => !latest.client_session_id || event.client_session_id === latest.client_session_id) : reportSafetyEvents.slice(0, 10))}</section>
       ${currentProfile?.role === "therapist" ? `<section class="therapist-notes-card"><div class="analysis-head"><div><span class="section-kicker">THERAPIST NOTES</span><h3>Private clinical context</h3><p>Notes are visible only to the connected therapist and are attached to this patient record.</p></div><button class="button button--ghost" data-add-therapist-note>Add note</button></div>${therapistNotes.length ? `<div class="therapist-note-list">${therapistNotes.map((note) => `<article><p>${escapeHtml(note.note)}</p><small>${new Date(note.created_at).toLocaleString()}${note.session_id === latest.id ? " · Attached to this session" : ""}</small></article>`).join("")}</div>` : `<div class="empty-state compact"><h3>No therapist notes yet</h3><p>Add context without changing the patient’s prescription automatically.</p></div>`}</section>` : ""}
       <section class="privacy-dashboard">${icon("shield", 26)}<div><span class="section-kicker">PATIENT-SCOPED DATA</span><h3>No synthetic values in live records.</h3><p>Raw camera video is not stored. Axion displays only the authorized session summaries returned for this patient.</p></div></section>
     </main>
@@ -844,12 +867,14 @@ async function openRealReport(patient = null) {
   selectedPatient = target;
   currentView = "report";
   app.innerHTML = layout(loadingMarkup(`Loading ${target.display_name || "patient"} report`));
-  const [sessions, notes] = await Promise.all([
+  const [sessions, notes, safetyEvents] = await Promise.all([
     loadMovementReport(supabase, target.id),
     currentProfile?.role === "therapist" ? loadTherapistNotes(supabase, target.id) : Promise.resolve([]),
+    loadPatientSafetyEvents(supabase, target.id),
   ]);
   reportSessions = sessions;
   therapistNotes = notes;
+  reportSafetyEvents = safetyEvents;
   reportReps = [];
   reportView();
 }
@@ -858,7 +883,7 @@ async function loadAssignedPatients() {
   if (!supabase || !currentSession?.user) {
     assignedPatients = [];
     therapistConnections = [];
-    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
     return;
   }
   try {
@@ -869,7 +894,7 @@ async function loadAssignedPatients() {
     console.error("Failed to load therapist assignments:", error);
     assignedPatients = [];
     therapistConnections = [];
-    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
   }
 }
 
@@ -1015,7 +1040,8 @@ function renderTherapistCheckins(isDemoTherapist) {
     { id: "demo-1", patient_id: "demo", exercise_key: "bodyweight_squat", repetitions: 10, difficulty: 3, discomfort: "none", completed_at: new Date().toISOString() },
     { id: "demo-2", patient_id: "demo", exercise_key: "single_leg_balance", repetitions: 0, duration_seconds: 30, difficulty: 2, discomfort: "none", completed_at: new Date(Date.now() - 86400000).toISOString() },
   ] : therapistWorkspace.sessions;
-  return `<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">PATIENT CHECK-INS</span><h2>Completed movement sessions</h2></div><span>${sessions.length} records</span></div>${sessions.length ? `<div class="checkin-list">${sessions.map((session) => {
+  const safetyEvents = isDemoTherapist ? [] : (therapistWorkspace.safetyEvents || []);
+  return `${safetyEvents.length ? `<section class="safety-review-card"><div class="analysis-head"><div><span class="section-kicker">REP-LEVEL PATIENT REPORTS</span><h2>Safety events to review</h2><p>Patient-reported context is shown separately from measured movement and game progress.</p></div><span class="info-pill">${safetyEvents.length} REPORT${safetyEvents.length === 1 ? "" : "S"}</span></div>${safetyEventList(safetyEvents)}</section>` : ""}<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">PATIENT CHECK-INS</span><h2>Completed movement sessions</h2></div><span>${sessions.length} records</span></div>${sessions.length ? `<div class="checkin-list">${sessions.map((session) => {
     const exercise = exerciseCatalog[session.exercise_key] || { name: session.exercise_key };
     const patient = isDemoTherapist ? "Maya Chen" : patientNameById(session.patient_id);
     return `<button class="checkin-row" data-report-patient-id="${escapeHtml(session.patient_id)}" data-report-patient-name="${escapeHtml(patient)}"><span class="patient-avatar mint">${escapeHtml(patient.split(" ").map((part) => part[0]).join("").slice(0,2))}</span><div><b>${escapeHtml(patient)} · ${escapeHtml(exercise.name)}</b><small>${session.repetitions ? `${session.repetitions} reps` : `${session.duration_seconds || 0}s`} · ${new Date(session.completed_at || session.created_at).toLocaleString()}</small></div><span>Difficulty <b>${session.difficulty || "—"}/5</b></span><span>Discomfort <b>${escapeHtml(session.discomfort || "—")}</b></span><em>Open report ${icon("arrow",14)}</em></button>`;
@@ -1306,7 +1332,7 @@ async function signOutPortal(reason = null) {
   demoRole = null;
   assignedPatients = [];
   therapistConnections = [];
-  therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [] };
+  therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
   therapistSection = "overview";
   patientFilter = "all";
   roadmapExpanded = false;
@@ -1314,6 +1340,7 @@ async function signOutPortal(reason = null) {
   currentAssignment = null;
   selectedPatient = null;
   reportSessions = [];
+  reportSafetyEvents = [];
   therapistNotes = [];
   reportReps = [];
   if (reason === "idle") {
@@ -1329,8 +1356,15 @@ async function initializeLab() {
   tracker?.stop?.();
   sessionStartedAt = Date.now();
   sessionClientId = crypto.randomUUID();
+  sessionSafetyEvents = [];
   updateSyntheticTwin(0);
   const activeProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
+  movementGameController = createMovementGameController({
+    exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
+    targetReps: Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10),
+    targetHoldSeconds: currentAssignment?.tracking_mode === "timed_hold" ? (currentAssignment?.duration_seconds || 30) : 0,
+    onState: renderMovementGameState,
+  });
   setText("#calibration-copy", activeProfile.cameraHint);
   tracker = await createMovementTracker({
     video, canvas,
@@ -1342,6 +1376,7 @@ async function initializeLab() {
     onRep: (rep) => {
       const consistency = Math.max(45, Math.round(100 - (rep.symmetryDelta ?? 4) * 2 - Math.abs((rep.tempo || 3) - 3) * 6));
       sessionReps.push({ ...rep, consistency });
+      movementGameController?.consume({ type: MOVEMENT_EVENT.REP_COMPLETE, rep });
       updateLiveSession();
     },
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
@@ -1366,6 +1401,7 @@ async function initializeLab() {
       setText("#coach-message", message);
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
       if (stage === "hold" && (elapsedSeconds || 0) >= Math.min(5, currentAssignment?.duration_seconds || 30)) document.querySelector("#finish-session")?.removeAttribute("disabled");
+      if (stage === "hold") movementGameController?.consume({ type: MOVEMENT_EVENT.HOLD_PROGRESS, seconds: elapsedSeconds || 0 });
     },
     onError: (message) => {
       setText("#capture-status", "CAMERA NEEDS ATTENTION");
@@ -1382,11 +1418,30 @@ async function initializeLab() {
   document.querySelector("#recovery-demo")?.addEventListener("click", runPitchDemo);
   document.querySelector("#reset-session")?.addEventListener("click", resetLab);
   document.querySelector("#finish-session")?.addEventListener("click", finishSession);
+  document.querySelector("#report-safety-event")?.addEventListener("click", showSafetyEventModal);
+  document.querySelectorAll("[data-movement-mode]").forEach((button) => button.addEventListener("click", () => {
+    movementGameController?.setMode(button.dataset.movementMode);
+    document.querySelectorAll("[data-movement-mode]").forEach((item) => item.classList.toggle("active", item === button));
+  }));
   if (!currentSession?.demo) {
     document.querySelector(".camera-pane")?.classList.add("camera-on");
     setText("#capture-status", "STARTING CAMERA");
     await tracker.start();
   }
+}
+
+function renderMovementGameState(state) {
+  const stage = document.querySelector("#movement-game-stage");
+  if (!stage) return;
+  stage.classList.toggle("active", state.mode === "game");
+  stage.classList.toggle("paused", state.paused);
+  const progress = document.querySelector("#game-progress");
+  if (progress) progress.style.width = `${Math.round(state.progress * 100)}%`;
+  setText("#game-status", state.paused
+    ? "Paused for safety. Your progress is preserved."
+    : state.mode === "game"
+      ? `${state.completed} of ${state.clinicalTarget} prescribed movement${state.clinicalTarget === 1 ? "" : "s"}`
+      : "Game view is optional. Your prescribed dosage stays the same.");
 }
 
 function handleTrackingState({ code, label, quality, confidence }) {
@@ -1584,7 +1639,7 @@ function updateLiveSession() {
   setText("#live-depth", angleValue === null ? "—" : `${Math.round(angleValue)}${unit}`);
   setText("#live-tempo", last?.movementRangeDegrees == null ? "—" : `${last.movementRangeDegrees}${unit}`);
   setText("#live-symmetry", last?.symmetryDelta == null ? "—" : `${last.symmetryDelta}${unit}`);
-  const targetReps = demoScriptActive ? 5 : (currentAssignment?.target_repetitions || 10);
+  const targetReps = demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10);
   setText("#energy-value", `${Math.min(100, Math.round((sessionReps.length / targetReps) * 100))}%`);
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
@@ -1601,6 +1656,8 @@ function updateLiveSession() {
 
 function resetLab() {
   stopDemo(); tracker?.reset?.(); sessionReps = [];
+  sessionSafetyEvents = [];
+  movementGameController?.consume({ type: MOVEMENT_EVENT.RESET });
   sessionStartedAt = Date.now();
   sessionClientId = crypto.randomUUID();
   document.querySelector("#calibration-overlay")?.classList.remove("complete");
@@ -1631,6 +1688,67 @@ async function finishSession() {
   }
   if (sessionReps.length) reportReps = sessionReps.map((rep, i) => ({ ...rep, index: i + 1 }));
   showReflection();
+}
+
+function showSafetyEventModal() {
+  stopDemo();
+  tracker?.stop?.();
+  movementGameController?.consume({ type: MOVEMENT_EVENT.SAFETY_FLAG });
+  setText("#capture-status", "PAUSED FOR SAFETY");
+  setText("#coach-message", "Tracking is paused. Record what you noticed, then stop or resume only if you feel ready.");
+
+  const targetPerSet = Math.max(1, Number(currentAssignment?.target_repetitions || 1));
+  const setNumber = Math.min(Number(currentAssignment?.target_sets || 1), Math.floor(sessionReps.length / targetPerSet) + 1);
+  const repNumber = currentAssignment?.tracking_mode === "timed_hold" ? 0 : Math.min(targetPerSet, (sessionReps.length % targetPerSet) + 1);
+  const modal = document.createElement("div");
+  modal.className = "modal-layer";
+  modal.innerHTML = `<section class="reflection-card safety-report-card" role="dialog" aria-modal="true" aria-labelledby="safety-report-title"><span class="safety-mark">${icon("activity",26)}</span><span class="section-kicker">TRACKING PAUSED</span><h2 id="safety-report-title">What did you notice?</h2><p>This report is attached to ${escapeHtml(currentAssignment?.display_name || "this exercise")}, set ${setNumber}${repNumber ? `, rep ${repNumber}` : ""}. It does not reduce your progress.</p><div class="safety-type-options"><button class="selected" data-safety-type="pain">This rep hurt</button><button data-safety-type="felt_wrong">This felt wrong</button><button data-safety-type="felt_different">Something felt different</button></div><div class="pain-scale"><span>Pain now: <b id="pain-score-value">5</b>/10</span><input id="pain-score" type="range" min="0" max="10" value="5" aria-label="Pain value from zero to ten"><small>0 = no pain · 10 = worst pain imaginable</small></div><label class="safety-comment"><span>Optional note</span><textarea id="safety-comment" maxlength="1000" rows="3" placeholder="Where did you feel it, or what felt different?"></textarea></label><p id="safety-save-state" class="form-message" aria-live="polite"></p><div class="reflection-actions"><button class="button button--ghost" data-keep-paused>Keep paused</button><button class="button button--primary" data-save-safety>Save report</button></div><small class="fine-print">If symptoms are severe, sudden, or concerning, stop and follow your care team’s emergency guidance. Axion does not diagnose symptoms.</small></section>`;
+  document.body.appendChild(modal);
+
+  modal.querySelectorAll("[data-safety-type]").forEach((button) => button.addEventListener("click", () => {
+    modal.querySelectorAll("[data-safety-type]").forEach((item) => item.classList.toggle("selected", item === button));
+    modal.querySelector(".pain-scale")?.classList.toggle("hidden", button.dataset.safetyType !== "pain");
+  }));
+  modal.querySelector("#pain-score")?.addEventListener("input", (event) => setText("#pain-score-value", event.currentTarget.value));
+  modal.querySelector("[data-keep-paused]")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("[data-save-safety]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const eventType = modal.querySelector("[data-safety-type].selected")?.dataset.safetyType || "pain";
+    const safetyEvent = {
+      patientId: currentSession?.user?.id,
+      assignmentId: currentAssignment?.id,
+      clientSessionId: sessionClientId,
+      exerciseKey: currentAssignment?.exercise_key,
+      setNumber,
+      repNumber,
+      eventType,
+      painScore: eventType === "pain" ? Number(modal.querySelector("#pain-score")?.value || 0) : null,
+      comment: modal.querySelector("#safety-comment")?.value || "",
+    };
+    button.disabled = true;
+    button.textContent = "Saving…";
+    try {
+      const saved = currentSession?.user && !currentSession.demo
+        ? await recordPatientSafetyEvent(supabase, safetyEvent)
+        : { ...safetyEvent, id: crypto.randomUUID(), occurred_at: new Date().toISOString() };
+      sessionSafetyEvents.push(saved);
+      setText("#safety-save-state", currentSession?.demo ? "Saved in this synthetic demo only." : "Saved privately and shared with your connected therapist.");
+      button.textContent = "Saved";
+      const actions = modal.querySelector(".reflection-actions");
+      if (actions) actions.innerHTML = `<button class="button button--ghost" data-stop-after-report>End session safely</button><button class="button button--primary" data-resume-after-report>Resume only if you feel ready</button>`;
+      modal.querySelector("[data-stop-after-report]")?.addEventListener("click", () => { modal.remove(); if (sessionReps.length) finishSession(); else navigateTo("patient"); });
+      modal.querySelector("[data-resume-after-report]")?.addEventListener("click", async () => {
+        modal.remove();
+        movementGameController?.consume({ type: MOVEMENT_EVENT.RESUME });
+        setText("#capture-status", "RESTARTING CAMERA");
+        await tracker?.start?.();
+      });
+    } catch (error) {
+      setText("#safety-save-state", safeOperationalMessage(error, "The report could not be saved. Keep the session paused and try again."));
+      button.disabled = false;
+      button.textContent = "Try saving again";
+    }
+  });
 }
 
 function showReflection() {
