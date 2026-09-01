@@ -29,6 +29,8 @@ The public synthetic demo works without configuration:
 - therapist dashboard, Recovery Pulse, and therapist-review suggestion;
 - role-aware patient recovery portal with XP, streaks, milestones, daily prescriptions, momentum, and achievements;
 - three-biome Treatment Roadmap with milestone-level progress, clinician-controlled unlocks, and patient-scoped live updates;
+- therapist-configured session cadence (weeks × sessions/week), including a 12-week/84-session path, with one touchable node per prescribed session;
+- node-level exercise checklists, sequential unlocks, audited therapist overrides, weekly checkpoints, and one-time transactional XP/streak awards;
 - functional therapist workspace sections for patients, recovery roadmaps, check-ins, attention alerts, and the exercise library;
 - 92-movement therapist library organized into 14 anatomical sections and seven curated clinical-program filters;
 - patient-ready setup, numbered technique steps, form cues, common mistakes, safety guidance, and optional AAOS/NHS visual-guide links for every exercise;
@@ -84,12 +86,18 @@ The applied production migration sequence is:
 13. `202608280001_add_eight_trackable_exercises.sql`
 14. `202608290001_add_common_clinical_exercises.sql`
 15. `202608310001_add_clinical_program_exercises.sql`
+16. `202608310002_patient_safety_events.sql`
+17. `202609010001_index_safety_event_foreign_keys.sql`
+18. `202609010002_care_messages_and_recommendations.sql`
+19. `202609010003_session_path_roadmap.sql`
+20. `202609010004_session_path_publish_grant.sql`
+21. `202609010005_roadmap_override_index.sql`
 
 The migrations hash invitation codes at rest, move multi-table mutations behind transactional RPCs, validate session-to-assignment ownership, add workflow audit events, make session writes idempotent, and keep the server-authoritative exercise allowlist in the unexposed `private` schema. Promote therapist accounts only through a trusted administrative workflow; public signup always creates a patient.
 
 The browser receives only the publishable/anon key. Never place a Supabase service-role key in `src/config.js`; row-level security is the authorization boundary.
 
-`supabase/tests/rls_integration.sql` exercises the complete approval and session workflow with synthetic identities inside a transaction that is always rolled back. It verifies pending approval, therapist verification, patient-specific plans, assignment-bound session writes, duplicate-write rejection, and cross-patient isolation.
+`supabase/tests/rls_integration.sql` exercises the complete approval and session workflow with synthetic identities inside a transaction that is always rolled back. It verifies pending approval, therapist verification, patient-specific plans, locked-node enforcement, assignment-bound session writes, one-time XP, audited therapist overrides, duplicate-write rejection, and cross-patient isolation.
 
 See [`SECURITY_READINESS.md`](SECURITY_READINESS.md) for the operator controls still required before real healthcare use.
 

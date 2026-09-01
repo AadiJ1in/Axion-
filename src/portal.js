@@ -59,24 +59,34 @@ export async function loadPatientWorkspace(client, userId) {
   let plan = null;
   let assignments = [];
   let roadmap = [];
+  let roadmapNodes = [];
+  let roadmapNodeAssignments = [];
+  let roadmapCompletions = [];
   if (connection?.status === "active") {
     const planResult = await client.from("exercise_plans")
-      .select("id, therapist_id, patient_id, title, instructions, program_label, phase_label, status, start_date, end_date")
+      .select("id, therapist_id, patient_id, title, instructions, program_label, phase_label, status, start_date, end_date, duration_weeks, sessions_per_week, game_enabled")
       .eq("patient_id", userId).eq("status", "active").order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (planResult.error) throw new Error(`Could not load your recovery plan: ${planResult.error.message}`);
     plan = planResult.data;
     if (plan) {
-      const [assignmentResult, roadmapResult] = await Promise.all([
+      const [assignmentResult, roadmapResult, nodeResult, nodeAssignmentResult, completionResult] = await Promise.all([
         client.from("exercise_assignments").select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, target_sets, target_repetitions, duration_seconds, instructions, status").eq("plan_id", plan.id).eq("status", "active").order("sequence"),
         client.from("roadmap_stages").select("id, plan_id, stage_number, title, detail, status, unlock_after_sessions").eq("plan_id", plan.id).order("stage_number"),
+        client.from("roadmap_nodes").select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at").eq("plan_id", plan.id).order("session_number"),
+        client.from("roadmap_node_assignments").select("roadmap_node_id, assignment_id, sequence").order("sequence"),
+        client.from("roadmap_node_completions").select("id, roadmap_node_id, patient_id, xp_awarded, completed_at").eq("patient_id", userId).order("completed_at"),
       ]);
       assignments = (await throwIfError(assignmentResult, "Could not load prescribed exercises") || []).map(assignmentDetails);
       roadmap = await throwIfError(roadmapResult, "Could not load your roadmap") || [];
+      roadmapNodes = await throwIfError(nodeResult, "Could not load your session path") || [];
+      const nodeIds = new Set(roadmapNodes.map((node) => node.id));
+      roadmapNodeAssignments = (await throwIfError(nodeAssignmentResult, "Could not load session exercises") || []).filter((item) => nodeIds.has(item.roadmap_node_id));
+      roadmapCompletions = await throwIfError(completionResult, "Could not load session progress") || [];
     }
   }
 
   const sessionsResult = await client.from("exercise_sessions")
-    .select("id, assignment_id, exercise_key, repetitions, duration_seconds, movement_summary, completed_at, created_at")
+    .select("id, assignment_id, roadmap_node_id, exercise_key, repetitions, duration_seconds, movement_summary, completed_at, created_at")
     .eq("patient_id", userId).order("created_at", { ascending: false }).limit(50);
   const sessions = sessionsResult.error ? [] : (sessionsResult.data || []);
 
@@ -87,7 +97,7 @@ export async function loadPatientWorkspace(client, userId) {
     : { data: [], error: null };
   const messages = messagesResult.error ? [] : (messagesResult.data || []);
 
-  return { profile, connection, therapist, plan, assignments, roadmap, sessions, messages };
+  return { profile, connection, therapist, plan, assignments, roadmap, roadmapNodes, roadmapNodeAssignments, roadmapCompletions, sessions, messages };
 }
 
 export async function completePatientOnboarding(client, userId, displayName) {
@@ -140,7 +150,7 @@ export async function loadTherapistConnections(client, therapistId) {
 export async function loadTherapistWorkspace(client, therapistId, patientIds = []) {
   const plans = await throwIfError(
     await client.from("exercise_plans")
-      .select("id, therapist_id, patient_id, title, program_label, phase_label, instructions, status, start_date, created_at")
+      .select("id, therapist_id, patient_id, title, program_label, phase_label, instructions, status, start_date, end_date, duration_weeks, sessions_per_week, game_enabled, created_at")
       .eq("therapist_id", therapistId)
       .order("created_at", { ascending: false })
       .limit(100),
@@ -159,7 +169,7 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
   const sessions = patientIds.length
     ? await throwIfError(
       await client.from("exercise_sessions")
-        .select("id, patient_id, assignment_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, completed_at, created_at")
+        .select("id, patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, completed_at, created_at")
         .in("patient_id", patientIds)
         .order("created_at", { ascending: false })
         .limit(100),
@@ -184,6 +194,16 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
   const recommendationsResult = await client.from("clinician_recommendations")
     .select("id, therapist_id, patient_id, exercise_key, recommendation_type, title, summary, evidence, proposed_action, generated_by, status, clinician_response, created_at, reviewed_at, updated_at")
     .eq("therapist_id", therapistId).order("created_at", { ascending: false }).limit(100);
+  const roadmapNodesResult = planIds.length
+    ? await client.from("roadmap_nodes")
+      .select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at")
+      .in("plan_id", planIds).order("session_number")
+    : { data: [], error: null };
+  const roadmapCompletionsResult = patientIds.length
+    ? await client.from("roadmap_node_completions")
+      .select("id, roadmap_node_id, patient_id, xp_awarded, completed_at")
+      .in("patient_id", patientIds).order("completed_at")
+    : { data: [], error: null };
 
   return {
     plans,
@@ -193,6 +213,8 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
     safetyEvents: safetyEventsResult.error ? [] : (safetyEventsResult.data || []),
     messages: messagesResult.error ? [] : (messagesResult.data || []),
     recommendations: recommendationsResult.error ? [] : (recommendationsResult.data || []),
+    roadmapNodes: roadmapNodesResult.error ? [] : (roadmapNodesResult.data || []),
+    roadmapCompletions: roadmapCompletionsResult.error ? [] : (roadmapCompletionsResult.data || []),
   };
 }
 
@@ -346,14 +368,35 @@ export async function createPersonalPlan(client, therapistId, patientId, input) 
   if (!exercises.length) throw new Error("Choose at least one supported exercise.");
   if (exercises.length > 12) throw new Error("Choose no more than 12 exercises for one roadmap.");
   return throwIfError(
-    await client.rpc("publish_patient_plan_v2", {
+    await client.rpc("publish_patient_plan_v3", {
       p_patient_id: patientId,
       p_title: input.title.trim() || "Personal recovery roadmap",
       p_program_label: input.programLabel.trim() || "Personal recovery plan",
       p_phase_label: input.phaseLabel.trim() || "Getting started",
       p_instructions: input.instructions.trim() || "",
       p_exercises: exercises,
+      p_duration_weeks: Math.max(1, Math.min(52, Number(input.durationWeeks) || 12)),
+      p_sessions_per_week: Math.max(1, Math.min(7, Number(input.sessionsPerWeek) || 7)),
+      p_game_enabled: input.gameEnabled !== false,
     }),
     "Could not publish the recovery plan"
+  );
+}
+
+export async function overrideRoadmapNode(client, nodeId, reason) {
+  const cleanReason = String(reason || "").trim().replace(/\s+/g, " ");
+  if (!nodeId) throw new Error("Choose a roadmap session to unlock.");
+  if (cleanReason.length < 3 || cleanReason.length > 1000) throw new Error("Enter a clinical reason (3–1,000 characters).");
+  const { data: authData, error: authError } = await client.auth.getUser();
+  if (authError || !authData?.user) throw authError || new Error("Sign in again to unlock this session.");
+  return throwIfError(
+    await client.from("roadmap_nodes").update({
+      unlock_override: true,
+      override_reason: cleanReason,
+      overridden_by: authData.user.id,
+      overridden_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", nodeId).select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at").single(),
+    "Could not unlock that roadmap session"
   );
 }

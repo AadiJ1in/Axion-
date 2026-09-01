@@ -117,11 +117,12 @@ select public.approve_patient_connection(
   current_setting('axion.invitation_id')::uuid
 );
 
-select set_config('axion.plan_b', public.publish_patient_plan_v2(
+select set_config('axion.plan_b', public.publish_patient_plan_v3(
   '10000000-0000-4000-8000-000000000003'::uuid,
   'Patient B secure plan', 'Shoulder recovery', 'Phase 2',
   'Patient B only instructions',
-  '[{"exercise_key":"bodyweight_squat","sets":2,"repetitions":6,"duration_seconds":null},{"exercise_key":"wall_sit","sets":4,"repetitions":1,"duration_seconds":35}]'::jsonb
+  '[{"exercise_key":"bodyweight_squat","sets":2,"repetitions":6,"duration_seconds":null},{"exercise_key":"wall_sit","sets":4,"repetitions":1,"duration_seconds":35}]'::jsonb,
+  2, 2, true
 )::text, true);
 
 do $test$
@@ -139,13 +140,31 @@ begin
   ) then
     raise exception 'Per-exercise dosage was not preserved';
   end if;
+  if (select count(*) from public.roadmap_nodes rn where rn.plan_id = current_setting('axion.plan_b')::uuid) <> 4 then
+    raise exception 'Therapist cadence did not create four session nodes';
+  end if;
+  if (select count(*) from public.roadmap_node_assignments rna join public.roadmap_nodes rn on rn.id = rna.roadmap_node_id where rn.plan_id = current_setting('axion.plan_b')::uuid) <> 8 then
+    raise exception 'Roadmap nodes do not contain the complete prescription';
+  end if;
 end
 $test$;
 
 select set_config('axion.assignment_b', ea.id::text, true)
 from public.exercise_assignments ea
 where ea.plan_id = current_setting('axion.plan_b')::uuid
-limit 1;
+  and ea.exercise_key = 'bodyweight_squat';
+
+select set_config('axion.assignment_b_wall', ea.id::text, true)
+from public.exercise_assignments ea
+where ea.plan_id = current_setting('axion.plan_b')::uuid
+  and ea.exercise_key = 'wall_sit';
+
+select set_config('axion.node_b1', rn.id::text, true)
+from public.roadmap_nodes rn where rn.plan_id = current_setting('axion.plan_b')::uuid and rn.session_number = 1;
+select set_config('axion.node_b2', rn.id::text, true)
+from public.roadmap_nodes rn where rn.plan_id = current_setting('axion.plan_b')::uuid and rn.session_number = 2;
+select set_config('axion.node_b3', rn.id::text, true)
+from public.roadmap_nodes rn where rn.plan_id = current_setting('axion.plan_b')::uuid and rn.session_number = 3;
 
 -- Patient B can save the assigned exercise.
 reset role;
@@ -155,16 +174,65 @@ select set_config('request.jwt.claims', jsonb_build_object(
 )::text, true);
 set local role authenticated;
 
+-- A patient cannot skip ahead to a locked session.
+do $test$
+begin
+  begin
+    insert into public.exercise_sessions (
+      patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions,
+      movement_summary, completed_at, duration_seconds, client_session_id
+    ) values (
+      '10000000-0000-4000-8000-000000000003'::uuid,
+      current_setting('axion.assignment_b')::uuid,
+      current_setting('axion.node_b2')::uuid,
+      'bodyweight_squat', 6, '{}'::jsonb, now(), 30,
+      '99999999-9999-4999-8999-999999999999'::uuid
+    );
+  exception when sqlstate '42501' then
+    return;
+  end;
+  raise exception 'Patient was allowed to skip a locked roadmap session';
+end
+$test$;
+
 insert into public.exercise_sessions (
-  patient_id, assignment_id, exercise_key, repetitions, movement_summary,
+  patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions, movement_summary,
   difficulty, discomfort, started_at, completed_at, duration_seconds, client_session_id
 ) values (
   '10000000-0000-4000-8000-000000000003'::uuid,
   current_setting('axion.assignment_b')::uuid,
+  current_setting('axion.node_b1')::uuid,
   'bodyweight_squat', 6, '{"source":"security-integration-test"}'::jsonb,
   2, 'none', now() - interval '30 seconds', now(), 30,
   '11111111-1111-4111-8111-111111111111'::uuid
 );
+
+insert into public.exercise_sessions (
+  patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions, movement_summary,
+  difficulty, discomfort, started_at, completed_at, duration_seconds, client_session_id
+) values (
+  '10000000-0000-4000-8000-000000000003'::uuid,
+  current_setting('axion.assignment_b_wall')::uuid,
+  current_setting('axion.node_b1')::uuid,
+  'wall_sit', 0, '{"source":"security-integration-test"}'::jsonb,
+  2, 'none', now() - interval '35 seconds', now(), 35,
+  '11111111-1111-4111-8111-111111111112'::uuid
+);
+
+do $test$
+begin
+  if (select count(*) from public.roadmap_node_completions where roadmap_node_id = current_setting('axion.node_b1')::uuid) <> 1 then
+    raise exception 'Completing every node exercise did not complete the roadmap node exactly once';
+  end if;
+  if not exists (
+    select 1 from public.profiles
+    where id = '10000000-0000-4000-8000-000000000003'::uuid
+      and recovery_xp = 50 and streak_days = 1
+  ) then
+    raise exception 'Roadmap completion did not award transactional XP and streak progress';
+  end if;
+end
+$test$;
 
 select set_config('axion.session_b', es.id::text, true)
 from public.exercise_sessions es
@@ -308,6 +376,15 @@ values (
   'Synthetic authorization test note'
 );
 
+-- The connected therapist can explicitly override a future node with a recorded reason.
+update public.roadmap_nodes
+set unlock_override = true,
+    override_reason = 'Synthetic clinical authorization test',
+    overridden_by = '10000000-0000-4000-8000-000000000001'::uuid,
+    overridden_at = now(),
+    updated_at = now()
+where id = current_setting('axion.node_b3')::uuid;
+
 -- The therapist can read/reply to the thread and mark only incoming messages read.
 do $test$
 begin
@@ -414,6 +491,14 @@ begin
   if (select count(*) from public.clinician_recommendations) <> 0 then
     raise exception 'Patient could read therapist-only recommendations';
   end if;
+  if not exists (
+    select 1 from public.roadmap_nodes
+    where id = current_setting('axion.node_b3')::uuid
+      and unlock_override = true
+      and override_reason = 'Synthetic clinical authorization test'
+  ) then
+    raise exception 'Patient could not see the therapist-authorized roadmap override';
+  end if;
   if (select count(*) from public.care_messages) <> 2 then
     raise exception 'Patient could not read only their care-team thread';
   end if;
@@ -490,13 +575,24 @@ begin
   if (select count(*) from public.exercise_plans) <> 1 then
     raise exception 'Patient isolation failed for plans';
   end if;
-  if (select count(*) from public.exercise_sessions) <> 1 then
+  if (select count(*) from public.exercise_sessions) <> 2 then
     raise exception 'Patient isolation failed for sessions';
   end if;
 end
 $test$;
 
 reset role;
+do $test$
+begin
+  if not exists (
+    select 1 from private.audit_events
+    where action = 'roadmap_node_override_recorded'
+      and target_id = current_setting('axion.node_b3')
+  ) then
+    raise exception 'Therapist roadmap override was not audited';
+  end if;
+end
+$test$;
 rollback;
 
 select
@@ -509,6 +605,9 @@ select
   true as therapist_safety_alerts_enforced,
   true as care_message_isolation_enforced,
   true as recommendation_review_boundary_enforced,
+  true as locked_roadmap_session_blocked,
+  true as roadmap_xp_awarded_once,
+  true as therapist_roadmap_override_audited,
   true as cross_patient_assignment_blocked,
   true as duplicate_session_blocked,
   true as patient_isolation;

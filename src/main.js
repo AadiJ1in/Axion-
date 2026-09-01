@@ -28,6 +28,7 @@ import {
   loadTherapistConnections,
   loadTherapistWorkspace,
   markCareMessagesRead,
+  overrideRoadmapNode,
   recordPatientSafetyEvent,
   reviewClinicianRecommendation,
   sendCareMessage,
@@ -86,7 +87,7 @@ let currentProfile = null;
 let demoRole = null;
 let assignedPatients = [];
 let therapistConnections = [];
-let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [] };
+let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
 let therapistSection = "overview";
 let messagePatientId = null;
 let patientFilter = "all";
@@ -98,6 +99,7 @@ let exerciseLibraryPosition = "All";
 let exerciseLibraryProgram = "All";
 let exerciseLibraryCommonOnly = false;
 let roadmapExpanded = false;
+let currentRoadmapNode = null;
 let patientRealtimeChannel = null;
 let patientRealtimeKey = null;
 let patientRealtimeRefreshTimer = null;
@@ -291,11 +293,23 @@ function homeView() {
 
 function demoPatientWorkspace() {
   const assignment = assignmentDetails({ id: "demo-assignment", plan_id: "demo-plan", exercise_key: "bodyweight_squat", display_name: "Bodyweight Squat", sequence: 1, tracking_mode: "pose_reps", target_sets: 3, target_repetitions: 10, instructions: "Move at a comfortable pace and stop if you feel pain.", status: "active" });
+  const roadmapNodes = Array.from({ length: 84 }, (_, index) => ({
+    id: `demo-node-${index + 1}`,
+    plan_id: "demo-plan",
+    session_number: index + 1,
+    week_number: Math.floor(index / 7) + 1,
+    session_in_week: (index % 7) + 1,
+    biome: Math.min(3, Math.floor(index / 28) + 1),
+    title: `Session ${index + 1}`,
+    detail: "Complete the movements prescribed for this session.",
+    target_date: new Date(Date.now() + index * 86400000).toISOString().slice(0, 10),
+    unlock_override: false,
+  }));
   return {
     profile: currentProfile,
     connection: { therapist_id: "demo-therapist", status: "active", therapist_verified_at: new Date().toISOString() },
     therapist: { id: "demo-therapist", display_name: "Dr. Ava Patel", role: "therapist" },
-    plan: { id: "demo-plan", title: "Lower-body recovery", program_label: "PERSONAL RECOVERY", phase_label: "FOUNDATION", instructions: "A private sample plan for the guided product demo.", status: "active" },
+    plan: { id: "demo-plan", title: "Lower-body recovery", program_label: "PERSONAL RECOVERY", phase_label: "FOUNDATION", instructions: "A private sample plan for the guided product demo.", status: "active", duration_weeks: 12, sessions_per_week: 7, game_enabled: true },
     assignments: [assignment],
     roadmap: [
       { stage_number: 1, title: "Baseline", status: "current", unlock_after_sessions: 0 },
@@ -303,6 +317,9 @@ function demoPatientWorkspace() {
       { stage_number: 3, title: "Capacity", status: "locked", unlock_after_sessions: 8 },
       { stage_number: 4, title: "Return", status: "locked", unlock_after_sessions: 14 },
     ],
+    roadmapNodes,
+    roadmapNodeAssignments: roadmapNodes.map((node) => ({ roadmap_node_id: node.id, assignment_id: assignment.id, sequence: 1 })),
+    roadmapCompletions: roadmapNodes.slice(0, 5).map((node) => ({ id: `demo-completion-${node.session_number}`, roadmap_node_id: node.id, patient_id: "demo-patient", xp_awarded: 50, completed_at: new Date(Date.now() - (6 - node.session_number) * 86400000).toISOString() })),
     sessions: [],
     messages: [],
   };
@@ -340,6 +357,7 @@ function startTherapistRealtime() {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "patient_safety_events" }, scheduleRefresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "care_messages", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "clinician_recommendations", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "roadmap_node_completions" }, scheduleRefresh)
     .subscribe();
 }
 
@@ -389,7 +407,9 @@ function startPatientRealtime() {
   if (patientWorkspace?.plan?.id) {
     channel = channel
       .on("postgres_changes", { event: "*", schema: "public", table: "exercise_assignments", filter: `plan_id=eq.${patientWorkspace.plan.id}` }, scheduleRefresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "roadmap_stages", filter: `plan_id=eq.${patientWorkspace.plan.id}` }, scheduleRefresh);
+      .on("postgres_changes", { event: "*", schema: "public", table: "roadmap_stages", filter: `plan_id=eq.${patientWorkspace.plan.id}` }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "roadmap_nodes", filter: `plan_id=eq.${patientWorkspace.plan.id}` }, scheduleRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "roadmap_node_completions", filter: `patient_id=eq.${userId}` }, scheduleRefresh);
   }
 
   patientRealtimeChannel = channel.subscribe((status) => {
@@ -571,6 +591,71 @@ function patientExerciseCard(assignment, index, sessions) {
   </article>`;
 }
 
+const ROADMAP_BIOMES = {
+  1: { name: "Foundation", caption: "Control the basics", icon: "activity" },
+  2: { name: "Rebuild", caption: "Restore capacity", icon: "spark" },
+  3: { name: "Return", caption: "Move with confidence", icon: "trophy" },
+};
+
+function sessionPathPresentation(workspace) {
+  const completedIds = new Set((workspace.roadmapCompletions || []).map((item) => item.roadmap_node_id));
+  const firstIncomplete = (workspace.roadmapNodes || []).findIndex((node) => !completedIds.has(node.id));
+  const nodes = (workspace.roadmapNodes || []).map((node, index) => {
+    const assignmentIds = (workspace.roadmapNodeAssignments || []).filter((item) => item.roadmap_node_id === node.id).sort((a, b) => a.sequence - b.sequence).map((item) => item.assignment_id);
+    const completedAssignmentIds = new Set((workspace.sessions || []).filter((session) => session.roadmap_node_id === node.id).map((session) => session.assignment_id));
+    const done = completedIds.has(node.id);
+    const current = !done && index === firstIncomplete;
+    const unlocked = !done && Boolean(node.unlock_override);
+    return { ...node, assignmentIds, completedAssignmentIds, state: done ? "complete" : current ? "current" : unlocked ? "override" : "locked" };
+  });
+  return { nodes, completed: nodes.filter((node) => node.state === "complete").length };
+}
+
+function sessionPathMarkup(workspace) {
+  const path = sessionPathPresentation(workspace);
+  if (!path.nodes.length) return "";
+  const total = path.nodes.length;
+  const progress = Math.round((path.completed / total) * 100);
+  const cadence = `${workspace.plan?.duration_weeks || Math.max(...path.nodes.map((node) => node.week_number))} weeks · ${workspace.plan?.sessions_per_week || 1} session${Number(workspace.plan?.sessions_per_week || 1) === 1 ? "" : "s"}/week`;
+  let lastBiome = 0;
+  const nodes = path.nodes.map((node, index) => {
+    const biome = ROADMAP_BIOMES[node.biome] || ROADMAP_BIOMES[1];
+    const biomeHeading = node.biome !== lastBiome ? `<div class="path-biome-heading biome-${node.biome}"><span>${icon(biome.icon,18)}</span><div><small>BIOME ${node.biome}</small><b>${biome.name}</b><em>${biome.caption}</em></div></div>` : "";
+    lastBiome = node.biome;
+    const completeExercises = node.completedAssignmentIds.size;
+    const exerciseCount = node.assignmentIds.length;
+    const checkpoint = node.session_number % 7 === 0 ? `<div class="path-reward ${node.state === "complete" ? "earned" : ""}">${icon("trophy",16)}<span><b>Week ${node.week_number} checkpoint</b><small>${node.state === "complete" ? "+50 XP earned" : "Complete the week to reach this marker"}</small></span></div>` : "";
+    return `${biomeHeading}<div class="path-step ${index % 2 ? "right" : "left"}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${node.state}"><span class="path-node-core">${node.state === "complete" ? icon("check",22) : node.state === "locked" ? icon("lock",18) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · DAY ${node.session_in_week}</small><b>Session ${node.session_number}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Ready now" : node.state === "override" ? "Therapist unlocked" : "Complete the prior session"}</em><i>${completeExercises}/${exerciseCount} exercises</i></span></button>${checkpoint}</div>`;
+  }).join("");
+  return `<section class="session-path-card" aria-label="Therapist-prescribed session roadmap"><div class="session-path-head"><div><span class="section-kicker">YOUR SESSION PATH</span><h2>${escapeHtml(workspace.plan?.title || "Treatment roadmap")}</h2><p>${escapeHtml(cadence)} · Each node opens the exercises for that session.</p></div><div class="session-path-progress"><strong>${path.completed}<span>/${total}</span></strong><small>SESSIONS COMPLETE</small></div></div><div class="session-path-bar"><span style="width:${progress}%"></span></div><div class="session-path-legend"><span><i class="complete"></i>Done</span><span><i class="current"></i>Ready</span><span><i class="locked"></i>Locked</span><em>${progress}% complete</em></div><div class="session-path-scroll"><div class="session-path-line"></div>${nodes}<div class="path-summit ${path.completed === total ? "earned" : ""}">${icon("trophy",24)}<div><small>RETURN MILESTONE</small><b>${path.completed === total ? "Path complete" : `${total - path.completed} sessions remain`}</b></div></div></div><footer>${icon("shield",15)} Session order and cadence are prescribed by ${escapeHtml(workspace.therapist?.display_name || "your physical therapist")}. Pain reporting never removes XP or a streak.</footer></section>`;
+}
+
+function showRoadmapNode(nodeId) {
+  const workspace = patientWorkspace || demoPatientWorkspace();
+  const node = sessionPathPresentation(workspace).nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  if (node.state === "locked") {
+    const modal = document.createElement("div");
+    modal.className = "modal-layer";
+    modal.innerHTML = `<section class="roadmap-node-modal locked"><span class="node-modal-icon">${icon("lock",24)}</span><span class="section-kicker">SESSION ${node.session_number}</span><h2>This session is locked</h2><p>Complete the prior roadmap session first. Your physical therapist can unlock this node early when clinically appropriate.</p><button class="button button--primary" data-close-modal>Back to roadmap</button></section>`;
+    document.body.appendChild(modal);
+    modal.querySelector("[data-close-modal]")?.addEventListener("click", () => modal.remove());
+    return;
+  }
+  const assignments = node.assignmentIds.map((id) => workspace.assignments.find((item) => item.id === id)).filter(Boolean);
+  const modal = document.createElement("div");
+  modal.className = "modal-layer";
+  modal.innerHTML = `<section class="roadmap-node-modal"><div class="node-modal-head"><div><span class="section-kicker">WEEK ${node.week_number} · SESSION ${node.session_number}</span><h2>${node.state === "complete" ? "Session complete" : "Your prescribed session"}</h2><p>Finish each movement below to complete this node and earn 50 recovery XP.</p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div><div class="node-exercise-list">${assignments.map((assignment, index) => { const complete = node.completedAssignmentIds.has(assignment.id); return `<article><span>${complete ? icon("check",18) : String(index + 1).padStart(2,"0")}</span><div><b>${escapeHtml(assignment.display_name)}</b><small>${escapeHtml(prescriptionTarget(assignment))}</small></div><button class="button ${complete ? "button--ghost" : "button--primary"}" data-start-node-assignment="${assignment.id}">${complete ? "Do again" : "Start"} ${icon("arrow",14)}</button></article>`; }).join("") || `<p>No active exercises are mapped to this session. Contact your physical therapist.</p>`}</div>${node.unlock_override ? `<div class="node-override-note">${icon("shield",14)} Unlocked by your therapist: ${escapeHtml(node.override_reason || "clinical override")}</div>` : ""}</section>`;
+  document.body.appendChild(modal);
+  modal.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", () => modal.remove()));
+  modal.querySelectorAll("[data-start-node-assignment]").forEach((button) => button.addEventListener("click", () => {
+    currentRoadmapNode = node;
+    currentAssignment = workspace.assignments.find((item) => item.id === button.dataset.startNodeAssignment) || null;
+    modal.remove();
+    if (currentAssignment) labView();
+  }));
+}
+
 function careMessageThread(messages, viewerId) {
   if (!messages?.length) return `<div class="message-empty"><b>No messages yet</b><p>Use this private thread for questions about the assigned plan. Do not use Axion for emergencies.</p></div>`;
   return `<div class="care-message-thread">${messages.map((message) => {
@@ -605,6 +690,7 @@ function patientView() {
     <main class="patient-portal container-wide">
       <section class="patient-welcome"><div><span class="section-kicker">${escapeHtml(workspace.plan?.phase_label || "YOUR RECOVERY")} · ${escapeHtml(workspace.plan?.program_label || "PERSONAL PLAN")}</span><h1>Welcome back, ${escapeHtml(firstName)}.</h1><p>${escapeHtml(workspace.plan?.instructions || "Your therapist-built recovery session is ready when you are.")}</p></div><div class="patient-scoreboard" aria-label="Recovery statistics"><article><span>${icon("trophy", 18)}</span><div><small>RECOVERY XP</small><b>${Number(profile.recovery_xp || 0).toLocaleString()}</b></div></article><article><span>${icon("spark", 18)}</span><div><small>LEVEL</small><b>${profile.level || 1}</b></div></article><article><span>${icon("calendar", 18)}</span><div><small>STREAK</small><b>${profile.streak_days || 0} days</b></div></article></div></section>
       <section class="care-team-pill">${icon("shield", 17)}<div><small>VERIFIED CARE TEAM</small><b>${escapeHtml(therapistName)}</b></div><span>Connected</span></section>
+      ${sessionPathMarkup(workspace)}
       <section class="patient-grid"><article class="recovery-map-card recovery-map-card--v2">
         <div class="roadmap-heading"><div><span class="section-kicker">YOUR TREATMENT ROADMAP</span><h2>${escapeHtml(workspace.plan?.title || "Personal recovery roadmap")}</h2><p>A therapist-guided path from first movement to confident return.</p></div><div class="roadmap-score"><strong>${progress}%</strong><span>journey progress</span></div></div>
         <div class="roadmap-progress" aria-label="${progress}% roadmap progress"><span style="width:${progress}%"></span></div>
@@ -632,7 +718,7 @@ function labView() {
   const targetReps = Math.max(1, assignment.target_sets || 1) * repsPerSet;
   const timedExercise = assignment.tracking_mode === "timed_hold";
   const movementProfile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
-  const gameMapping = getMovementGameMapping(assignment.exercise_key);
+  const gameMapping = patientWorkspace?.plan?.game_enabled === false ? null : getMovementGameMapping(assignment.exercise_key);
   const jointLabel = movementProfile.label;
   const dosageLabel = timedExercise
     ? `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${assignment.duration_seconds || 30} second hold`
@@ -643,7 +729,7 @@ function labView() {
   app.innerHTML = layout(`
     <main class="lab-page">
       <div class="lab-header container-wide">
-        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to ${escapeHtml(patientName.split(" ")[0])}’s recovery</button><div class="eyebrow"><span></span> ${escapeHtml(patientName)}’s Movement Science Lab · Exercise ${assignmentNumber} of ${assignmentCount}</div><h1>${escapeHtml(assignment.display_name)}</h1><p class="lab-prescriber">Prescribed by ${escapeHtml(therapistName)} · ${escapeHtml(dosageLabel)}</p></div>
+        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to ${escapeHtml(patientName.split(" ")[0])}’s recovery</button><div class="eyebrow"><span></span> ${escapeHtml(patientName)}’s Movement Science Lab · ${currentRoadmapNode ? `Roadmap session ${currentRoadmapNode.session_number} · ` : ""}Exercise ${assignmentNumber} of ${assignmentCount}</div><h1>${escapeHtml(assignment.display_name)}</h1><p class="lab-prescriber">Prescribed by ${escapeHtml(therapistName)} · ${escapeHtml(dosageLabel)}</p></div>
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
       </div>
       <div class="personal-lab-banner container-wide">${icon("shield", 17)}<div><small>PRIVATE PATIENT LAB</small><b>${escapeHtml(patientName)} · ${escapeHtml(patientWorkspace?.plan?.title || "Personal recovery plan")}</b></div><span>Session summaries save only to this patient account</span></div>
@@ -932,7 +1018,7 @@ async function loadAssignedPatients() {
   if (!supabase || !currentSession?.user) {
     assignedPatients = [];
     therapistConnections = [];
-    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [] };
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
     return;
   }
   try {
@@ -944,7 +1030,7 @@ async function loadAssignedPatients() {
     console.error("Failed to load therapist assignments:", error);
     assignedPatients = [];
     therapistConnections = [];
-    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [] };
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
   }
 }
 
@@ -1057,7 +1143,10 @@ function renderPlanBuilder(isDemoTherapist) {
         <label>Roadmap title<input id="plan-title" value="Personal recovery roadmap" required/></label>
         <label>Program<input id="plan-program" value="Personal recovery plan" required/></label>
         <label>Current phase<input id="plan-phase" value="Foundation" required/></label>
+        <label>Plan length (weeks)<input id="plan-duration-weeks" type="number" min="1" max="52" value="12" required/></label>
+        <label>Sessions each week<input id="plan-sessions-week" type="number" min="1" max="7" value="7" required/></label>
       </div>
+      <div class="path-plan-summary"><span>${icon("map",18)}</span><div><b id="planned-node-count">84 touchable session nodes</b><small>The patient advances only after every prescribed exercise in a node is saved.</small></div><label><input id="plan-game-enabled" type="checkbox" checked/> Enable optional game view</label></div>
       <div class="prescription-toolbar"><div><b>Exercise prescription</b><small>Select up to 12 exercises. Dosage is independent for each one.</small></div><span id="selected-exercise-count">1 selected</span></div>
       <div class="prescription-filters">
         <label><span>Find an exercise</span><input id="prescription-search" type="search" placeholder="Search movement, region, or equipment" autocomplete="off"/></label>
@@ -1078,8 +1167,13 @@ function renderRoadmapList(isDemoTherapist) {
   if (!plans.length) return `<div class="empty-state"><span>${icon("map", 24)}</span><h3>No published roadmaps yet</h3><p>Use the prescription builder above to create the first patient-specific roadmap.</p></div>`;
   return `<div class="therapist-roadmap-list">${plans.map((plan) => {
     const exercises = planExercises(plan.id);
+    const nodes = (therapistWorkspace.roadmapNodes || []).filter((node) => node.plan_id === plan.id);
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const completed = (therapistWorkspace.roadmapCompletions || []).filter((item) => nodeIds.has(item.roadmap_node_id)).length;
+    const nextLocked = nodes.find((node) => node.session_number > completed + 1 && !node.unlock_override);
     return `<details class="therapist-roadmap-card" ${plan.status === "active" ? "open" : ""}>
-      <summary><span>${icon("map", 18)}</span><div><small>${escapeHtml(patientNameById(plan.patient_id))}</small><b>${escapeHtml(plan.title)}</b><em>${escapeHtml(plan.phase_label)} · ${plan.status}</em></div><strong>${exercises.length} exercise${exercises.length === 1 ? "" : "s"}</strong></summary>
+      <summary><span>${icon("map", 18)}</span><div><small>${escapeHtml(patientNameById(plan.patient_id))}</small><b>${escapeHtml(plan.title)}</b><em>${escapeHtml(plan.phase_label)} · ${plan.status}</em></div><strong>${completed}/${nodes.length || Number(plan.duration_weeks || 0) * Number(plan.sessions_per_week || 0)} sessions</strong></summary>
+      <div class="therapist-path-summary"><div><b>${plan.duration_weeks || "—"} weeks</b><small>${plan.sessions_per_week || "—"} sessions/week · ${plan.game_enabled === false ? "standard view" : "game view available"}</small></div><div class="therapist-path-bar"><span style="width:${nodes.length ? Math.round(completed / nodes.length * 100) : 0}%"></span></div>${nextLocked && plan.status === "active" ? `<button class="button button--ghost" data-override-roadmap-node="${nextLocked.id}" data-override-session-number="${nextLocked.session_number}">Unlock session ${nextLocked.session_number}</button>` : ""}</div>
       <div class="roadmap-detail-list">${exercises.map((exercise, index) => `<div><span>${String(index + 1).padStart(2, "0")}</span><div><b>${escapeHtml(exercise.display_name)}</b><small>${escapeHtml(prescriptionTarget(exercise))}</small></div><em>${escapeHtml(exercise.tracking_mode.replaceAll("_", " "))}</em></div>`).join("") || `<p>No active exercises in this roadmap.</p>`}</div>
     </details>`;
   }).join("")}</div>`;
@@ -1360,6 +1454,9 @@ async function submitPersonalPlan(event) {
       title: document.querySelector("#plan-title").value,
       programLabel: document.querySelector("#plan-program").value,
       phaseLabel: document.querySelector("#plan-phase").value,
+      durationWeeks: document.querySelector("#plan-duration-weeks").value,
+      sessionsPerWeek: document.querySelector("#plan-sessions-week").value,
+      gameEnabled: document.querySelector("#plan-game-enabled").checked,
       exercises,
       instructions: document.querySelector("#plan-instructions").value,
     });
@@ -1370,6 +1467,31 @@ async function submitPersonalPlan(event) {
     if (updatedResult) updatedResult.textContent = "Plan published. It is now visible only to this patient and your therapist account.";
   } catch (error) { result.textContent = safeOperationalMessage(error, "The roadmap could not be published. Review the selected exercises and try again."); }
   finally { button.disabled = false; }
+}
+
+function showRoadmapOverrideModal(nodeId, sessionNumber) {
+  const modal = document.createElement("div");
+  modal.className = "modal-layer";
+  modal.innerHTML = `<section class="roadmap-node-modal"><div class="node-modal-head"><div><span class="section-kicker">THERAPIST OVERRIDE</span><h2>Unlock session ${escapeHtml(sessionNumber)}</h2><p>This bypasses sequential progression. Record why the early unlock is clinically appropriate.</p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div><form id="roadmap-override-form"><label>Clinical reason<textarea id="roadmap-override-reason" minlength="3" maxlength="1000" rows="4" placeholder="Example: Reviewed in visit; patient is cleared to begin this session early." required></textarea></label><div id="roadmap-override-result" class="form-message" aria-live="polite"></div><button class="button button--primary" type="submit">Confirm audited unlock</button></form></section>`;
+  document.body.appendChild(modal);
+  modal.querySelector("[data-close-modal]")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("#roadmap-override-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("button[type='submit']");
+    const result = modal.querySelector("#roadmap-override-result");
+    button.disabled = true;
+    result.textContent = "Saving therapist override…";
+    try {
+      const saved = await overrideRoadmapNode(supabase, nodeId, modal.querySelector("#roadmap-override-reason").value);
+      therapistWorkspace.roadmapNodes = (therapistWorkspace.roadmapNodes || []).map((node) => node.id === saved.id ? saved : node);
+      modal.remove();
+      therapistView();
+    } catch (error) {
+      button.disabled = false;
+      result.textContent = safeOperationalMessage(error, "The session could not be unlocked. Review the reason and try again.");
+    }
+  });
+  modal.querySelector("#roadmap-override-reason")?.focus();
 }
 
 function accountView() {
@@ -1935,6 +2057,7 @@ async function saveSessionSummary(reps, feedback = {}) {
       patient_id: currentSession.user.id,
       client_session_id: sessionClientId || crypto.randomUUID(),
       assignment_id: currentAssignment?.id?.startsWith?.("demo-") ? null : (currentAssignment?.id || null),
+      roadmap_node_id: currentRoadmapNode?.id?.startsWith?.("demo-") ? null : (currentRoadmapNode?.id || null),
       exercise_key: currentAssignment?.exercise_key || "bodyweight_squat",
       repetitions: trackingProfile.mode === "hold" ? 0 : reps.length,
       duration_seconds: sessionStartedAt ? Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)) : null,
@@ -1959,7 +2082,7 @@ async function saveSessionSummary(reps, feedback = {}) {
       discomfort: ["none", "mild", "moderate", "stop"].includes(feedback.discomfort) ? feedback.discomfort : null,
       completed_at: new Date().toISOString()
     })
-    .select("id, patient_id, assignment_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, started_at, completed_at, created_at")
+    .select("id, patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, started_at, completed_at, created_at")
     .single();
 
   if (error) {
@@ -1974,6 +2097,10 @@ async function saveSessionSummary(reps, feedback = {}) {
   }
 
   reportSessions = [data, ...reportSessions.filter((session) => session.id !== data.id)];
+  if (patientWorkspace) {
+    patientWorkspace.sessions = [data, ...(patientWorkspace.sessions || []).filter((session) => session.id !== data.id)];
+    loadPatientWorkspace(supabase, currentSession.user.id).then((workspace) => { patientWorkspace = workspace; }).catch((error) => console.warn("Could not refresh roadmap progress", error));
+  }
   return data;
 }
 
@@ -2503,12 +2630,23 @@ function bindEvents() {
     requestAnimationFrame(() => document.querySelector(".exercise-library-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }));
   document.querySelectorAll("[data-approve-patient]").forEach((element) => element.addEventListener("click", approvePatient));
+  document.querySelectorAll("[data-roadmap-node]").forEach((element) => element.addEventListener("click", () => showRoadmapNode(element.dataset.roadmapNode)));
+  document.querySelectorAll("[data-override-roadmap-node]").forEach((element) => element.addEventListener("click", () => showRoadmapOverrideModal(element.dataset.overrideRoadmapNode, element.dataset.overrideSessionNumber)));
+  const updatePlannedNodeCount = () => {
+    const weeks = Math.max(1, Math.min(52, Number(document.querySelector("#plan-duration-weeks")?.value || 12)));
+    const weekly = Math.max(1, Math.min(7, Number(document.querySelector("#plan-sessions-week")?.value || 7)));
+    setText("#planned-node-count", `${weeks * weekly} touchable session nodes`);
+  };
+  document.querySelector("#plan-duration-weeks")?.addEventListener("input", updatePlannedNodeCount);
+  document.querySelector("#plan-sessions-week")?.addEventListener("input", updatePlannedNodeCount);
   document.querySelector("[data-open-roadmap]")?.addEventListener("click", () => {
     roadmapExpanded = !roadmapExpanded;
     patientView();
     if (roadmapExpanded) requestAnimationFrame(() => document.querySelector("#patient-exercises")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   });
   document.querySelectorAll("[data-start-assignment]").forEach((element) => element.addEventListener("click", () => {
+    const path = sessionPathPresentation(patientWorkspace || demoPatientWorkspace());
+    currentRoadmapNode = path.nodes.find((node) => ["current", "override"].includes(node.state)) || null;
     currentAssignment = patientWorkspace?.assignments?.find((assignment) => assignment.id === element.dataset.startAssignment) || null;
     if (currentAssignment) labView();
   }));
