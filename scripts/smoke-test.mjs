@@ -140,6 +140,7 @@ const requirements = [
   [files.main, "Pain or movement concern", "in-session safety pause action"],
   [files.main, "recordPatientSafetyEvent", "immediate patient safety-event persistence"],
   [files.main, "Resume only if you feel ready", "non-coercive safety resume language"],
+  [files.main, "therapist-safety-", "therapist safety-alert realtime channel"],
   [files.portal, "patient_safety_events", "patient safety-event data integration"],
   [files.movementGame, "MOVEMENT_EVENT.SAFETY_FLAG", "safety event overrides game progress"],
   [files.movementGame, "Math.min(clinicalTarget", "game progress capped at prescription"],

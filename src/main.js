@@ -97,6 +97,8 @@ let roadmapExpanded = false;
 let patientRealtimeChannel = null;
 let patientRealtimeKey = null;
 let patientRealtimeRefreshTimer = null;
+let therapistRealtimeChannel = null;
+let therapistRealtimeRefreshTimer = null;
 let patientWorkspace = null;
 let currentAssignment = null;
 let selectedPatient = null;
@@ -307,6 +309,31 @@ function stopPatientRealtime() {
   if (patientRealtimeChannel && supabase) void supabase.removeChannel(patientRealtimeChannel);
   patientRealtimeChannel = null;
   patientRealtimeKey = null;
+}
+
+function stopTherapistRealtime() {
+  if (therapistRealtimeRefreshTimer) clearTimeout(therapistRealtimeRefreshTimer);
+  therapistRealtimeRefreshTimer = null;
+  if (therapistRealtimeChannel && supabase) void supabase.removeChannel(therapistRealtimeChannel);
+  therapistRealtimeChannel = null;
+}
+
+function startTherapistRealtime() {
+  if (!supabase || !currentSession?.user || currentSession.demo || currentProfile?.role !== "therapist" || therapistRealtimeChannel) return;
+  const therapistId = currentSession.user.id;
+  const scheduleRefresh = () => {
+    if (therapistRealtimeRefreshTimer) clearTimeout(therapistRealtimeRefreshTimer);
+    therapistRealtimeRefreshTimer = setTimeout(async () => {
+      if (currentView !== "therapist") return;
+      await loadAssignedPatients();
+      if (currentView === "therapist") therapistView();
+    }, 250);
+  };
+  therapistRealtimeChannel = supabase
+    .channel(`therapist-safety-${therapistId}`)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "therapist_alerts", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "patient_safety_events" }, scheduleRefresh)
+    .subscribe();
 }
 
 function renderLoadedPatientWorkspace() {
@@ -890,6 +917,7 @@ async function loadAssignedPatients() {
     therapistConnections = await loadTherapistConnections(supabase, currentSession.user.id);
     assignedPatients = therapistConnections.filter((item) => item.status === "active").map((item) => item.profile);
     therapistWorkspace = await loadTherapistWorkspace(supabase, currentSession.user.id, assignedPatients.map((patient) => patient.id));
+    startTherapistRealtime();
   } catch (error) {
     console.error("Failed to load therapist assignments:", error);
     assignedPatients = [];
@@ -1333,6 +1361,7 @@ async function signOutPortal(reason = null) {
   assignedPatients = [];
   therapistConnections = [];
   therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
+  stopTherapistRealtime();
   therapistSection = "overview";
   patientFilter = "all";
   roadmapExpanded = false;
@@ -2381,6 +2410,7 @@ async function bootstrap() {
       if (!session) {
         currentProfile = null;
         stopPatientRealtime();
+        stopTherapistRealtime();
       }
       if (event === "PASSWORD_RECOVERY") {
         passwordRecoveryMode = true;
