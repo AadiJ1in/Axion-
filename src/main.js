@@ -1728,11 +1728,12 @@ function showSafetyEventModal() {
     button.disabled = true;
     button.textContent = "Saving…";
     try {
-      const saved = currentSession?.user && !currentSession.demo
+      const isRealPatientSession = Boolean(currentSession?.user && !currentSession.demo);
+      const saved = isRealPatientSession
         ? await recordPatientSafetyEvent(supabase, safetyEvent)
         : { ...safetyEvent, id: crypto.randomUUID(), occurred_at: new Date().toISOString() };
       sessionSafetyEvents.push(saved);
-      setText("#safety-save-state", currentSession?.demo ? "Saved in this synthetic demo only." : "Saved privately and shared with your connected therapist.");
+      setText("#safety-save-state", isRealPatientSession ? "Saved privately and shared with your connected therapist." : "Saved in this synthetic demo only.");
       button.textContent = "Saved";
       const actions = modal.querySelector(".reflection-actions");
       if (actions) actions.innerHTML = `<button class="button button--ghost" data-stop-after-report>End session safely</button><button class="button button--primary" data-resume-after-report>Resume only if you feel ready</button>`;
