@@ -70,6 +70,7 @@ update public.profiles
 set display_name = 'Security Patient B',
     onboarding_version = 1,
     onboarding_completed_at = now(),
+    avatar_key = 'summit',
     updated_at = now()
 where id = '10000000-0000-4000-8000-000000000003'::uuid;
 
@@ -80,9 +81,10 @@ begin
     where p.id = '10000000-0000-4000-8000-000000000003'::uuid
       and p.display_name = 'Security Patient B'
       and p.onboarding_version = 1
+      and p.avatar_key = 'summit'
       and p.role = 'patient'::public.app_role
   ) then
-    raise exception 'Patient onboarding fields were not saved safely';
+    raise exception 'Patient onboarding or avatar fields were not saved safely';
   end if;
 end
 $test$;
@@ -557,6 +559,7 @@ rollback;
 
 select
   true as safe_onboarding_update,
+  true as safe_patient_avatar_update,
   true as claim_stays_pending,
   true as therapist_approval_required,
   true as own_assignment_session_allowed,
