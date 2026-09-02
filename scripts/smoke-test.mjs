@@ -23,6 +23,8 @@ const files = {
   clinicalProgramMigration: await readFile(new URL("../supabase/migrations/202608310001_add_clinical_program_exercises.sql", import.meta.url), "utf8"),
   safetyEventMigration: await readFile(new URL("../supabase/migrations/202608310002_patient_safety_events.sql", import.meta.url), "utf8"),
   careMessagingMigration: await readFile(new URL("../supabase/migrations/202609010002_care_messages_and_recommendations.sql", import.meta.url), "utf8"),
+  messagingDisableMigration: await readFile(new URL("../supabase/migrations/202609020001_disable_care_messages.sql", import.meta.url), "utf8"),
+  messagingDenyPolicyMigration: await readFile(new URL("../supabase/migrations/202609020002_care_messages_deny_policy.sql", import.meta.url), "utf8"),
   sessionPathMigration: await readFile(new URL("../supabase/migrations/202609010003_session_path_roadmap.sql", import.meta.url), "utf8"),
   sessionPathGrantMigration: await readFile(new URL("../supabase/migrations/202609010004_session_path_publish_grant.sql", import.meta.url), "utf8"),
   sessionPathIndexMigration: await readFile(new URL("../supabase/migrations/202609010005_roadmap_override_index.sql", import.meta.url), "utf8"),
@@ -161,18 +163,18 @@ const requirements = [
   [files.safetyEventMigration, "private.audit_events", "safety-event audit trail"],
   [files.rlsIntegrationTest, "Patient could alter an append-only safety event", "append-only safety regression test"],
   [files.rlsIntegrationTest, "Cross-patient safety-event insert was allowed", "safety-event IDOR regression test"],
-  [files.rlsIntegrationTest, "Cross-patient care message was allowed", "care-message IDOR regression test"],
+  [files.rlsIntegrationTest, "Patient could read the disabled care message table", "disabled patient message-read regression test"],
+  [files.rlsIntegrationTest, "Therapist could insert into the disabled care message table", "disabled therapist message-write regression test"],
   [files.rlsIntegrationTest, "Patient could read therapist-only recommendations", "recommendation privacy regression test"],
   [files.rlsIntegrationTest, "Recommendation review changed the prescription", "no-autonomous-prescription regression test"],
-  [files.main, "PRIVATE CARE-TEAM MESSAGES", "verified care-team messaging UI"],
+  [files.main, "In-app messaging is disabled", "roadmap communication boundary"],
   [files.main, "Accept for review", "clinician recommendation review control"],
-  [files.portal, "sendCareMessage", "RLS-backed care messaging mutation"],
   [files.portal, "reviewClinicianRecommendation", "clinician recommendation decision mutation"],
-  [files.careMessagingMigration, "care_messages_insert_active_participant", "participant-scoped message policy"],
-  [files.careMessagingMigration, "care_messages_recipient_marks_read", "recipient-only message read policy"],
   [files.careMessagingMigration, "automatic_plan_change', false", "recommendation prescription boundary"],
   [files.careMessagingMigration, "clinician_recommendation_reviewed", "recommendation decision audit event"],
-  [files.careMessagingMigration, "revoke all on table public.care_messages", "explicit care-message grants"],
+  [files.messagingDisableMigration, "revoke all on table public.care_messages from public, anon, authenticated", "disabled browser message grants"],
+  [files.messagingDisableMigration, "drop table public.care_messages", "disabled message realtime publication"],
+  [files.messagingDenyPolicyMigration, "using (false)", "explicit message deny policy"],
   [files.sessionPathMigration, "create table public.roadmap_nodes", "normalized roadmap session nodes"],
   [files.sessionPathMigration, "create table public.roadmap_node_assignments", "roadmap exercise mapping"],
   [files.sessionPathMigration, "create table public.roadmap_node_completions", "append-only roadmap completion records"],
@@ -209,6 +211,9 @@ if (files.vercel.includes("kxhmrfgolttrofpumqpy")) throw new Error("CSP still re
 if (!files.vercel.includes("'wasm-unsafe-eval'")) throw new Error("CSP must permit WebAssembly compilation for the MediaPipe pose model.");
 if (files.vercel.includes("'unsafe-eval'")) throw new Error("CSP must not permit unrestricted JavaScript eval.");
 if (files.main.includes("onclick=")) throw new Error("Inline event handlers are blocked by the production CSP.");
+if (files.main.includes("PRIVATE CARE-TEAM MESSAGES") || files.portal.includes('from("care_messages")')) {
+  throw new Error("Free-text care messaging must remain absent from browser application code.");
+}
 if (/\.textContent\s*=\s*\w*error\.message/i.test(files.main)) {
   throw new Error("Raw database or authentication errors must not be rendered to patients or therapists.");
 }
