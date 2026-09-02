@@ -253,41 +253,29 @@ select set_config('axion.safety_event_b', pse.id::text, true)
 from public.patient_safety_events pse
 where pse.client_session_id = '33333333-3333-4333-8333-333333333333'::uuid;
 
--- A patient can message only their active care-team relationship with valid context.
-insert into public.care_messages (
-  therapist_id, patient_id, sender_id, plan_id, assignment_id, session_id,
-  client_message_id, body
-) values (
-  '10000000-0000-4000-8000-000000000001'::uuid,
-  '10000000-0000-4000-8000-000000000003'::uuid,
-  '10000000-0000-4000-8000-000000000003'::uuid,
-  current_setting('axion.plan_b')::uuid,
-  current_setting('axion.assignment_b')::uuid,
-  current_setting('axion.session_b')::uuid,
-  '55555555-5555-4555-8555-555555555555'::uuid,
-  'Synthetic patient care-team message'
-);
-
-select set_config('axion.patient_message_b', cm.id::text, true)
-from public.care_messages cm
-where cm.client_message_id = '55555555-5555-4555-8555-555555555555'::uuid;
-
+-- Free-text care messaging remains inaccessible to browser roles.
 do $test$
 begin
+  begin
+    perform 1 from public.care_messages limit 1;
+    raise exception 'Patient could read the disabled care message table';
+  exception when insufficient_privilege then
+    null;
+  end;
   begin
     insert into public.care_messages (
       therapist_id, patient_id, sender_id, client_message_id, body
     ) values (
       '10000000-0000-4000-8000-000000000001'::uuid,
-      '10000000-0000-4000-8000-000000000002'::uuid,
+      '10000000-0000-4000-8000-000000000003'::uuid,
       '10000000-0000-4000-8000-000000000003'::uuid,
       '66666666-6666-4666-8666-666666666666'::uuid,
-      'Cross-patient message attack'
+      'Disabled message route test'
     );
-  exception when sqlstate '42501' then
-    return;
+    raise exception 'Patient could insert into the disabled care message table';
+  exception when insufficient_privilege then
+    null;
   end;
-  raise exception 'Cross-patient care message was allowed';
 end
 $test$;
 
@@ -385,33 +373,32 @@ set unlock_override = true,
     updated_at = now()
 where id = current_setting('axion.node_b3')::uuid;
 
--- The therapist can read/reply to the thread and mark only incoming messages read.
+-- The connected therapist also cannot access the disabled free-text message route.
 do $test$
 begin
-  if (select count(*) from public.care_messages where patient_id = '10000000-0000-4000-8000-000000000003'::uuid) <> 1 then
-    raise exception 'Connected therapist could not read the patient message';
-  end if;
+  begin
+    perform 1 from public.care_messages limit 1;
+    raise exception 'Therapist could read the disabled care message table';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    insert into public.care_messages (
+      therapist_id, patient_id, sender_id, plan_id, client_message_id, body
+    ) values (
+      '10000000-0000-4000-8000-000000000001'::uuid,
+      '10000000-0000-4000-8000-000000000003'::uuid,
+      '10000000-0000-4000-8000-000000000001'::uuid,
+      current_setting('axion.plan_b')::uuid,
+      '88888888-8888-4888-8888-888888888888'::uuid,
+      'Disabled therapist message route test'
+    );
+    raise exception 'Therapist could insert into the disabled care message table';
+  exception when insufficient_privilege then
+    null;
+  end;
 end
 $test$;
-
-update public.care_messages
-set read_at = now()
-where id = current_setting('axion.patient_message_b')::uuid;
-
-insert into public.care_messages (
-  therapist_id, patient_id, sender_id, plan_id, client_message_id, body
-) values (
-  '10000000-0000-4000-8000-000000000001'::uuid,
-  '10000000-0000-4000-8000-000000000003'::uuid,
-  '10000000-0000-4000-8000-000000000001'::uuid,
-  current_setting('axion.plan_b')::uuid,
-  '88888888-8888-4888-8888-888888888888'::uuid,
-  'Synthetic therapist reply'
-);
-
-select set_config('axion.therapist_message_b', cm.id::text, true)
-from public.care_messages cm
-where cm.client_message_id = '88888888-8888-4888-8888-888888888888'::uuid;
 
 -- The review suggestion is therapist-only and its decision cannot change dosage.
 select set_config('axion.recommendation_b', cr.id::text, true)
@@ -499,33 +486,6 @@ begin
   ) then
     raise exception 'Patient could not see the therapist-authorized roadmap override';
   end if;
-  if (select count(*) from public.care_messages) <> 2 then
-    raise exception 'Patient could not read only their care-team thread';
-  end if;
-  begin
-    update public.care_messages set body = 'Tampered body'
-    where id = current_setting('axion.patient_message_b')::uuid;
-  exception when insufficient_privilege then
-    null;
-  end;
-  if exists (
-    select 1 from public.care_messages
-    where id = current_setting('axion.patient_message_b')::uuid and body = 'Tampered body'
-  ) then
-    raise exception 'Patient could alter immutable message content';
-  end if;
-  perform set_config('axion.message_read_at', cm.read_at::text, true)
-  from public.care_messages cm
-  where cm.id = current_setting('axion.patient_message_b')::uuid;
-  update public.care_messages set read_at = now() + interval '1 day'
-  where id = current_setting('axion.patient_message_b')::uuid;
-  if exists (
-    select 1 from public.care_messages cm
-    where cm.id = current_setting('axion.patient_message_b')::uuid
-      and cm.read_at is distinct from current_setting('axion.message_read_at')::timestamptz
-  ) then
-    raise exception 'Sender could mark their own message as read';
-  end if;
 end
 $test$;
 
@@ -603,7 +563,7 @@ select
   true as therapist_note_authorization_enforced,
   true as append_only_safety_events_enforced,
   true as therapist_safety_alerts_enforced,
-  true as care_message_isolation_enforced,
+  true as care_message_access_disabled,
   true as recommendation_review_boundary_enforced,
   true as locked_roadmap_session_blocked,
   true as roadmap_xp_awarded_once,
