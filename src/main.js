@@ -30,6 +30,7 @@ import {
   overrideRoadmapNode,
   recordPatientSafetyEvent,
   reviewClinicianRecommendation,
+  updatePatientAvatar,
 } from "./portal.js";
 
 const app = document.querySelector("#app");
@@ -170,9 +171,9 @@ function icon(name, size = 18) {
 
 function layout(content, { full = false } = {}) {
   const activeRole = currentProfile?.role || demoRole;
-  const accountTarget = currentSession?.user ? "account" : "auth";
+  const accountTarget = currentSession?.user ? (activeRole === "patient" ? "patient-profile" : "account") : "auth";
   const nav = activeRole === "patient"
-    ? [["patient", "My recovery", "map"], ["lab", "My Movement Lab", "activity"], ["report", "Progress", "report"]]
+    ? [["patient", "Roadmap", "map"], ["lab", "Movement Lab", "activity"], ["patient-profile", "Profile", "users"], ["report", "Progress", "trophy"], ["patient-report", "Report", "report"]]
     : activeRole === "therapist"
       ? [["therapist", "Overview", "home"], ["report", "Movement reports", "report"]]
       : [["home", "Overview", "home"], ["lab", "Motion Lab", "activity"], ["report", "Movement Report", "report"], ["therapist", "Therapist", "users"]];
@@ -186,11 +187,11 @@ function layout(content, { full = false } = {}) {
       </div>
       <header class="topbar">
         <button class="brand" data-nav="${brandTarget}" aria-label="Axion home"><span class="brand-symbol"><i></i><i></i></span><span>AXION</span></button>
-        <nav class="nav" aria-label="Primary navigation">
+        <nav class="nav ${activeRole === "patient" ? "patient-nav" : ""}" aria-label="Primary navigation">
           ${nav.map(([view, label, symbol]) => `<button data-nav="${view}" class="${currentView === view ? "active" : ""}">${icon(symbol, 16)}<span>${label}</span></button>`).join("")}
         </nav>
         ${currentSession?.user
-          ? `<button class="avatar-button" data-nav="${accountTarget}" aria-label="Open account for ${escapeHtml(displayName || "signed-in user")}"><span>${initials}</span><span class="presence-dot"></span></button>`
+          ? `<button class="avatar-button avatar-${escapeHtml(currentProfile?.avatar_key || "pulse")}" data-nav="${accountTarget}" aria-label="Open ${activeRole === "patient" ? "profile" : "account"} for ${escapeHtml(displayName || "signed-in user")}"><span>${initials}</span><span class="presence-dot"></span></button>`
           : `<button class="account-entry-button" data-nav="auth" aria-label="Sign in or create an account">${icon("users", 16)}<span>Sign in</span></button>`}
       </header>
       ${demoScriptActive ? `
@@ -328,6 +329,7 @@ function demoPatientWorkspace() {
     roadmapNodeAssignments: roadmapNodes.map((node) => ({ roadmap_node_id: node.id, assignment_id: assignment.id, sequence: 1 })),
     roadmapCompletions: roadmapNodes.slice(0, 5).map((node) => ({ id: `demo-completion-${node.session_number}`, roadmap_node_id: node.id, patient_id: "demo-patient", xp_awarded: 50, completed_at: new Date(Date.now() - (6 - node.session_number) * 86400000).toISOString() })),
     sessions: demoSessions,
+    safetyEvents: [],
   };
 }
 
@@ -376,12 +378,17 @@ function renderLoadedPatientWorkspace() {
 }
 
 async function refreshPatientWorkspaceFromRealtime() {
-  if (currentView !== "patient" || !currentSession?.user || currentSession.demo) return;
+  const patientViews = new Set(["patient", "patient-profile", "patient-report"]);
+  if (!patientViews.has(currentView) || !currentSession?.user || currentSession.demo) return;
+  const viewToRefresh = currentView;
   try {
     patientWorkspace = await loadPatientWorkspace(supabase, currentSession.user.id);
-    if (currentView !== "patient") return;
+    if (currentView !== viewToRefresh) return;
+    currentProfile = patientWorkspace.profile;
     startPatientRealtime();
-    renderLoadedPatientWorkspace();
+    if (viewToRefresh === "patient-profile") patientProfileView();
+    else if (viewToRefresh === "patient-report") patientReportView();
+    else renderLoadedPatientWorkspace();
   } catch (error) {
     console.warn("Roadmap realtime refresh failed", error);
     const indicator = document.querySelector("#roadmap-live-state");
@@ -406,7 +413,8 @@ function startPatientRealtime() {
     .channel(`patient-roadmap-${userId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "therapist_patients", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "exercise_plans", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
-    .on("postgres_changes", { event: "*", schema: "public", table: "exercise_sessions", filter: `patient_id=eq.${userId}` }, scheduleRefresh);
+    .on("postgres_changes", { event: "*", schema: "public", table: "exercise_sessions", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "patient_safety_events", filter: `patient_id=eq.${userId}` }, scheduleRefresh);
 
   if (patientWorkspace?.plan?.id) {
     channel = channel
@@ -1452,6 +1460,122 @@ function showRoadmapOverrideModal(nodeId, sessionNumber) {
   modal.querySelector("#roadmap-override-reason")?.focus();
 }
 
+const PATIENT_AVATARS = [
+  { key: "pulse", name: "Pulse", caption: "Steady momentum", icon: "activity" },
+  { key: "summit", name: "Summit", caption: "Milestone focused", icon: "trophy" },
+  { key: "orbit", name: "Orbit", caption: "Balanced control", icon: "spark" },
+  { key: "trail", name: "Trail", caption: "Forward progress", icon: "map" },
+];
+
+function patientAvatarMarkup(key = "pulse", { large = false } = {}) {
+  const avatar = PATIENT_AVATARS.find((item) => item.key === key) || PATIENT_AVATARS[0];
+  return `<span class="patient-profile-avatar avatar-${avatar.key} ${large ? "large" : ""}" aria-hidden="true"><i></i>${icon(avatar.icon, large ? 32 : 18)}</span>`;
+}
+
+function patientProfileView() {
+  currentView = "patient-profile";
+  stopDemo();
+  const workspace = patientWorkspace || demoPatientWorkspace();
+  const profile = workspace.profile || currentProfile || {};
+  const completions = workspace.roadmapCompletions || [];
+  const totalNodes = workspace.roadmapNodes?.length || 0;
+  const completed = completions.length;
+  const avatarKey = profile.avatar_key || "pulse";
+  const achievements = [
+    { name: "First Step", detail: "Complete your first roadmap session", earned: completed >= 1, icon: "check" },
+    { name: "Momentum", detail: "Complete 5 roadmap sessions", earned: completed >= 5, icon: "activity" },
+    { name: "Full Week", detail: "Complete one prescribed week", earned: completed >= Number(workspace.plan?.sessions_per_week || 7), icon: "calendar" },
+    { name: "Foundation", detail: "Complete 28 roadmap sessions", earned: completed >= 28, icon: "map" },
+    { name: "Consistency", detail: "Build a 3-day recovery streak", earned: Number(profile.streak_days || 0) >= 3, icon: "spark" },
+    { name: "Path Complete", detail: "Complete every prescribed session", earned: totalNodes > 0 && completed >= totalNodes, icon: "trophy" },
+  ];
+  const earned = achievements.filter((item) => item.earned).length;
+  const levelProgress = Math.min(100, (Number(profile.recovery_xp || 0) % 500) / 5);
+  app.innerHTML = layout(`
+    <main class="patient-profile-page container-wide">
+      <section class="profile-hero-card">
+        ${patientAvatarMarkup(avatarKey, { large: true })}
+        <div class="profile-hero-copy"><span class="section-kicker">MY RECOVERY PROFILE</span><h1>${escapeHtml(profile.display_name || "Patient")}</h1><p>Your achievements reflect completed therapist-prescribed roadmap sessions. Pain reports never reduce XP, levels, or streaks.</p><div class="profile-level-bar"><span style="width:${levelProgress}%"></span></div><small>${Math.round(levelProgress)}% toward level ${Number(profile.level || 1) + 1}</small></div>
+        <div class="profile-hero-stats"><article><b>${Number(profile.recovery_xp || 0).toLocaleString()}</b><small>RECOVERY XP</small></article><article><b>${profile.level || 1}</b><small>LEVEL</small></article><article><b>${profile.streak_days || 0}</b><small>DAY STREAK</small></article></div>
+      </section>
+      <section class="profile-dashboard-grid">
+        <article class="avatar-picker-card"><div class="profile-section-head"><div><span class="section-kicker">CHOOSE YOUR AVATAR</span><h2>Make the journey yours.</h2></div><span id="avatar-save-state">Saved to your profile</span></div><div class="avatar-choice-grid">${PATIENT_AVATARS.map((avatar) => `<button data-avatar-key="${avatar.key}" class="${avatar.key === avatarKey ? "selected" : ""}" aria-pressed="${avatar.key === avatarKey}">${patientAvatarMarkup(avatar.key)}<span><b>${avatar.name}</b><small>${avatar.caption}</small></span>${avatar.key === avatarKey ? icon("check",15) : ""}</button>`).join("")}</div></article>
+        <article class="profile-progress-card"><span class="section-kicker">ROADMAP RECORD</span><h2>${completed} of ${totalNodes} sessions</h2><div class="profile-completion-ring" style="--profile-progress:${totalNodes ? Math.round(completed / totalNodes * 100) : 0}"><b>${totalNodes ? Math.round(completed / totalNodes * 100) : 0}%</b></div><p>Only fully completed nodes count toward this record.</p><button class="button button--ghost" data-nav="patient">Open roadmap ${icon("arrow",15)}</button></article>
+      </section>
+      <section class="achievement-card"><div class="profile-section-head"><div><span class="section-kicker">ACHIEVEMENTS</span><h2>${earned} of ${achievements.length} earned</h2></div><span>Based on real session progress</span></div><div class="achievement-grid">${achievements.map((achievement) => `<article class="${achievement.earned ? "earned" : "locked"}"><span>${icon(achievement.earned ? achievement.icon : "lock",22)}</span><div><b>${achievement.name}</b><p>${achievement.detail}</p></div><em>${achievement.earned ? "EARNED" : "LOCKED"}</em></article>`).join("")}</div></section>
+      <section class="profile-settings-link"><span>${icon("shield",22)}</span><div><b>Account and security</b><p>Update your name, reset your password, or sign out securely.</p></div><button class="button button--ghost" data-nav="account">Manage account ${icon("arrow",15)}</button></section>
+    </main>
+  `, { full: true });
+  bindEvents();
+}
+
+function patientReportView() {
+  currentView = "patient-report";
+  stopDemo();
+  const workspace = patientWorkspace || demoPatientWorkspace();
+  const assignments = workspace.assignments || [];
+  const reports = workspace.safetyEvents || [];
+  app.innerHTML = layout(`
+    <main class="patient-report-page container-wide">
+      <section class="patient-report-hero"><div><span class="section-kicker">REPORT HOW YOU FEEL</span><h1>Tell your physical therapist what you noticed.</h1><p>Record pain or an unexpected movement response against the exact prescribed exercise. Your report is kept separate from camera measurements and never changes your plan automatically.</p></div><span>${icon("activity",28)}</span></section>
+      <div class="patient-report-layout">
+        <form id="patient-report-form" class="patient-checkin-card">
+          <div class="report-step"><i>1</i><div><b>Choose the exercise</b><small>This connects the report to the correct assignment.</small></div></div>
+          <label>Prescribed exercise<select id="patient-report-assignment" required>${assignments.map((assignment) => `<option value="${assignment.id}">${escapeHtml(assignment.display_name)}</option>`).join("")}</select></label>
+          <div class="report-step"><i>2</i><div><b>What did you notice?</b><small>Choose the closest description.</small></div></div>
+          <fieldset class="patient-report-types"><legend class="sr-only">Report type</legend><label><input type="radio" name="patient-report-type" value="pain" checked/><span>Pain</span></label><label><input type="radio" name="patient-report-type" value="felt_wrong"/><span>Movement felt wrong</span></label><label><input type="radio" name="patient-report-type" value="felt_different"/><span>Felt different today</span></label></fieldset>
+          <label class="patient-pain-scale">Pain level <output id="patient-pain-output">0 / 10</output><input id="patient-pain-score" type="range" min="0" max="10" step="1" value="0"/><span><small>0 · No pain</small><small>10 · Worst pain</small></span></label>
+          <label>Optional note<textarea id="patient-report-comment" maxlength="1000" rows="4" placeholder="Describe when it happened and what you felt. Do not include information unrelated to this exercise."></textarea></label>
+          <div id="patient-report-status" class="form-message" role="status" aria-live="polite"></div>
+          <button class="button button--primary" type="submit" ${assignments.length ? "" : "disabled"}>Send report to my therapist ${icon("arrow",16)}</button>
+          ${assignments.length ? "" : `<p class="report-no-assignment">A therapist-published exercise is required before a report can be submitted.</p>`}
+        </form>
+        <aside class="patient-report-side"><article class="urgent-care-boundary"><span>${icon("shield",22)}</span><div><b>Axion is not an emergency service</b><p>For severe or rapidly worsening symptoms, chest pain, trouble breathing, a new neurological symptom, or an emergency, stop and contact local emergency services. For plan changes, contact your clinic through its approved channel.</p></div></article><article class="recent-patient-reports"><div><span class="section-kicker">RECENT REPORTS</span><h2>Your submitted reports</h2></div>${reports.length ? safetyEventList(reports.slice(0, 8)) : `<div class="empty-state"><span>${icon("report",22)}</span><h3>No reports yet</h3><p>Your pain and movement reports will appear here after submission.</p></div>`}</article></aside>
+      </div>
+    </main>
+  `, { full: true });
+  bindEvents();
+}
+
+async function savePatientAvatar(event) {
+  const key = event.currentTarget.dataset.avatarKey;
+  const state = document.querySelector("#avatar-save-state");
+  if (state) state.textContent = "Saving…";
+  try {
+    if (currentSession?.demo) currentProfile = { ...currentProfile, avatar_key: key };
+    else currentProfile = await updatePatientAvatar(supabase, currentSession.user.id, key);
+    if (patientWorkspace) patientWorkspace.profile = currentProfile;
+    patientProfileView();
+  } catch (error) {
+    if (state) state.textContent = safeOperationalMessage(error, "Your avatar could not be saved. Try again.");
+  }
+}
+
+async function submitPatientReport(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const status = document.querySelector("#patient-report-status");
+  const button = form.querySelector('[type="submit"]');
+  const assignmentId = document.querySelector("#patient-report-assignment")?.value;
+  const assignment = patientWorkspace?.assignments?.find((item) => item.id === assignmentId) || demoPatientWorkspace().assignments.find((item) => item.id === assignmentId);
+  const eventType = form.querySelector('[name="patient-report-type"]:checked')?.value;
+  const painScore = Number(document.querySelector("#patient-pain-score")?.value || 0);
+  const comment = document.querySelector("#patient-report-comment")?.value || "";
+  if (!assignment) { status.textContent = "Choose a prescribed exercise before submitting."; return; }
+  button.disabled = true;
+  status.textContent = "Saving securely…";
+  try {
+    const input = { patientId: currentSession.user.id, assignmentId, clientSessionId: crypto.randomUUID(), exerciseKey: assignment.exercise_key, eventType, painScore, comment, setNumber: null, repNumber: null };
+    const saved = currentSession.demo ? { ...input, id: crypto.randomUUID(), occurred_at: new Date().toISOString(), paused_session: true } : await recordPatientSafetyEvent(supabase, input);
+    if (patientWorkspace) patientWorkspace.safetyEvents = [saved, ...(patientWorkspace.safetyEvents || [])];
+    patientReportView();
+    setText("#patient-report-status", "Report saved. Your physical therapist can review it in Axion.");
+  } catch (error) {
+    button.disabled = false;
+    status.textContent = safeOperationalMessage(error, "Your report could not be saved. Try again or contact your clinic through its approved channel.");
+  }
+}
+
 function accountView() {
   if (!currentSession?.user || !currentProfile) {
     authView();
@@ -1460,12 +1584,12 @@ function accountView() {
   currentView = "account";
   stopDemo();
   const roleLabel = currentProfile.role === "therapist" ? "Physical therapist" : "Patient";
-  const backTarget = currentProfile.role === "therapist" ? "therapist" : "patient";
+  const backTarget = currentProfile.role === "therapist" ? "therapist" : "patient-profile";
   const email = currentSession.user.email || (currentSession.demo ? "Synthetic demo account" : "Email unavailable");
   app.innerHTML = layout(`
     <main class="account-page container-wide">
       <section class="account-card">
-        <div class="account-heading"><button class="back-link" data-nav="${backTarget}">${icon("back",16)} Back to ${currentProfile.role === "therapist" ? "therapist workspace" : "my recovery"}</button><span class="section-kicker">PRIVATE ACCOUNT</span><h1>Account and identity</h1><p>Your role is controlled by Axion’s trusted workflow. Changing your display name never changes your permissions or care-team connection.</p></div>
+        <div class="account-heading"><button class="back-link" data-nav="${backTarget}">${icon("back",16)} Back to ${currentProfile.role === "therapist" ? "therapist workspace" : "my profile"}</button><span class="section-kicker">PRIVATE ACCOUNT</span><h1>Account and identity</h1><p>Your role is controlled by Axion’s trusted workflow. Changing your display name never changes your permissions or care-team connection.</p></div>
         <div class="account-identity"><span class="patient-avatar mint">${escapeHtml(currentProfile.display_name.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0,2).toUpperCase())}</span><div><b>${escapeHtml(currentProfile.display_name)}</b><small>${escapeHtml(email)}</small></div><em>${escapeHtml(roleLabel)}</em></div>
         <form id="account-profile-form">
           <label>Display name<input id="account-display-name" minlength="2" maxlength="80" autocomplete="name" value="${escapeHtml(currentProfile.display_name)}" required/></label>
@@ -1495,7 +1619,7 @@ async function updateAccountProfile(event) {
   try {
     if (currentSession.demo) currentProfile = { ...currentProfile, display_name: displayName };
     else {
-      const { data, error } = await supabase.from("profiles").update({ display_name: displayName, updated_at: new Date().toISOString() }).eq("id", currentSession.user.id).select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").single();
+      const { data, error } = await supabase.from("profiles").update({ display_name: displayName, updated_at: new Date().toISOString() }).eq("id", currentSession.user.id).select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key").single();
       if (error) throw error;
       currentProfile = data;
     }
@@ -2300,7 +2424,7 @@ async function submitNewPassword(event) {
   passwordRecoveryMode = false;
   window.history.replaceState({}, "", "/");
   const { data: profile, error: profileError } = await supabase.from("profiles")
-    .select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days")
+    .select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key")
     .eq("id", currentSession.user.id).single();
   if (profileError) {
     message.textContent = safeOperationalMessage(
@@ -2331,7 +2455,7 @@ async function submitSignIn(event) {
     if (error) { message.textContent = safeAuthMessage(error, "Sign-in failed. Check your email and password, then try again."); return; }
     currentSession = data.session;
     armAuthIdleTimeout();
-    const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", currentSession.user.id).single();
+    const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key").eq("id", currentSession.user.id).single();
     if (profileError || !profile) throw profileError || new Error("Profile unavailable");
     currentProfile = profile;
     if (profile.role === "therapist") { await loadAssignedPatients(); therapistView(); }
@@ -2367,7 +2491,7 @@ async function submitPatientSignUp(event) {
     }
     currentSession = data.session;
     armAuthIdleTimeout();
-    const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", data.user.id).single();
+    const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key").eq("id", data.user.id).single();
     if (profileError || !profile) throw profileError || new Error("Profile unavailable");
     currentProfile = profile;
     await routePatientPortal();
@@ -2464,6 +2588,14 @@ function navigateTo(target) {
         catch (error) { showPortalError(error); }
       } else reportView();
     }
+    if (target === "patient-profile") {
+      if (!patientWorkspace?.profile) routePatientPortal().catch(showPortalError);
+      else patientProfileView();
+    }
+    if (target === "patient-report") {
+      if (!patientWorkspace?.profile) routePatientPortal().catch(showPortalError);
+      else patientReportView();
+    }
     if (target === "therapist") therapistView();
     if (target === "account") accountView();
     if (target === "auth") authView();
@@ -2508,6 +2640,9 @@ function bindEvents() {
   document.querySelector("#password-reset-form")?.addEventListener("submit", submitNewPassword);
   document.querySelector("#signup-form")?.addEventListener("submit", submitPatientSignUp);
   document.querySelector("#account-profile-form")?.addEventListener("submit", updateAccountProfile);
+  document.querySelectorAll("[data-avatar-key]").forEach((element) => element.addEventListener("click", savePatientAvatar));
+  document.querySelector("#patient-report-form")?.addEventListener("submit", submitPatientReport);
+  document.querySelector("#patient-pain-score")?.addEventListener("input", (event) => setText("#patient-pain-output", `${event.currentTarget.value} / 10`));
   document.querySelector("[data-send-account-reset]")?.addEventListener("click", sendAccountPasswordReset);
   document.querySelector("#connection-form")?.addEventListener("submit", submitConnectionCode);
   document.querySelector("#invite-patient-form")?.addEventListener("submit", submitPatientInvitation);
@@ -2653,7 +2788,7 @@ async function bootstrap() {
         passwordResetView();
         return;
       }
-      const { data: profile } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", currentSession.user.id).single();
+      const { data: profile } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key").eq("id", currentSession.user.id).single();
       currentProfile = profile;
       if (profile?.role === "therapist") {
         await loadAssignedPatients();
