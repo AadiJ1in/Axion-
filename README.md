@@ -92,12 +92,14 @@ The applied production migration sequence is:
 19. `202609010003_session_path_roadmap.sql`
 20. `202609010004_session_path_publish_grant.sql`
 21. `202609010005_roadmap_override_index.sql`
+22. `202609020001_disable_care_messages.sql`
+23. `202609020002_care_messages_deny_policy.sql`
 
-The migrations hash invitation codes at rest, move multi-table mutations behind transactional RPCs, validate session-to-assignment ownership, add workflow audit events, make session writes idempotent, and keep the server-authoritative exercise allowlist in the unexposed `private` schema. Promote therapist accounts only through a trusted administrative workflow; public signup always creates a patient.
+The migrations hash invitation codes at rest, move multi-table mutations behind transactional RPCs, validate session-to-assignment ownership, add workflow audit events, make session writes idempotent, and keep the server-authoritative exercise allowlist in the unexposed `private` schema. Free-text care messaging is disabled for browser roles and removed from Realtime until a separately approved PHI communication environment exists. Promote therapist accounts only through a trusted administrative workflow; public signup always creates a patient.
 
 The browser receives only the publishable/anon key. Never place a Supabase service-role key in `src/config.js`; row-level security is the authorization boundary.
 
-`supabase/tests/rls_integration.sql` exercises the complete approval and session workflow with synthetic identities inside a transaction that is always rolled back. It verifies pending approval, therapist verification, patient-specific plans, locked-node enforcement, assignment-bound session writes, one-time XP, audited therapist overrides, duplicate-write rejection, and cross-patient isolation.
+`supabase/tests/rls_integration.sql` exercises the complete approval and session workflow with synthetic identities inside a transaction that is always rolled back. It verifies pending approval, therapist verification, patient-specific plans, locked-node enforcement, assignment-bound session writes, one-time XP, audited therapist overrides, disabled message access, duplicate-write rejection, and cross-patient isolation.
 
 See [`SECURITY_READINESS.md`](SECURITY_READINESS.md) for the operator controls still required before real healthcare use.
 

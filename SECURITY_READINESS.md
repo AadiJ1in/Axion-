@@ -22,6 +22,7 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 - Authenticated entry pages use `Cache-Control: private, no-store` and reject back-forward cached private workspaces.
 - The deployed Content Security Policy allows only the current Axion Supabase project and pinned runtime origins.
 - Row Level Security restricts patient access to their own profile and sessions.
+- Free-text patient/therapist messaging is removed from the application, revoked from browser roles, protected by an explicit deny-all RLS policy, and excluded from Realtime publication.
 - The synthetic demo is explicitly labeled and does not require an account.
 
 ## Required before real healthcare use

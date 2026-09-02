@@ -27,11 +27,9 @@ import {
   loadTherapistNotes,
   loadTherapistConnections,
   loadTherapistWorkspace,
-  markCareMessagesRead,
   overrideRoadmapNode,
   recordPatientSafetyEvent,
   reviewClinicianRecommendation,
-  sendCareMessage,
 } from "./portal.js";
 
 const app = document.querySelector("#app");
@@ -87,9 +85,8 @@ let currentProfile = null;
 let demoRole = null;
 let assignedPatients = [];
 let therapistConnections = [];
-let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
+let therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
 let therapistSection = "overview";
-let messagePatientId = null;
 let patientFilter = "all";
 let exerciseLibraryQuery = "";
 let exerciseLibraryCategory = "All";
@@ -331,7 +328,6 @@ function demoPatientWorkspace() {
     roadmapNodeAssignments: roadmapNodes.map((node) => ({ roadmap_node_id: node.id, assignment_id: assignment.id, sequence: 1 })),
     roadmapCompletions: roadmapNodes.slice(0, 5).map((node) => ({ id: `demo-completion-${node.session_number}`, roadmap_node_id: node.id, patient_id: "demo-patient", xp_awarded: 50, completed_at: new Date(Date.now() - (6 - node.session_number) * 86400000).toISOString() })),
     sessions: demoSessions,
-    messages: [],
   };
 }
 
@@ -365,7 +361,6 @@ function startTherapistRealtime() {
     .channel(`therapist-workspace-${therapistId}`)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "therapist_alerts", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "patient_safety_events" }, scheduleRefresh)
-    .on("postgres_changes", { event: "*", schema: "public", table: "care_messages", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "clinician_recommendations", filter: `therapist_id=eq.${therapistId}` }, scheduleRefresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "roadmap_node_completions" }, scheduleRefresh)
     .subscribe();
@@ -411,8 +406,7 @@ function startPatientRealtime() {
     .channel(`patient-roadmap-${userId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "therapist_patients", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
     .on("postgres_changes", { event: "*", schema: "public", table: "exercise_plans", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
-    .on("postgres_changes", { event: "*", schema: "public", table: "exercise_sessions", filter: `patient_id=eq.${userId}` }, scheduleRefresh)
-    .on("postgres_changes", { event: "*", schema: "public", table: "care_messages", filter: `patient_id=eq.${userId}` }, scheduleRefresh);
+    .on("postgres_changes", { event: "*", schema: "public", table: "exercise_sessions", filter: `patient_id=eq.${userId}` }, scheduleRefresh);
 
   if (patientWorkspace?.plan?.id) {
     channel = channel
@@ -637,7 +631,7 @@ function sessionPathMarkup(workspace) {
     const checkpoint = node.session_number % 7 === 0 ? `<div class="path-reward ${node.state === "complete" ? "earned" : ""}">${icon("trophy",16)}<span><b>Week ${node.week_number} checkpoint</b><small>${node.state === "complete" ? "+50 XP earned" : "Complete the week to reach this marker"}</small></span></div>` : "";
     return `${biomeHeading}<div class="path-step ${index % 2 ? "right" : "left"}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${node.state}"><span class="path-node-core">${node.state === "complete" ? icon("check",22) : node.state === "locked" ? icon("lock",18) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · DAY ${node.session_in_week}</small><b>Session ${node.session_number}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Ready now" : node.state === "override" ? "Therapist unlocked" : "Complete the prior session"}</em><i>${completeExercises}/${exerciseCount} exercises</i></span></button>${checkpoint}</div>`;
   }).join("");
-  return `<section class="session-path-card" aria-label="Therapist-prescribed session roadmap"><div class="session-path-head"><div><span class="section-kicker">YOUR SESSION PATH</span><h2>${escapeHtml(workspace.plan?.title || "Treatment roadmap")}</h2><p>${escapeHtml(cadence)} · Each node opens the exercises for that session.</p></div><div class="session-path-progress"><strong>${path.completed}<span>/${total}</span></strong><small>SESSIONS COMPLETE</small></div></div><div class="session-path-bar"><span style="width:${progress}%"></span></div><div class="session-path-legend"><span><i class="complete"></i>Done</span><span><i class="current"></i>Ready</span><span><i class="locked"></i>Locked</span><em>${progress}% complete</em></div><div class="session-path-scroll"><div class="session-path-line"></div>${nodes}<div class="path-summit ${path.completed === total ? "earned" : ""}">${icon("trophy",24)}<div><small>RETURN MILESTONE</small><b>${path.completed === total ? "Path complete" : `${total - path.completed} sessions remain`}</b></div></div></div><footer>${icon("shield",15)} Session order and cadence are prescribed by ${escapeHtml(workspace.therapist?.display_name || "your physical therapist")}. Pain reporting never removes XP or a streak.</footer></section>`;
+  return `<section class="session-path-card" aria-label="Therapist-prescribed session roadmap"><div class="session-path-head"><div><span class="section-kicker">YOUR SESSION PATH</span><h2>${escapeHtml(workspace.plan?.title || "Treatment roadmap")}</h2><p>${escapeHtml(cadence)} · Each node opens only the exercises prescribed for that session.</p></div><div class="session-path-progress"><strong>${path.completed}<span>/${total}</span></strong><small>SESSIONS COMPLETE</small></div></div><div class="session-path-bar"><span style="width:${progress}%"></span></div><div class="session-path-legend"><span><i class="complete"></i>Done</span><span><i class="current"></i>Ready</span><span><i class="locked"></i>Locked</span><em>${progress}% complete</em></div><div class="session-path-scroll"><div class="session-path-line"></div>${nodes}<div class="path-summit ${path.completed === total ? "earned" : ""}">${icon("trophy",24)}<div><small>RETURN MILESTONE</small><b>${path.completed === total ? "Path complete" : `${total - path.completed} sessions remain`}</b></div></div></div><footer><span>${icon("shield",15)} Session order and cadence are controlled by ${escapeHtml(workspace.therapist?.display_name || "your physical therapist")}. Pain reporting never removes XP or a streak.</span><span class="roadmap-contact-boundary">In-app messaging is disabled. For plan questions, use your clinic’s approved communication method.</span></footer></section>`;
 }
 
 function currentRoadmapSessionMarkup(workspace) {
@@ -684,19 +678,6 @@ function showRoadmapNode(nodeId) {
   }));
 }
 
-function careMessageThread(messages, viewerId) {
-  if (!messages?.length) return `<div class="message-empty"><b>No messages yet</b><p>Use this private thread for questions about the assigned plan. Do not use Axion for emergencies.</p></div>`;
-  return `<div class="care-message-thread">${messages.map((message) => {
-    const own = message.sender_id === viewerId;
-    return `<article class="${own ? "mine" : "theirs"}"><div><p>${escapeHtml(message.body)}</p><small>${own ? "You" : "Care team"} · ${new Date(message.created_at).toLocaleString()}${message.read_at ? " · Read" : ""}</small></div></article>`;
-  }).join("")}</div>`;
-}
-
-function patientMessagingCard(workspace) {
-  const messages = workspace.messages || [];
-  return `<section class="care-messages-card"><div class="care-messages-head"><div><span class="section-kicker">PRIVATE CARE-TEAM MESSAGES</span><h2>Message ${escapeHtml(workspace.therapist?.display_name || "your physical therapist")}</h2><p>Messages stay inside your verified care-team connection. This is not an emergency service.</p></div><span>${messages.length} message${messages.length === 1 ? "" : "s"}</span></div>${careMessageThread(messages, currentSession?.user?.id)}<form id="patient-message-form" class="care-message-form"><label for="patient-message-body">Your message</label><textarea id="patient-message-body" rows="3" maxlength="2000" placeholder="Ask about an assigned exercise, report how a session felt, or clarify your plan." required></textarea><div><small>For urgent or emergency symptoms, contact local emergency services or your clinician directly.</small><button class="button button--primary" type="submit">Send privately ${icon("arrow",14)}</button></div></form><div id="patient-message-result" class="form-message" aria-live="polite"></div></section>`;
-}
-
 function patientView() {
   currentView = "patient";
   stopDemo();
@@ -735,7 +716,6 @@ function patientView() {
         <div class="roadmap-governance">${icon("shield",15)} <span><b>Clinician controlled</b> · ${escapeHtml(therapistName)} reviews milestones and unlocks progression.</span><strong id="roadmap-live-state">Updated live</strong></div>
       </article><aside class="patient-side-stack"><article class="daily-goal-card"><div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32" style="stroke-dashoffset:${Math.round(201 * (1 - weeklyProgress))}"/></svg><b>${Math.min(weeklySessions,weeklyGoal)}/${weeklyGoal}</b></div><div><span class="section-kicker">THERAPIST-PRESCRIBED WEEK</span><h3>${weeklySessions >= weeklyGoal ? "Weekly plan complete." : `${weeklyGoal - weeklySessions} session${weeklyGoal - weeklySessions === 1 ? "" : "s"} remaining.`}</h3><p>Only fully completed roadmap nodes count as sessions.</p></div></article><article class="reward-card"><span>${icon("activity",24)}</span><div><small>MY MOVEMENT SCIENCE LAB</small><h3>Calibrated per session</h3><p>Your assignment, camera landmarks, and movement summary stay tied to your patient ID.</p></div></article></aside></section>
       <section id="patient-exercises" class="today-plan ${roadmapExpanded ? "expanded" : "collapsed"}"><div class="section-heading compact"><div><span class="section-kicker">YOUR PRESCRIPTION</span><h2>${assignments.length} exercise${assignments.length === 1 ? "" : "s"} from your therapist.</h2></div><p>Prescribed by ${escapeHtml(therapistName)}</p></div><div class="exercise-list">${assignments.length ? assignments.map((assignment, index) => patientExerciseCard(assignment, index, sessions)).join("") : `<div class="empty-state"><span>${icon("map",24)}</span><h3>Your prescription is being prepared</h3><p>${escapeHtml(therapistName)} has not added an active exercise yet.</p></div>`}</div></section>
-      ${workspace.connection?.status === "active" && !currentSession?.demo ? patientMessagingCard(workspace) : ""}
     </main>
   `, { full: true });
   bindEvents();
@@ -1053,7 +1033,7 @@ async function loadAssignedPatients() {
   if (!supabase || !currentSession?.user) {
     assignedPatients = [];
     therapistConnections = [];
-    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
     return;
   }
   try {
@@ -1065,7 +1045,7 @@ async function loadAssignedPatients() {
     console.error("Failed to load therapist assignments:", error);
     assignedPatients = [];
     therapistConnections = [];
-    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], messages: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
+    therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
   }
 }
 
@@ -1227,17 +1207,6 @@ function renderTherapistCheckins(isDemoTherapist) {
   }).join("")}</div>` : `<div class="empty-state"><span>${icon("activity",24)}</span><h3>No patient check-ins yet</h3><p>Completed private sessions will appear here without storing raw camera video.</p></div>`}</section>`;
 }
 
-function renderTherapistMessages(isDemoTherapist) {
-  if (isDemoTherapist) return `<section class="workspace-list-card"><div class="empty-state"><span>${icon("shield",24)}</span><h3>Private messaging requires a verified account</h3><p>Sign in as a therapist to message an actively connected patient.</p></div></section>`;
-  if (!assignedPatients.length) return `<section class="workspace-list-card"><div class="empty-state"><span>${icon("users",24)}</span><h3>No active patient connection</h3><p>Verify a patient connection before starting a private thread.</p></div></section>`;
-  const selectedId = messagePatientId && assignedPatients.some((patient) => patient.id === messagePatientId) ? messagePatientId : assignedPatients[0].id;
-  messagePatientId = selectedId;
-  const selected = assignedPatients.find((patient) => patient.id === selectedId);
-  const messages = (therapistWorkspace.messages || []).filter((message) => message.patient_id === selectedId);
-  const activePlan = therapistWorkspace.plans.find((plan) => plan.patient_id === selectedId && plan.status === "active");
-  return `<section class="care-messages-card therapist-messages"><div class="care-messages-head"><div><span class="section-kicker">PRIVATE CARE-TEAM MESSAGES</span><h2>Patient communication</h2><p>Only you and the actively connected patient can read this thread.</p></div><label>Patient<select id="message-patient-select">${assignedPatients.map((patient) => `<option value="${patient.id}" ${patient.id === selectedId ? "selected" : ""}>${escapeHtml(patient.display_name)}</option>`).join("")}</select></label></div>${careMessageThread(messages, currentSession?.user?.id)}<form id="therapist-message-form" class="care-message-form"><input id="therapist-message-patient" type="hidden" value="${selectedId}"/><input id="therapist-message-plan" type="hidden" value="${activePlan?.id || ""}"/><label for="therapist-message-body">Message ${escapeHtml(selected.display_name)}</label><textarea id="therapist-message-body" rows="3" maxlength="2000" placeholder="Clarify an exercise, follow up on a report, or share next steps." required></textarea><div><small>External notifications, when added, must remain generic and contain no health information.</small><button class="button button--primary" type="submit">Send privately ${icon("arrow",14)}</button></div></form><div id="therapist-message-result" class="form-message" aria-live="polite"></div></section>`;
-}
-
 function renderRecommendationQueue(isDemoTherapist) {
   if (isDemoTherapist) return "";
   const recommendations = therapistWorkspace.recommendations || [];
@@ -1318,7 +1287,7 @@ function therapistView() {
     <main class="therapist-page container-wide">
       <section class="pt-workspace-nav">
         <div><span>${icon("activity", 17)}</span><b>Therapist workspace</b></div>
-        <nav>${[["overview","Overview"],["patients","Patients"],["roadmaps","Recovery roadmaps"],["checkins","Check-ins"],["messages","Messages"],["alerts","Alerts"],["library","Exercise library"]].map(([section,label]) => `<button class="${therapistSection === section ? "active" : ""}" data-therapist-section="${section}">${label}${section === "messages" && (therapistWorkspace.messages || []).filter((message) => message.sender_id !== currentSession?.user?.id && !message.read_at).length ? `<i>${(therapistWorkspace.messages || []).filter((message) => message.sender_id !== currentSession?.user?.id && !message.read_at).length}</i>` : section === "alerts" && (isDemoTherapist || therapistWorkspace.alerts.filter((alert) => alert.status === "open").length) ? `<i>${isDemoTherapist ? 2 : therapistWorkspace.alerts.filter((alert) => alert.status === "open").length}</i>` : ""}</button>`).join("")}</nav>
+        <nav>${[["overview","Overview"],["patients","Patients"],["roadmaps","Recovery roadmaps"],["checkins","Check-ins"],["alerts","Alerts"],["library","Exercise library"]].map(([section,label]) => `<button class="${therapistSection === section ? "active" : ""}" data-therapist-section="${section}">${label}${section === "alerts" && (isDemoTherapist || therapistWorkspace.alerts.filter((alert) => alert.status === "open").length) ? `<i>${isDemoTherapist ? 2 : therapistWorkspace.alerts.filter((alert) => alert.status === "open").length}</i>` : ""}</button>`).join("")}</nav>
         <button data-portal-signout>Sign out</button>
       </section>
       <div class="${therapistPanelClass("overview")}">
@@ -1347,7 +1316,6 @@ function therapistView() {
       </div>
       <div class="${therapistPanelClass("roadmaps")}">${renderPlanBuilder(isDemoTherapist)}<section class="workspace-list-card"><div class="card-title"><div><span class="section-kicker">PUBLISHED ROADMAPS</span><h2>Patient exercise plans</h2></div></div>${renderRoadmapList(isDemoTherapist)}</section></div>
       <div class="${therapistPanelClass("checkins")}">${renderTherapistCheckins(isDemoTherapist)}</div>
-      <div class="${therapistPanelClass("messages")}">${renderTherapistMessages(isDemoTherapist)}</div>
       <div class="${therapistPanelClass("alerts")}">${renderTherapistAlerts(isDemoTherapist)}</div>
       <div class="${therapistPanelClass("library")}">${renderExerciseLibrary()}</div>
       <div class="${therapistPanelClass("overview")}">
@@ -1395,51 +1363,6 @@ async function approvePatient(event) {
     await loadAssignedPatients();
     therapistView();
   } catch (error) { button.disabled = false; button.textContent = safeOperationalMessage(error, "Verification failed — retry"); }
-}
-
-async function submitPatientMessage(event) {
-  event.preventDefault();
-  const result = document.querySelector("#patient-message-result");
-  const button = event.currentTarget.querySelector('[type="submit"]');
-  button.disabled = true;
-  result.textContent = "Sending securely…";
-  try {
-    const saved = await sendCareMessage(supabase, {
-      therapistId: patientWorkspace.connection.therapist_id,
-      patientId: currentSession.user.id,
-      senderId: currentSession.user.id,
-      planId: patientWorkspace.plan?.id,
-      body: document.querySelector("#patient-message-body").value,
-    });
-    patientWorkspace.messages.push(saved);
-    patientView();
-  } catch (error) {
-    button.disabled = false;
-    result.textContent = safeOperationalMessage(error, "The private message could not be sent. Check the connection and try again.");
-  }
-}
-
-async function submitTherapistMessage(event) {
-  event.preventDefault();
-  const result = document.querySelector("#therapist-message-result");
-  const button = event.currentTarget.querySelector('[type="submit"]');
-  const patientId = document.querySelector("#therapist-message-patient").value;
-  button.disabled = true;
-  result.textContent = "Sending securely…";
-  try {
-    const saved = await sendCareMessage(supabase, {
-      therapistId: currentSession.user.id,
-      patientId,
-      senderId: currentSession.user.id,
-      planId: document.querySelector("#therapist-message-plan").value || null,
-      body: document.querySelector("#therapist-message-body").value,
-    });
-    therapistWorkspace.messages.push(saved);
-    therapistView();
-  } catch (error) {
-    button.disabled = false;
-    result.textContent = safeOperationalMessage(error, "The private message could not be sent. Check the connection and try again.");
-  }
 }
 
 function showRecommendationReviewModal(recommendationId, status) {
@@ -2588,25 +2511,11 @@ function bindEvents() {
   document.querySelector("[data-send-account-reset]")?.addEventListener("click", sendAccountPasswordReset);
   document.querySelector("#connection-form")?.addEventListener("submit", submitConnectionCode);
   document.querySelector("#invite-patient-form")?.addEventListener("submit", submitPatientInvitation);
-  document.querySelector("#patient-message-form")?.addEventListener("submit", submitPatientMessage);
-  document.querySelector("#therapist-message-form")?.addEventListener("submit", submitTherapistMessage);
   document.querySelector("#plan-builder-form")?.addEventListener("submit", submitPersonalPlan);
   document.querySelectorAll("[data-therapist-section]").forEach((element) => element.addEventListener("click", () => {
     therapistSection = element.dataset.therapistSection;
     therapistView();
   }));
-  document.querySelector("#message-patient-select")?.addEventListener("change", async (event) => {
-    messagePatientId = event.currentTarget.value;
-    const unread = (therapistWorkspace.messages || []).filter((message) => message.patient_id === messagePatientId && message.sender_id !== currentSession?.user?.id && !message.read_at);
-    if (unread.length) {
-      try {
-        const read = await markCareMessagesRead(supabase, unread.map((message) => message.id));
-        const byId = new Map(read.map((message) => [message.id, message.read_at]));
-        therapistWorkspace.messages = therapistWorkspace.messages.map((message) => byId.has(message.id) ? { ...message, read_at: byId.get(message.id) } : message);
-      } catch (error) { console.warn("Could not mark care messages read", error); }
-    }
-    therapistView();
-  });
   document.querySelectorAll("[data-review-recommendation]").forEach((button) => button.addEventListener("click", () => showRecommendationReviewModal(button.dataset.reviewRecommendation, button.dataset.reviewStatus)));
   document.querySelectorAll("[data-therapist-section-jump]").forEach((button) => button.addEventListener("click", () => {
     therapistSection = button.dataset.therapistSectionJump;
