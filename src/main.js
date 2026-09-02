@@ -1566,7 +1566,20 @@ async function submitPatientReport(event) {
   status.textContent = "Saving securely…";
   try {
     const input = { patientId: currentSession.user.id, assignmentId, clientSessionId: crypto.randomUUID(), exerciseKey: assignment.exercise_key, eventType, painScore, comment, setNumber: null, repNumber: null };
-    const saved = currentSession.demo ? { ...input, id: crypto.randomUUID(), occurred_at: new Date().toISOString(), paused_session: true } : await recordPatientSafetyEvent(supabase, input);
+    const saved = currentSession.demo ? {
+      id: crypto.randomUUID(),
+      patient_id: input.patientId,
+      assignment_id: input.assignmentId,
+      client_session_id: input.clientSessionId,
+      exercise_key: input.exerciseKey,
+      event_type: input.eventType,
+      pain_score: input.eventType === "pain" ? input.painScore : null,
+      comment: input.comment || null,
+      set_number: null,
+      rep_number: null,
+      paused_session: true,
+      occurred_at: new Date().toISOString(),
+    } : await recordPatientSafetyEvent(supabase, input);
     if (patientWorkspace) patientWorkspace.safetyEvents = [saved, ...(patientWorkspace.safetyEvents || [])];
     patientReportView();
     setText("#patient-report-status", "Report saved. Your physical therapist can review it in Axion.");
