@@ -40,7 +40,7 @@ async function throwIfError(result, context) {
 
 export async function loadPatientWorkspace(client, userId) {
   const profile = await throwIfError(
-    await client.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").eq("id", userId).single(),
+    await client.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key").eq("id", userId).single(),
     "Could not load your profile"
   );
 
@@ -90,7 +90,12 @@ export async function loadPatientWorkspace(client, userId) {
     .eq("patient_id", userId).order("created_at", { ascending: false }).limit(50);
   const sessions = sessionsResult.error ? [] : (sessionsResult.data || []);
 
-  return { profile, connection, therapist, plan, assignments, roadmap, roadmapNodes, roadmapNodeAssignments, roadmapCompletions, sessions };
+  const safetyEventsResult = await client.from("patient_safety_events")
+    .select("id, patient_id, assignment_id, session_id, client_session_id, exercise_key, set_number, rep_number, event_type, pain_score, comment, paused_session, occurred_at, created_at")
+    .eq("patient_id", userId).order("occurred_at", { ascending: false }).limit(20);
+  const safetyEvents = safetyEventsResult.error ? [] : (safetyEventsResult.data || []);
+
+  return { profile, connection, therapist, plan, assignments, roadmap, roadmapNodes, roadmapNodeAssignments, roadmapCompletions, sessions, safetyEvents };
 }
 
 export async function completePatientOnboarding(client, userId, displayName) {
@@ -102,8 +107,20 @@ export async function completePatientOnboarding(client, userId, displayName) {
       onboarding_version: ONBOARDING_VERSION,
       onboarding_completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).eq("id", userId).select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days").single(),
+    }).eq("id", userId).select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key").single(),
     "Could not finish onboarding"
+  );
+}
+
+export async function updatePatientAvatar(client, userId, avatarKey) {
+  const allowed = new Set(["pulse", "summit", "orbit", "trail"]);
+  if (!allowed.has(avatarKey)) throw new Error("Choose one of the available Axion avatars.");
+  return throwIfError(
+    await client.from("profiles").update({ avatar_key: avatarKey, updated_at: new Date().toISOString() })
+      .eq("id", userId)
+      .select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key")
+      .single(),
+    "Could not save your avatar"
   );
 }
 
