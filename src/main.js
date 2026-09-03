@@ -1755,12 +1755,119 @@ function accountView() {
           <div id="account-message" class="form-message"></div>
           <button class="button button--primary" type="submit">Save account name ${icon("arrow",16)}</button>
         </form>
-        <div class="account-security"><span>${icon("shield",22)}</span><div><b>Security controls</b><p>Passwords are handled by Supabase Auth, authorization is enforced by database policies, and live accounts sign out after 15 minutes without activity.</p></div>${currentSession.demo ? "" : `<button class="button button--ghost" type="button" data-send-account-reset>Send password-reset email</button>`}</div>
+        <div class="account-security"><span>${icon("shield",22)}</span><div><b>Security controls</b><p>Passwords are handled by Supabase Auth, authorization is enforced by database policies, and live accounts sign out after 15 minutes without activity.${currentProfile.role === "therapist" ? " Therapist access also requires a verified authenticator code." : ""}</p></div>${currentSession.demo ? "" : `<button class="button button--ghost" type="button" data-send-account-reset>Send password-reset email</button>`}</div>
         <button class="button button--quiet account-signout" data-portal-signout>Sign out of Axion</button>
       </section>
     </main>
   `, { full: true });
   bindEvents();
+}
+
+function therapistMfaView({ factorId, qrCode = "", secret = "", mode = "challenge" }) {
+  currentView = "therapist-mfa";
+  stopPatientRealtime();
+  stopTherapistRealtime();
+  const enrolling = mode === "enroll";
+  app.innerHTML = layout(`
+    <main class="auth-page container-wide">
+      <section class="auth-card auth-card--portal">
+        <div class="auth-brand"><span class="brand-symbol"><i></i><i></i></span><b>AXION</b></div>
+        <span class="section-kicker">THERAPIST ACCOUNT PROTECTION</span>
+        <h1>${enrolling ? "Secure your clinical workspace." : "Verify your authenticator code."}</h1>
+        <p>${enrolling ? "Therapist access requires a second factor. Scan this code with an authenticator app before viewing patient information." : "Enter the current six-digit code from the authenticator app connected to this account."}</p>
+        ${enrolling ? `<div class="mfa-setup"><img src="${escapeHtml(qrCode)}" width="220" height="220" alt="Authenticator enrollment QR code"/><div><small>CAN'T SCAN?</small><p>Enter this setup key manually:</p><code>${escapeHtml(secret)}</code></div></div>` : ""}
+        <form id="therapist-mfa-form" data-factor-id="${escapeHtml(factorId)}" data-mfa-mode="${mode}">
+          <label>Authenticator code<input id="therapist-mfa-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required placeholder="000000"/></label>
+          <div id="therapist-mfa-message" class="form-message" role="status" aria-live="polite"></div>
+          <button class="button button--primary" type="submit">${enrolling ? "Enable therapist MFA" : "Verify and continue"} ${icon("arrow",16)}</button>
+        </form>
+        <button class="button button--quiet account-signout" data-portal-signout>Sign out</button>
+      </section>
+    </main>
+  `, { full: true });
+  bindEvents();
+}
+
+async function requireTherapistMfa() {
+  if (currentProfile?.role !== "therapist" || currentSession?.demo) return true;
+  const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assurance.error) throw assurance.error;
+  if (assurance.data.currentLevel === "aal2") return true;
+
+  const factors = await supabase.auth.mfa.listFactors();
+  if (factors.error) throw factors.error;
+  const verifiedFactor = (factors.data.totp || []).find((factor) => factor.status === "verified");
+  if (verifiedFactor) {
+    therapistMfaView({ factorId: verifiedFactor.id, mode: "challenge" });
+    return false;
+  }
+
+  for (const factor of factors.data.all || []) {
+    if (factor.factor_type === "totp" && factor.status === "unverified") {
+      const cleanup = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+      if (cleanup.error) throw cleanup.error;
+    }
+  }
+
+  const enrollment = await supabase.auth.mfa.enroll({
+    factorType: "totp",
+    friendlyName: `Axion therapist ${Date.now()}`,
+  });
+  if (enrollment.error) throw enrollment.error;
+  if (!enrollment.data.totp.qr_code.startsWith("data:image/")) {
+    throw new Error("Supabase returned an invalid authenticator enrollment image.");
+  }
+  therapistMfaView({
+    factorId: enrollment.data.id,
+    qrCode: enrollment.data.totp.qr_code,
+    secret: enrollment.data.totp.secret,
+    mode: "enroll",
+  });
+  return false;
+}
+
+async function submitTherapistMfa(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('[type="submit"]');
+  const message = document.querySelector("#therapist-mfa-message");
+  const code = document.querySelector("#therapist-mfa-code").value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    message.textContent = "Enter the six-digit code from your authenticator app.";
+    return;
+  }
+  button.disabled = true;
+  message.textContent = "Verifying your second factor…";
+  try {
+    const challenge = await supabase.auth.mfa.challenge({ factorId: form.dataset.factorId });
+    if (challenge.error) throw challenge.error;
+    const verification = await supabase.auth.mfa.verify({
+      factorId: form.dataset.factorId,
+      challengeId: challenge.data.id,
+      code,
+    });
+    if (verification.error) throw verification.error;
+    const refreshed = await supabase.auth.getSession();
+    if (refreshed.error || !refreshed.data.session) throw refreshed.error || new Error("The verified session could not be refreshed.");
+    currentSession = refreshed.data.session;
+    armAuthIdleTimeout();
+    await loadAssignedPatients();
+    therapistView();
+  } catch (error) {
+    button.disabled = false;
+    message.textContent = safeAuthMessage(error, "That code could not be verified. Wait for a new code and try again.");
+  }
+}
+
+async function routeAuthenticatedProfile(profile) {
+  currentProfile = profile;
+  if (profile.role === "therapist") {
+    if (!(await requireTherapistMfa())) return;
+    await loadAssignedPatients();
+    therapistView();
+    return;
+  }
+  await routePatientPortal();
 }
 
 async function updateAccountProfile(event) {
@@ -2594,13 +2701,7 @@ async function submitNewPassword(event) {
     );
     return;
   }
-  currentProfile = profile;
-  if (profile.role === "therapist") {
-    await loadAssignedPatients();
-    therapistView();
-  } else {
-    await routePatientPortal();
-  }
+  await routeAuthenticatedProfile(profile);
 }
 
 async function submitSignIn(event) {
@@ -2618,9 +2719,7 @@ async function submitSignIn(event) {
     armAuthIdleTimeout();
     const { data: profile, error: profileError } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key").eq("id", currentSession.user.id).single();
     if (profileError || !profile) throw profileError || new Error("Profile unavailable");
-    currentProfile = profile;
-    if (profile.role === "therapist") { await loadAssignedPatients(); therapistView(); }
-    else { await routePatientPortal(); }
+    await routeAuthenticatedProfile(profile);
   } catch (error) {
     console.error("Secure sign-in routing failed:", error);
     message.textContent = "Your account signed in, but the private workspace could not load. Try again.";
@@ -2801,6 +2900,7 @@ function bindEvents() {
   document.querySelectorAll("[data-export-report]").forEach((element) => element.addEventListener("click", exportMovementSummary));
   document.querySelectorAll("[data-add-therapist-note]").forEach((element) => element.addEventListener("click", showTherapistNoteModal));
   document.querySelector("#auth-form")?.addEventListener("submit", submitSignIn);
+  document.querySelector("#therapist-mfa-form")?.addEventListener("submit", submitTherapistMfa);
   document.querySelector("[data-forgot-password]")?.addEventListener("click", requestPasswordReset);
   document.querySelector("#password-reset-form")?.addEventListener("submit", submitNewPassword);
   document.querySelector("#signup-form")?.addEventListener("submit", submitPatientSignUp);
@@ -2980,14 +3080,8 @@ async function bootstrap() {
         return;
       }
       const { data: profile } = await supabase.from("profiles").select("id, display_name, role, onboarding_version, onboarding_completed_at, recovery_xp, level, streak_days, avatar_key").eq("id", currentSession.user.id).single();
-      currentProfile = profile;
-      if (profile?.role === "therapist") {
-        await loadAssignedPatients();
-        therapistView();
-        return;
-      }
-      if (profile?.role === "patient") {
-        await routePatientPortal();
+      if (profile?.role === "therapist" || profile?.role === "patient") {
+        await routeAuthenticatedProfile(profile);
         return;
       }
     }
