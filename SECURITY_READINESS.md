@@ -24,6 +24,7 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 - Authenticated entry pages use `Cache-Control: private, no-store` and reject back-forward cached private workspaces.
 - The deployed Content Security Policy blocks framing, plugins, inline scripts, and unapproved network destinations.
 - Runtime JavaScript and WebAssembly are bundled from exact lockfile versions; the external pose-model binary must match its pinned SHA-256 digest before use.
+- Patient exercise cards do not navigate to third-party education sites; a deploying clinic must review and configure any approved patient-facing materials.
 - Row Level Security restricts patient access to their own profile and sessions.
 - Current browser grants are least-privilege, and database default privileges keep future tables, sequences, and functions inaccessible until explicitly granted.
 - Free-text patient/therapist messaging is removed from the application, revoked from browser roles, protected by an explicit deny-all RLS policy, and excluded from Realtime publication.

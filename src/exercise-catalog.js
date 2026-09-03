@@ -1,22 +1,21 @@
 const sources = {
-  neck: { label: "NHS neck exercise guide", url: "https://www.nhsinform.scot/illnesses-and-conditions/muscle-bone-and-joints/neck-and-back-problems-and-conditions/exercises-for-neck-problems" },
-  shoulder: { label: "NHS shoulder exercise videos", url: "https://www.nhsinform.scot/illnesses-and-conditions/muscle-bone-and-joints/arm-shoulder-and-hand-problems-and-conditions/exercises-for-shoulder-problems" },
-  shoulderSurgery: { label: "AAOS shoulder surgery exercise guide", url: "https://orthoinfo.aaos.org/en/recovery/shoulder-surgery-exercise-guide/" },
-  strength: { label: "NHS strength exercise videos", url: "https://www.nhs.uk/live-well/exercise/strength-exercises/" },
-  spine: { label: "AAOS spine conditioning guide", url: "https://orthoinfo.aaos.org/en/recovery/spine-conditioning-program/" },
-  hip: { label: "AAOS hip conditioning guide", url: "https://orthoinfo.aaos.org/en/recovery/hip-conditioning-program/" },
-  knee: { label: "AAOS knee conditioning guide", url: "https://orthoinfo.aaos.org/en/recovery/knee-conditioning-program/" },
-  ankle: { label: "AAOS foot and ankle guide", url: "https://orthoinfo.aaos.org/en/recovery/foot-and-ankle-conditioning-program/" },
-  balance: { label: "NHS balance exercise guide", url: "https://www.nhs.uk/live-well/exercise/balance-exercises/" },
-  clinicalBalance: { label: "NHS clinical balance programme", url: "https://www.merseycare.nhs.uk/patient-leaflets/balance-programme" },
-  kneeReplacement: { label: "AAOS knee replacement exercise guide", url: "https://orthoinfo.aaos.org/en/recovery/total-knee-replacement-exercise-guide/" },
+  neck: { label: "Neck rehabilitation guidance" },
+  shoulder: { label: "Shoulder rehabilitation guidance" },
+  shoulderSurgery: { label: "Postoperative shoulder guidance" },
+  strength: { label: "Strength exercise guidance" },
+  spine: { label: "Spine conditioning guidance" },
+  hip: { label: "Hip conditioning guidance" },
+  knee: { label: "Knee conditioning guidance" },
+  ankle: { label: "Foot and ankle guidance" },
+  balance: { label: "Balance exercise guidance" },
+  clinicalBalance: { label: "Clinical balance guidance" },
+  kneeReplacement: { label: "Knee replacement guidance" },
 };
 
-const ex = (name, category, trackingMode, joint, sets, reps, focus, summary, equipment, steps, cues, avoid, source, duration) => ({
+const ex = (name, category, trackingMode, joint, sets, reps, focus, summary, equipment, steps, cues, avoid, _source, duration) => ({
   name, category, region: category, trackingMode: trackingMode === "guided_reps" ? "pose_reps" : trackingMode, joint, defaultSets: sets, defaultReps: reps,
   ...(duration ? { defaultDuration: duration } : {}), focus, summary, equipment, steps, cues, avoid,
   safety: "Use only as prescribed. Stop for sharp or increasing pain, dizziness, new numbness, or loss of balance, and contact your care team.",
-  resourceLabel: source.label, resourceUrl: source.url,
 });
 
 export const exerciseCategoryOrder = [
@@ -151,9 +150,8 @@ export function exercisePrograms(exerciseKey) {
 }
 
 export const exerciseCatalogSource = {
-  name: "AAOS OrthoInfo and NHS clinician-reviewed exercise guidance",
-  url: "https://orthoinfo.aaos.org/en/recovery/",
-  note: "Educational guidance only. A licensed therapist must select suitability, dosage, precautions, and progression.",
+  name: "Clinic-directed exercise guidance",
+  note: "External patient-education links are intentionally not shown. Each deploying clinic must review and configure its approved materials.",
 };
 
 const unique = (values) => [...new Set(values)];

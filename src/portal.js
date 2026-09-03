@@ -10,7 +10,7 @@ export {
   exerciseProgramPresets,
   exercisePrograms,
 } from "./exercise-catalog.js";
-import { exerciseCatalog, exerciseCatalogSource } from "./exercise-catalog.js";
+import { exerciseCatalog } from "./exercise-catalog.js";
 
 export function assignmentDetails(assignment = {}) {
   const catalog = exerciseCatalog[assignment.exercise_key] || {};
@@ -28,8 +28,6 @@ export function assignmentDetails(assignment = {}) {
     cues: catalog.cues || ["Move with control"],
     avoid: catalog.avoid || "Do not push through pain.",
     safety: catalog.safety || "Use only as prescribed by your physical therapist.",
-    resourceLabel: catalog.resourceLabel || exerciseCatalogSource.name,
-    resourceUrl: catalog.resourceUrl || exerciseCatalogSource.url,
   };
 }
 
