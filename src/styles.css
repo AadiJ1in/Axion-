@@ -204,6 +204,9 @@
   pointer-events:none;
   filter:drop-shadow(0 0 7px rgba(110,240,177,.15));
 }
+.session-path-trail .path-trail-flow{
+  animation:roadmap-trail-flow 2.4s linear infinite;
+}
 .session-path-card--duo .path-biome-heading{
   position:relative;
   z-index:3;
@@ -214,7 +217,72 @@
   border-radius:16px;
   background:linear-gradient(115deg,#123126,#0d1d18);
   box-shadow:0 10px 28px rgba(0,0,0,.2);
+  overflow:hidden;
 }
+.session-path-card--duo .path-biome-heading.biome-1{border-color:rgba(110,240,177,.42);background:linear-gradient(115deg,#133b2b,#0d1d18)}
+.session-path-card--duo .path-biome-heading.biome-2{border-color:rgba(156,140,255,.45);background:linear-gradient(115deg,#262044,#111927)}
+.session-path-card--duo .path-biome-heading.biome-3{border-color:rgba(247,178,103,.48);background:linear-gradient(115deg,#392817,#171813)}
+.path-biome-motion{
+  position:absolute;
+  top:50%;
+  right:1rem;
+  width:78px;
+  height:54px;
+  margin:0;
+  pointer-events:none;
+  transform:translateY(-50%);
+}
+.path-biome-motion>i{position:absolute;display:block;pointer-events:none}
+.biome-1 .path-biome-motion>i{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#88efc0;
+  box-shadow:0 0 12px rgba(110,240,177,.7);
+  animation:roadmap-foundation-float 3.4s ease-in-out infinite;
+}
+.biome-1 .path-biome-motion>i:nth-child(1){left:8px;bottom:9px;animation-delay:-.4s}
+.biome-1 .path-biome-motion>i:nth-child(2){left:31px;bottom:22px;width:5px;height:5px;animation-delay:-1.6s}
+.biome-1 .path-biome-motion>i:nth-child(3){right:7px;bottom:10px;width:10px;height:10px;animation-delay:-2.5s}
+.biome-1 .path-biome-motion>i:nth-child(4){right:22px;top:6px;width:4px;height:4px;animation-delay:-.9s}
+.biome-2 .path-biome-motion{
+  border:1px solid rgba(190,181,255,.32);
+  border-radius:50%;
+  animation:roadmap-rebuild-orbit 7s linear infinite;
+}
+.biome-2 .path-biome-motion::after{
+  content:"";
+  position:absolute;
+  inset:10px;
+  border:1px solid rgba(156,140,255,.35);
+  border-radius:50%;
+}
+.biome-2 .path-biome-motion>i{
+  top:50%;
+  left:50%;
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#c1b8ff;
+  box-shadow:0 0 13px rgba(156,140,255,.85);
+}
+.biome-2 .path-biome-motion>i:nth-child(1){transform:translate(-38px,-4px)}
+.biome-2 .path-biome-motion>i:nth-child(2){transform:translate(30px,-4px)}
+.biome-2 .path-biome-motion>i:nth-child(3){transform:translate(-4px,-28px);width:4px;height:4px}
+.biome-2 .path-biome-motion>i:nth-child(4){transform:translate(-4px,21px);width:4px;height:4px}
+.biome-3 .path-biome-motion>i{
+  bottom:4px;
+  width:5px;
+  height:13px;
+  border-radius:50% 50% 45% 45%;
+  background:linear-gradient(#fff0bc,#f7a74f);
+  box-shadow:0 0 12px rgba(247,178,103,.72);
+  animation:roadmap-return-spark 2.8s ease-out infinite;
+}
+.biome-3 .path-biome-motion>i:nth-child(1){left:9px;animation-delay:-.2s}
+.biome-3 .path-biome-motion>i:nth-child(2){left:30px;height:8px;animation-delay:-1.35s}
+.biome-3 .path-biome-motion>i:nth-child(3){right:22px;height:11px;animation-delay:-2.1s}
+.biome-3 .path-biome-motion>i:nth-child(4){right:4px;height:6px;animation-delay:-.75s}
 .session-path-card--duo .path-biome-heading:first-of-type{margin-top:0}
 .session-path-card--duo .path-biome-heading>span{width:40px;height:40px}
 .session-path-card--duo .path-biome-heading small{font-size:.6rem;letter-spacing:.1em}
@@ -232,6 +300,22 @@
   align-items:flex-start;
   justify-content:center;
 }
+.session-path-card--duo .path-step{--phase:#6fe9b2;--phase-rgb:110,233,178}
+.session-path-card--duo .path-step.biome-2{--phase:#9c8cff;--phase-rgb:156,140,255}
+.session-path-card--duo .path-step.biome-3{--phase:#f7b267;--phase-rgb:247,178,103}
+.session-path-card--duo .path-step::before{
+  content:"";
+  position:absolute;
+  top:5px;
+  left:50%;
+  z-index:-1;
+  width:390px;
+  height:160px;
+  border-radius:50%;
+  background:radial-gradient(ellipse,rgba(var(--phase-rgb),.075),transparent 66%);
+  pointer-events:none;
+  transform:translateX(-50%);
+}
 .session-path-card--duo .path-node{
   position:relative;
   width:240px;
@@ -247,6 +331,32 @@
   transform:translateX(-118px);
   transition:transform .18s ease,filter .18s ease;
 }
+.path-node-aura{
+  position:absolute;
+  top:25px;
+  left:50%;
+  width:112px;
+  height:102px;
+  border:1px solid rgba(var(--phase-rgb),.18);
+  border-radius:50%;
+  opacity:0;
+  pointer-events:none;
+  transform:translateX(-50%);
+  transition:opacity .2s ease;
+}
+.path-node-aura>i{
+  position:absolute;
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--phase);
+  box-shadow:0 0 11px rgba(var(--phase-rgb),.7);
+}
+.path-node-aura>i:nth-child(1){top:8px;left:19px}
+.path-node-aura>i:nth-child(2){top:49px;right:3px;width:4px;height:4px}
+.path-node-aura>i:nth-child(3){bottom:2px;left:33px;width:5px;height:5px}
+.path-node.current .path-node-aura,.path-node.override .path-node-aura{opacity:1;animation:roadmap-node-orbit 8s linear infinite}
+.path-node.complete:hover .path-node-aura{opacity:.7;animation:roadmap-node-orbit 9s linear infinite}
 .session-path-card--duo .path-step.right .path-node{transform:translateX(118px)}
 .session-path-card--duo .path-step.left .path-node:hover{transform:translate(-118px,-4px)}
 .session-path-card--duo .path-step.right .path-node:hover{transform:translate(118px,-4px)}
@@ -267,6 +377,7 @@
   text-transform:uppercase;
 }
 .session-path-card--duo .path-node-core{
+  position:relative;
   width:72px;
   height:66px;
   border:3px solid #40544c;
@@ -275,6 +386,14 @@
   color:#71857d;
   font:800 1rem Manrope,sans-serif;
   box-shadow:0 8px 0 #17241f,0 13px 24px rgba(0,0,0,.28);
+}
+.session-path-card--duo .path-node.complete .path-node-core::after{
+  content:"";
+  position:absolute;
+  inset:-9px;
+  border:2px solid rgba(110,240,177,.45);
+  border-radius:50%;
+  animation:roadmap-complete-ripple 3.2s ease-out infinite;
 }
 .session-path-card--duo .path-node-copy{
   width:100%;
@@ -311,18 +430,28 @@
   box-shadow:0 9px 0 #46368f,0 0 0 8px rgba(156,140,255,.12),0 17px 32px rgba(89,68,196,.35);
   animation:roadmap-ready-pulse 2.2s ease-in-out infinite;
 }
+.session-path-card--duo .path-step.biome-1 .path-node.current .path-node-core,
+.session-path-card--duo .path-step.biome-1 .path-node.override .path-node-core{border-color:#b8f7d8;background:linear-gradient(145deg,#66dfa8,#2a9d72);box-shadow:0 9px 0 #176246,0 0 0 8px rgba(110,233,178,.12),0 17px 32px rgba(38,174,113,.3)}
+.session-path-card--duo .path-step.biome-2 .path-node.current .path-node-core,
+.session-path-card--duo .path-step.biome-2 .path-node.override .path-node-core{border-color:#c0b7ff;background:linear-gradient(145deg,#9c8cff,#6d58df);box-shadow:0 9px 0 #46368f,0 0 0 8px rgba(156,140,255,.12),0 17px 32px rgba(89,68,196,.35)}
+.session-path-card--duo .path-step.biome-3 .path-node.current .path-node-core,
+.session-path-card--duo .path-step.biome-3 .path-node.override .path-node-core{border-color:#ffe0ac;background:linear-gradient(145deg,#f7b267,#c8752e);box-shadow:0 9px 0 #7c431d,0 0 0 8px rgba(247,178,103,.13),0 17px 32px rgba(199,117,46,.32)}
 .session-path-card--duo .path-node.current .path-node-status,
 .session-path-card--duo .path-node.override .path-node-status{
   border-color:rgba(192,183,255,.45);
   background:#29224d;
   color:#dcd7ff;
 }
+.session-path-card--duo .path-step .path-node.current .path-node-status,
+.session-path-card--duo .path-step .path-node.override .path-node-status{border-color:rgba(var(--phase-rgb),.45);background:rgba(var(--phase-rgb),.13);color:var(--phase)}
 .session-path-card--duo .path-node.current .path-node-copy,
 .session-path-card--duo .path-node.override .path-node-copy{
   border-color:rgba(156,140,255,.48);
   background:linear-gradient(145deg,#1b1734,#0c1a16);
   box-shadow:0 0 0 4px rgba(156,140,255,.08),0 14px 32px rgba(0,0,0,.24);
 }
+.session-path-card--duo .path-step .path-node.current .path-node-copy,
+.session-path-card--duo .path-step .path-node.override .path-node-copy{border-color:rgba(var(--phase-rgb),.48);box-shadow:0 0 0 4px rgba(var(--phase-rgb),.075),0 14px 32px rgba(0,0,0,.24)}
 .session-path-card--duo .path-node.locked{opacity:1}
 .session-path-card--duo .path-node.locked .path-node-copy{opacity:.62}
 .session-path-card--duo .path-node.locked:hover{filter:brightness(1.12)}
@@ -355,9 +484,30 @@
   0%,100%{filter:brightness(1);transform:translateY(0)}
   50%{filter:brightness(1.12);transform:translateY(-3px)}
 }
+@keyframes roadmap-trail-flow{to{stroke-dashoffset:-34}}
+@keyframes roadmap-foundation-float{
+  0%,100%{opacity:.25;transform:translateY(7px) scale(.75)}
+  50%{opacity:1;transform:translateY(-8px) scale(1.08)}
+}
+@keyframes roadmap-rebuild-orbit{to{transform:translateY(-50%) rotate(360deg)}}
+@keyframes roadmap-return-spark{
+  0%{opacity:0;transform:translateY(8px) scale(.65)}
+  30%{opacity:1}
+  100%{opacity:0;transform:translateY(-36px) scale(.25)}
+}
+@keyframes roadmap-node-orbit{to{transform:translateX(-50%) rotate(360deg)}}
+@keyframes roadmap-complete-ripple{
+  0%{opacity:.65;transform:scale(.78)}
+  70%,100%{opacity:0;transform:scale(1.15)}
+}
 @media(prefers-reduced-motion:reduce){
+  .session-path-trail .path-trail-flow,
+  .path-biome-motion,
+  .path-biome-motion>i,
+  .path-node-aura,
+  .session-path-card--duo .path-node.complete .path-node-core::after,
   .session-path-card--duo .path-node.current .path-node-core,
-  .session-path-card--duo .path-node.override .path-node-core{animation:none}
+  .session-path-card--duo .path-node.override .path-node-core{animation:none!important}
 }
 @media(max-width:900px){
   .session-path-card--duo .path-node{transform:translateX(-82px)}
