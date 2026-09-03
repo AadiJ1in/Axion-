@@ -2581,6 +2581,8 @@ async function submitNewPassword(event) {
     message.textContent = safeAuthMessage(error, "The password could not be updated. Request a fresh recovery link and try again.");
     return;
   }
+  const { error: revokeError } = await supabase.auth.signOut({ scope: "others" });
+  if (revokeError) console.warn("Password updated, but other sessions could not be revoked immediately.");
   passwordRecoveryMode = false;
   window.history.replaceState({}, "", "/");
   const { data: profile, error: profileError } = await supabase.from("profiles")

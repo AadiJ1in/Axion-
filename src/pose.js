@@ -1,7 +1,37 @@
 import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
+import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
 
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+const MODEL_SHA256 = "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a";
+const WASM_URL = "/mediapipe";
+
+let verifiedModelUrlPromise;
+
+async function verifiedModelUrl() {
+  if (!verifiedModelUrlPromise) {
+    verifiedModelUrlPromise = (async () => {
+      const response = await fetch(MODEL_URL, {
+        cache: "force-cache",
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+      });
+      if (!response.ok) throw new Error("The movement model could not be downloaded securely.");
+      const modelBytes = await response.arrayBuffer();
+      const actualHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", modelBytes)))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      if (actualHash !== MODEL_SHA256) {
+        throw new Error("Movement model integrity verification failed.");
+      }
+      return URL.createObjectURL(new Blob([modelBytes], { type: "application/octet-stream" }));
+    })().catch((error) => {
+      verifiedModelUrlPromise = null;
+      throw error;
+    });
+  }
+  return verifiedModelUrlPromise;
+}
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const MIN_TRACKING_SCORE = 0.62;
@@ -154,17 +184,14 @@ export async function createMovementTracker({
 
   async function initialize() {
     onTrackingState({ code: "model_loading", label: "Loading movement model", quality: null });
-    const { DrawingUtils, FilesetResolver, PoseLandmarker } = await import(
-      /* @vite-ignore */
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/+esm"
-    );
     trackerApi.DrawingUtils = DrawingUtils;
     trackerApi.PoseLandmarker = PoseLandmarker;
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm",
-    );
+    const [vision, modelAssetPath] = await Promise.all([
+      FilesetResolver.forVisionTasks(WASM_URL),
+      verifiedModelUrl(),
+    ]);
     const options = {
-      baseOptions: { modelAssetPath: MODEL_URL, delegate: supportsWebGL() ? "GPU" : "CPU" },
+      baseOptions: { modelAssetPath, delegate: supportsWebGL() ? "GPU" : "CPU" },
       runningMode: "VIDEO",
       numPoses: 2,
       minPoseDetectionConfidence: 0.55,

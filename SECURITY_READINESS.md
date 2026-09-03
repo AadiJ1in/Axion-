@@ -17,11 +17,15 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 - Invitation creation, claim, therapist approval, and plan publication are transactional database RPCs.
 - Sensitive workflow mutations produce server-side audit events in a non-exposed schema.
 - Browser sessions use `sessionStorage` rather than persistent cross-restart token storage.
+- Authentication uses the PKCE flow, and password resets revoke every other active session.
 - Authenticated sessions automatically sign out after 15 minutes without user activity.
+- Role-gated database access requires the JWT's Supabase session to remain active, so server-side revocation takes effect before token expiry.
 - Patient-facing operational errors are mapped to safe messages instead of exposing database or policy details.
 - Authenticated entry pages use `Cache-Control: private, no-store` and reject back-forward cached private workspaces.
-- The deployed Content Security Policy allows only the current Axion Supabase project and pinned runtime origins.
+- The deployed Content Security Policy blocks framing, plugins, inline scripts, and unapproved network destinations.
+- Runtime JavaScript and WebAssembly are bundled from exact lockfile versions; the external pose-model binary must match its pinned SHA-256 digest before use.
 - Row Level Security restricts patient access to their own profile and sessions.
+- Current browser grants are least-privilege, and database default privileges keep future tables, sequences, and functions inaccessible until explicitly granted.
 - Free-text patient/therapist messaging is removed from the application, revoked from browser roles, protected by an explicit deny-all RLS policy, and excluded from Realtime publication.
 - The synthetic demo is explicitly labeled and does not require an account.
 
