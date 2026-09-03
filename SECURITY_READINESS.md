@@ -18,6 +18,7 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 - Sensitive workflow mutations produce server-side audit events in a non-exposed schema.
 - Browser sessions use `sessionStorage` rather than persistent cross-restart token storage.
 - Authentication uses the PKCE flow, and password resets revoke every other active session.
+- Therapist clinical access requires an authenticator-app MFA challenge and an `aal2` Supabase session; password-only therapist sessions cannot pass database authorization.
 - Authenticated sessions automatically sign out after 15 minutes without user activity.
 - Role-gated database access requires the JWT's Supabase session to remain active, so server-side revocation takes effect before token expiry.
 - Patient-facing operational errors are mapped to safe messages instead of exposing database or policy details.
@@ -27,6 +28,7 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 - Patient exercise cards do not navigate to third-party education sites; a deploying clinic must review and configure any approved patient-facing materials.
 - Row Level Security restricts patient access to their own profile and sessions.
 - Current browser grants are least-privilege, and database default privileges keep future tables, sequences, and functions inaccessible until explicitly granted.
+- GitHub runs locked dependency checks, application regressions, production builds, and extended CodeQL analysis on pull requests, `main`, and a weekly schedule; Dependabot proposes reviewed dependency updates weekly.
 - Free-text patient/therapist messaging is removed from the application, revoked from browser roles, protected by an explicit deny-all RLS policy, and excluded from Realtime publication.
 - The synthetic demo is explicitly labeled and does not require an account.
 

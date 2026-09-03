@@ -59,7 +59,7 @@ insert into public.therapist_patients (
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000001',
   'session_id','20000000-0000-4000-8000-000000000001',
-  'email','security-therapist@axion.invalid', 'role','authenticated'
+  'email','security-therapist@axion.invalid', 'role','authenticated', 'aal','aal2'
 )::text, true);
 set local role authenticated;
 
@@ -82,7 +82,7 @@ reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000003',
   'session_id','20000000-0000-4000-8000-000000000003',
-  'email','security-patient-b@axion.invalid', 'role','authenticated'
+  'email','security-patient-b@axion.invalid', 'role','authenticated', 'aal','aal1'
 )::text, true);
 set local role authenticated;
 
@@ -131,7 +131,7 @@ reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000001',
   'session_id','20000000-0000-4000-8000-000000000001',
-  'email','security-therapist@axion.invalid', 'role','authenticated'
+  'email','security-therapist@axion.invalid', 'role','authenticated', 'aal','aal2'
 )::text, true);
 set local role authenticated;
 
@@ -194,7 +194,7 @@ reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000003',
   'session_id','20000000-0000-4000-8000-000000000003',
-  'email','security-patient-b@axion.invalid', 'role','authenticated'
+  'email','security-patient-b@axion.invalid', 'role','authenticated', 'aal','aal1'
 )::text, true);
 set local role authenticated;
 
@@ -377,7 +377,7 @@ reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000001',
   'session_id','20000000-0000-4000-8000-000000000001',
-  'email','security-therapist@axion.invalid', 'role','authenticated'
+  'email','security-therapist@axion.invalid', 'role','authenticated', 'aal','aal2'
 )::text, true);
 set local role authenticated;
 
@@ -489,7 +489,7 @@ reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000003',
   'session_id','20000000-0000-4000-8000-000000000003',
-  'email','security-patient-b@axion.invalid', 'role','authenticated'
+  'email','security-patient-b@axion.invalid', 'role','authenticated', 'aal','aal1'
 )::text, true);
 set local role authenticated;
 
@@ -593,6 +593,22 @@ begin
 end
 $test$;
 reset role;
+
+-- A password-only therapist session must not receive therapist authorization.
+select set_config('request.jwt.claims', jsonb_build_object(
+  'sub','10000000-0000-4000-8000-000000000001',
+  'session_id','20000000-0000-4000-8000-000000000001',
+  'email','security-therapist@axion.invalid', 'role','authenticated', 'aal','aal1'
+)::text, true);
+set local role authenticated;
+do $test$
+begin
+  if private.current_app_role() is not null then
+    raise exception 'Password-only therapist session retained clinical authorization';
+  end if;
+end
+$test$;
+reset role;
 rollback;
 
 select
@@ -612,4 +628,5 @@ select
   true as cross_patient_assignment_blocked,
   true as duplicate_session_blocked,
   true as revoked_session_blocked,
+  true as therapist_mfa_enforced,
   true as patient_isolation;
