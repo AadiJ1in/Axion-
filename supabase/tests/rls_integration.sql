@@ -24,6 +24,24 @@ insert into auth.users (
   now(), now(), '', '', '', ''
 );
 
+-- Authorization helpers require the JWT's session_id to still exist in GoTrue.
+insert into auth.sessions (id, user_id, created_at, updated_at, aal) values
+(
+  '20000000-0000-4000-8000-000000000001'::uuid,
+  '10000000-0000-4000-8000-000000000001'::uuid,
+  now(), now(), 'aal1'::auth.aal_level
+),
+(
+  '20000000-0000-4000-8000-000000000002'::uuid,
+  '10000000-0000-4000-8000-000000000002'::uuid,
+  now(), now(), 'aal1'::auth.aal_level
+),
+(
+  '20000000-0000-4000-8000-000000000003'::uuid,
+  '10000000-0000-4000-8000-000000000003'::uuid,
+  now(), now(), 'aal1'::auth.aal_level
+);
+
 -- Therapist elevation is an administrative action, never a self-selected signup field.
 update public.profiles
 set role = 'therapist'::public.app_role
@@ -40,6 +58,7 @@ insert into public.therapist_patients (
 -- Therapist publishes Patient A's plan and creates Patient B's one-time invitation.
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000001',
+  'session_id','20000000-0000-4000-8000-000000000001',
   'email','security-therapist@axion.invalid', 'role','authenticated'
 )::text, true);
 set local role authenticated;
@@ -62,6 +81,7 @@ from public.create_care_invitation('security-patient-b@axion.invalid') ci;
 reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000003',
+  'session_id','20000000-0000-4000-8000-000000000003',
   'email','security-patient-b@axion.invalid', 'role','authenticated'
 )::text, true);
 set local role authenticated;
@@ -110,6 +130,7 @@ $test$;
 reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000001',
+  'session_id','20000000-0000-4000-8000-000000000001',
   'email','security-therapist@axion.invalid', 'role','authenticated'
 )::text, true);
 set local role authenticated;
@@ -172,6 +193,7 @@ from public.roadmap_nodes rn where rn.plan_id = current_setting('axion.plan_b'):
 reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000003',
+  'session_id','20000000-0000-4000-8000-000000000003',
   'email','security-patient-b@axion.invalid', 'role','authenticated'
 )::text, true);
 set local role authenticated;
@@ -354,6 +376,7 @@ $test$;
 reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000001',
+  'session_id','20000000-0000-4000-8000-000000000001',
   'email','security-therapist@axion.invalid', 'role','authenticated'
 )::text, true);
 set local role authenticated;
@@ -465,6 +488,7 @@ $test$;
 reset role;
 select set_config('request.jwt.claims', jsonb_build_object(
   'sub','10000000-0000-4000-8000-000000000003',
+  'session_id','20000000-0000-4000-8000-000000000003',
   'email','security-patient-b@axion.invalid', 'role','authenticated'
 )::text, true);
 set local role authenticated;
@@ -555,6 +579,20 @@ begin
   end if;
 end
 $test$;
+
+-- A revoked Supabase session must immediately lose application authorization,
+-- even if an access token has not reached its expiry time yet.
+delete from auth.sessions
+where id = '20000000-0000-4000-8000-000000000003'::uuid;
+set local role authenticated;
+do $test$
+begin
+  if private.current_app_role() is not null then
+    raise exception 'Revoked session retained application authorization';
+  end if;
+end
+$test$;
+reset role;
 rollback;
 
 select
@@ -573,4 +611,5 @@ select
   true as therapist_roadmap_override_audited,
   true as cross_patient_assignment_blocked,
   true as duplicate_session_blocked,
+  true as revoked_session_blocked,
   true as patient_isolation;

@@ -604,7 +604,6 @@ function exerciseGuideMarkup(exercise, { open = false, compact = false } = {}) {
       <ol>${details.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
       <div class="guide-columns"><div><small>FORM CUES</small><ul>${details.cues.map((cue) => `<li>${escapeHtml(cue)}</li>`).join("")}</ul></div><div class="guide-avoid"><small>AVOID</small><p>${escapeHtml(details.avoid)}</p></div></div>
       <div class="guide-safety">${icon("shield", 14)}<span>${escapeHtml(details.safety)}</span></div>
-      <a class="guide-video" href="${escapeHtml(details.resourceUrl)}" target="_blank" rel="noopener noreferrer">${icon("play", 14)} Open trusted visual/video guide <span>${escapeHtml(details.resourceLabel)}</span></a>
     </div>
   </details>`;
 }
@@ -1325,7 +1324,7 @@ function renderPlanBuilder(isDemoTherapist) {
       </div>
       <div class="prescription-list">${exercisePrescriptionRows()}</div>
       <label class="wide">Patient instructions<textarea id="plan-instructions" rows="3" maxlength="2000" placeholder="Add patient-specific positioning, equipment, precautions, and stop criteria."></textarea></label>
-      <div class="clinical-source-note">${icon("shield", 16)}<span><b>Clinician-directed library</b> · Exercise guidance is sourced from AAOS OrthoInfo and NHS rehabilitation resources. The therapist remains responsible for suitability, dosage, and progression.</span></div>
+      <div class="clinical-source-note">${icon("shield", 16)}<span><b>Clinician-directed library</b> · External patient-education links are not shown by Axion. Each deploying clinic is responsible for reviewing and configuring its approved materials, suitability, dosage, and progression.</span></div>
       <button class="button button--primary" type="submit">Publish private plan ${icon("arrow",16)}</button>
     </form><div id="plan-result" class="form-message"></div>
   </section>`;
@@ -1412,7 +1411,7 @@ function renderExerciseLibrary() {
     </div>
     <div class="library-category-nav" aria-label="Exercise body sections">${categoryButtons}</div>
     <div class="library-sections">${groups.map(([category, entries]) => `<section data-library-section="${escapeHtml(category)}"><div class="library-section-heading"><div><h3>${escapeHtml(category)}</h3></div><small>${entries.length} exercise${entries.length === 1 ? "" : "s"}</small></div><div class="library-grid">${entries.map(([key, exercise]) => { const facets = exerciseFacets(exercise); const programs = exercisePrograms(key); return `<article data-library-exercise="${key}"><div class="library-card-heading"><div><span>${escapeHtml(exercise.category)}${commonlyPrescribedExerciseKeys.includes(key) ? " · Common" : ""}</span><h3>${escapeHtml(exercise.name)}</h3></div><em>${escapeHtml(facets.position)}</em></div><p>${escapeHtml(exercise.summary)}</p>${programs.length ? `<div class="library-programs">${programs.map((program) => `<span>${escapeHtml(program)}</span>`).join("")}</div>` : ""}<div class="library-clinical-meta"><span>${icon("activity", 13)} ${escapeHtml(facets.goals.join(" · "))}</span><span>${escapeHtml(exercise.equipment)}</span></div><div class="library-dose"><small>${exercise.defaultSets} sets</small><small>${exercise.trackingMode === "timed_hold" ? `${exercise.defaultDuration || 30}s hold` : `${exercise.defaultReps} reps`}</small><small>${exercise.trackingMode === "timed_hold" ? "Measured hold" : "Camera rep count"}</small></div>${exerciseGuideMarkup({ key, ...exercise }, { compact: true })}</article>`; }).join("")}</div></section>`).join("") || `<div class="empty-state"><h3>No exercises match these filters</h3><p>Clear one or more filters to broaden the library.</p><button class="button button--ghost" data-clear-library-filters>Clear filters</button></div>`}</div>
-    <footer>Guidance reviewed from <a href="${exerciseCatalogSource.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(exerciseCatalogSource.name)}</a>. ${escapeHtml(exerciseCatalogSource.note)}</footer></section>`;
+    <footer>${escapeHtml(exerciseCatalogSource.name)}. ${escapeHtml(exerciseCatalogSource.note)}</footer></section>`;
 }
 
 function therapistView() {
@@ -2581,6 +2580,8 @@ async function submitNewPassword(event) {
     message.textContent = safeAuthMessage(error, "The password could not be updated. Request a fresh recovery link and try again.");
     return;
   }
+  const { error: revokeError } = await supabase.auth.signOut({ scope: "others" });
+  if (revokeError) console.warn("Password updated, but other sessions could not be revoked immediately.");
   passwordRecoveryMode = false;
   window.history.replaceState({}, "", "/");
   const { data: profile, error: profileError } = await supabase.from("profiles")

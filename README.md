@@ -33,7 +33,7 @@ The public synthetic demo works without configuration:
 - node-level exercise checklists, sequential unlocks, audited therapist overrides, weekly checkpoints, and one-time transactional XP/streak awards;
 - functional therapist workspace sections for patients, recovery roadmaps, check-ins, attention alerts, and the exercise library;
 - 92-movement therapist library organized into 14 anatomical sections and seven curated clinical-program filters;
-- patient-ready setup, numbered technique steps, form cues, common mistakes, safety guidance, and optional AAOS/NHS visual-guide links for every exercise;
+- patient-ready setup, numbered technique steps, form cues, common mistakes, and safety guidance, with external education links withheld until a deploying clinic reviews and configures its approved materials;
 - the same exercise guidance shown in the patient roadmap and inside Motion Lab before tracking starts;
 - live therapist statistics, patient filtering, actionable check-ins, and descriptive review alerts derived from authorized session data;
 - working session-summary export, replay/trajectory switching, and private therapist notes;

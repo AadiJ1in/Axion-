@@ -1,14 +1,5 @@
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config.js";
-
-let createClient = null;
-
-try {
-  ({ createClient } = await import(
-    "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/+esm"
-  ));
-} catch (error) {
-  console.warn("Supabase is unavailable; continuing in synthetic demo mode.", error);
-}
+import { createClient } from "@supabase/supabase-js";
 
 export const isConfigured =
   Boolean(createClient) &&
@@ -23,7 +14,9 @@ export const supabase = isConfigured
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        flowType: "pkce",
         storage: window.sessionStorage,
+        storageKey: "axion-auth-session",
       },
     })
   : null;
