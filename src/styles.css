@@ -391,3 +391,29 @@
   .session-path-card--duo .path-step.left .path-node:hover{transform:translate(-34px,-3px)}
   .session-path-card--duo .path-step.right .path-node:hover{transform:translate(34px,-3px)}
 }
+
+/* Daily report rollup and fast prescription filtering. */
+.daily-session-summary.empty{border-color:var(--line);background:linear-gradient(95deg,rgba(22,32,29,.72),rgba(11,23,20,.9))}
+.daily-session-summary.empty .pulse-score circle:last-child{stroke:#52665e;filter:none}
+.daily-session-summary.empty .positive-pill{color:#9badA6;background:rgba(255,255,255,.05)}
+.report-detail-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:.95rem 0 .5rem;padding:0 .15rem}
+.report-detail-heading p{margin:0;color:#81958d;font-size:.72rem}
+.prescription-area-filter{display:grid;gap:.55rem;padding:.85rem;border:1px solid var(--line);border-radius:10px;background:#081210}
+.prescription-area-filter>span{color:#9aacA5;font-size:.7rem;font-weight:800}
+.prescription-area-filter>div{display:flex;gap:.45rem;overflow-x:auto;padding-bottom:.15rem;scrollbar-width:thin}
+.prescription-area-filter button{min-height:40px;display:flex;align-items:center;gap:.45rem;flex:0 0 auto;padding:.55rem .7rem;border:1px solid var(--line-strong);border-radius:8px;background:#0b1714;color:#9badA6;font:700 .66rem Manrope,sans-serif}
+.prescription-area-filter button:hover{border-color:rgba(110,240,177,.35);color:#d6e5df}
+.prescription-area-filter button.active{border-color:rgba(110,240,177,.48);background:rgba(110,240,177,.1);color:var(--mint);box-shadow:inset 0 0 0 1px rgba(110,240,177,.08)}
+.prescription-area-filter button small{min-width:22px;padding:.18rem .3rem;border-radius:999px;background:rgba(255,255,255,.055);color:inherit;font-size:.58rem;text-align:center}
+.plan-builder-card--v2 .prescription-filters{grid-template-columns:minmax(260px,1.6fr) minmax(210px,1fr) auto auto auto auto}
+.prescription-clear{min-height:42px;padding:.6rem .7rem;border:1px solid var(--line-strong);border-radius:6px;background:transparent;color:#9badA6;font:700 .62rem Manrope,sans-serif;white-space:nowrap}
+.prescription-clear:hover{border-color:rgba(110,240,177,.35);color:var(--mint)}
+.prescription-row.selected{order:-1;border-color:rgba(110,240,177,.32);background:rgba(110,240,177,.055)}
+@media(max-width:1050px){
+  .plan-builder-card--v2 .prescription-filters{grid-template-columns:1fr 1fr auto}
+}
+@media(max-width:680px){
+  .report-detail-heading{display:grid}
+  .plan-builder-card--v2 .prescription-filters{grid-template-columns:1fr}
+  .prescription-area-filter{padding:.7rem}
+}
