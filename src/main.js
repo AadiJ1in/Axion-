@@ -625,10 +625,41 @@ function patientExerciseCard(assignment, index, sessions) {
 }
 
 const ROADMAP_BIOMES = {
-  1: { name: "Foundation", caption: "Control the basics", icon: "activity" },
-  2: { name: "Rebuild", caption: "Restore capacity", icon: "spark" },
-  3: { name: "Return", caption: "Move with confidence", icon: "trophy" },
+  1: { name: "Foundation", caption: "The Greenway Village", icon: "activity" },
+  2: { name: "Rebuild", caption: "The Ruins of Asterfall", icon: "spark" },
+  3: { name: "Return", caption: "The Crown Summit", icon: "trophy" },
 };
+
+const ROADMAP_WORLD_THEMES = {
+  kingdom: {
+    name: "Kingdom of Aster",
+    regions: {
+      1: {
+        landmark: "Village trail",
+        activeStory: "The road ahead was damaged by the storm. Rebuild your foundation and light the village path.",
+        restoredStory: "The village is awake again. The mountain road is open.",
+        futureStory: "A quiet village waits beyond the mist.",
+      },
+      2: {
+        landmark: "Ancient bridge",
+        activeStory: "Your strength is returning. Restore the ancient crossing to reach the high road.",
+        restoredStory: "The bridge stands restored. A clear route now climbs toward the capital.",
+        futureStory: "Ruined towers guard a broken crossing in the mountains.",
+      },
+      3: {
+        landmark: "Castle gates",
+        activeStory: "The final road is open. Complete your remaining trials and reach the Crown Summit.",
+        restoredStory: "The gates are open. You have completed the road back to movement.",
+        futureStory: "High above the clouds, the castle lights wait to be awakened.",
+      },
+    },
+  },
+};
+
+function roadmapCharacterMarkup(key = "pulse") {
+  const characterKey = ["pulse", "summit", "orbit", "trail"].includes(key) ? key : "pulse";
+  return `<span class="roadmap-character-sprite character-${characterKey}"></span>`;
+}
 
 function sessionPathPresentation(workspace) {
   const completedIds = new Set((workspace.roadmapCompletions || []).map((item) => item.roadmap_node_id));
@@ -650,20 +681,34 @@ function sessionPathMarkup(workspace) {
   const total = path.nodes.length;
   const progress = Math.round((path.completed / total) * 100);
   const cadence = `${workspace.plan?.duration_weeks || Math.max(...path.nodes.map((node) => node.week_number))} weeks · ${workspace.plan?.sessions_per_week || 1} session${Number(workspace.plan?.sessions_per_week || 1) === 1 ? "" : "s"}/week`;
-  let lastBiome = 0;
-  const nodes = path.nodes.map((node, index) => {
-    const biome = ROADMAP_BIOMES[node.biome] || ROADMAP_BIOMES[1];
-    const biomeHeading = node.biome !== lastBiome ? `<div class="path-biome-heading biome-${node.biome}"><span>${icon(biome.icon,20)}</span><div><small>PHASE ${node.biome}</small><b>${biome.name}</b><em>${biome.caption}</em></div><i class="path-biome-motion" aria-hidden="true"><i></i><i></i><i></i><i></i></i></div>` : "";
-    lastBiome = node.biome;
+  const themeKey = ROADMAP_WORLD_THEMES[workspace.plan?.world_theme] ? workspace.plan.world_theme : "kingdom";
+  const theme = ROADMAP_WORLD_THEMES[themeKey];
+  const avatarKey = workspace.profile?.avatar_key || currentProfile?.avatar_key || "pulse";
+  const nodeMarkup = (node, index) => {
     const completeExercises = node.completedAssignmentIds.size;
     const exerciseCount = node.assignmentIds.length;
     const checkpoint = node.session_number % 7 === 0 ? `<div class="path-reward ${node.state === "complete" ? "earned" : ""}">${icon("trophy",16)}<span><b>Week ${node.week_number} checkpoint</b><small>${node.state === "complete" ? "+50 XP earned" : "Complete the week to reach this marker"}</small></span></div>` : "";
     const status = node.state === "complete" ? "Complete" : node.state === "current" ? "Start here" : node.state === "override" ? "Unlocked" : "Locked";
     const statusIcon = node.state === "complete" ? icon("check",14) : node.state === "locked" ? icon("lock",13) : icon("play",13);
-    return `${biomeHeading}<div class="path-step ${index % 2 ? "right" : "left"} biome-${node.biome}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${status}" ${node.state === "current" ? 'aria-current="step"' : ""}><span class="path-node-aura" aria-hidden="true"><i></i><i></i><i></i></span><span class="path-node-status">${statusIcon}${status}</span><span class="path-node-core">${node.state === "complete" ? icon("check",28) : node.state === "locked" ? icon("lock",22) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · SESSION ${node.session_in_week}</small><b>${escapeHtml(node.title || `Session ${node.session_number}`)}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Your next prescribed session" : node.state === "override" ? "Ready by therapist approval" : "Finish the session before this one"}</em><i>${completeExercises}/${exerciseCount} exercises complete</i></span></button>${checkpoint}</div>`;
+    const character = node.state === "current" ? `<span class="world-character" aria-hidden="true">${roadmapCharacterMarkup(avatarKey)}<b>You are here</b></span>` : "";
+    const action = node.state === "current" || node.state === "override" ? `<strong class="world-node-action">${icon("play",12)} Start session</strong>` : "";
+    return `<div class="path-step ${index % 2 ? "right" : "left"} biome-${node.biome}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${status}" ${node.state === "current" ? 'aria-current="step"' : ""}><span class="path-node-aura" aria-hidden="true"><i></i><i></i><i></i></span>${character}<span class="path-node-status">${statusIcon}${status}</span><span class="path-node-core">${node.state === "complete" ? icon("check",28) : node.state === "locked" ? icon("lock",22) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · SESSION ${node.session_in_week}</small><b>${escapeHtml(node.title || `Session ${node.session_number}`)}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Your next prescribed session" : node.state === "override" ? "Ready by therapist approval" : "Finish the session before this one"}</em><i>${completeExercises}/${exerciseCount} exercises complete</i>${action}</span></button>${checkpoint}</div>`;
+  };
+  const biomeOrder = [...new Set(path.nodes.map((node) => Number(node.biome) || 1))];
+  const worldRegions = biomeOrder.map((biomeNumber) => {
+    const biome = ROADMAP_BIOMES[biomeNumber] || ROADMAP_BIOMES[1];
+    const region = theme.regions[biomeNumber] || theme.regions[1];
+    const regionNodes = path.nodes.map((node, index) => ({ node, index })).filter(({ node }) => Number(node.biome) === biomeNumber);
+    const completed = regionNodes.filter(({ node }) => node.state === "complete").length;
+    const hasCurrent = regionNodes.some(({ node }) => node.state === "current" || node.state === "override");
+    const regionState = completed === regionNodes.length ? "restored" : hasCurrent ? "active" : "future";
+    const story = regionState === "restored" ? region.restoredStory : regionState === "active" ? region.activeStory : region.futureStory;
+    const stateLabel = regionState === "restored" ? "Region restored" : regionState === "active" ? "Current chapter" : "Hidden in the mist";
+    return `<section class="roadmap-world-region biome-${biomeNumber} ${regionState}" data-world-region="${biomeNumber}"><div class="world-region-scene" aria-hidden="true"><i class="world-light"></i><i class="world-mist"></i><i class="world-fireflies"></i></div><header class="world-chapter-card"><span>${icon(biome.icon,24)}</span><div><small>CHAPTER ${biomeNumber} · ${escapeHtml(region.landmark)}</small><h3>${escapeHtml(biome.name)} — ${escapeHtml(biome.caption)}</h3><p>${escapeHtml(story)}</p></div><em>${stateLabel} · ${completed}/${regionNodes.length}</em></header><div class="world-region-path">${regionNodes.map(({ node, index }) => nodeMarkup(node, index)).join("")}</div></section>`;
   }).join("");
   const trailProgress = Math.max(2, Math.min(98, progress));
-  return `<section class="session-path-card session-path-card--duo" aria-label="Therapist-prescribed session roadmap"><div class="session-path-head"><div><span class="section-kicker">YOUR RECOVERY ROADMAP</span><h2>${escapeHtml(workspace.plan?.title || "Your recovery journey")}</h2><p>Move up the path one prescribed session at a time. Tap the highlighted node to begin.</p></div><div class="session-path-progress"><strong>${path.completed}<span>/${total}</span></strong><small>SESSIONS COMPLETE</small></div></div><div class="session-path-overview"><div class="session-path-bar" aria-label="${progress}% roadmap complete"><span style="width:${progress}%"></span></div><div class="session-path-legend"><span><i class="complete"></i>Completed</span><span><i class="current"></i>Do this now</span><span><i class="locked"></i>Coming next</span><em>${escapeHtml(cadence)}</em></div></div><div class="session-path-scroll" data-session-path-scroll tabindex="0" aria-label="Scrollable recovery session path"><svg class="session-path-trail" data-session-path-trail aria-hidden="true"><defs><linearGradient id="roadmap-trail-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6fe9b2"/><stop offset="${trailProgress}%" stop-color="#6fe9b2"/><stop offset="${trailProgress}%" stop-color="#32473f"/><stop offset="100%" stop-color="#263830"/></linearGradient></defs><path class="path-trail-flow" data-session-path-line fill="none" stroke="url(#roadmap-trail-gradient)" stroke-width="6" stroke-linecap="round" stroke-dasharray="4 13"/></svg>${nodes}<div class="path-summit ${path.completed === total ? "earned" : ""}">${icon("trophy",28)}<div><small>FINAL MILESTONE</small><b>${path.completed === total ? "Roadmap complete" : `${total - path.completed} sessions to the summit`}</b></div></div></div><footer><span>${icon("shield",15)} ${escapeHtml(workspace.therapist?.display_name || "Your physical therapist")} controls session order and progression. Reporting pain never removes XP or your streak.</span><span class="roadmap-contact-boundary">In-app messaging is disabled. For plan questions, use your clinic’s approved communication method.</span></footer></section>`;
+  const completionMetrics = path.completed === total ? `<div class="journey-completion-metrics"><span><b>${path.completed}</b><small>Sessions</small></span><span><b>${Number(workspace.profile?.recovery_xp || 0).toLocaleString()}</b><small>Recovery XP</small></span><span><b>${Number(workspace.profile?.streak_days || 0)}</b><small>Day streak</small></span></div>` : "";
+  return `<section class="session-path-card session-path-card--duo roadmap-world" data-world-theme="${themeKey}" aria-label="Therapist-prescribed session roadmap through ${escapeHtml(theme.name)}"><div class="session-path-head"><div><span class="section-kicker">${escapeHtml(theme.name).toUpperCase()}</span><h2>${escapeHtml(workspace.plan?.title || "Your recovery journey")}</h2><p>Your prescribed rehabilitation sessions shape this world. Continue from your character’s position.</p></div><div class="session-path-progress"><strong>${path.completed}<span>/${total}</span></strong><small>SESSIONS COMPLETE</small></div></div><div class="session-path-overview"><div class="session-path-bar" aria-label="${progress}% roadmap complete"><span style="width:${progress}%"></span></div><div class="session-path-legend"><span><i class="complete"></i>Restored</span><span><i class="current"></i>Your location</span><span><i class="locked"></i>Unexplored</span><em>${escapeHtml(cadence)}</em></div></div><div class="session-path-scroll" data-session-path-scroll tabindex="0" aria-label="Scrollable recovery adventure world"><svg class="session-path-trail" data-session-path-trail aria-hidden="true"><defs><linearGradient id="roadmap-trail-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6fe9b2"/><stop offset="${trailProgress}%" stop-color="#f4d28a"/><stop offset="${trailProgress}%" stop-color="#c6d2cc"/><stop offset="100%" stop-color="#82908a"/></linearGradient></defs><path class="path-trail-flow" data-session-path-line fill="none" stroke="url(#roadmap-trail-gradient)" stroke-width="7" stroke-linecap="round" stroke-dasharray="5 14"/></svg>${worldRegions}<div class="path-summit ${path.completed === total ? "earned" : ""}">${icon("trophy",30)}<div><small>${path.completed === total ? "JOURNEY COMPLETE" : "THE CROWN SUMMIT"}</small><b>${path.completed === total ? "The kingdom road is restored" : `${total - path.completed} sessions remain before the gates open`}</b>${completionMetrics}</div></div></div><footer><span>${icon("shield",15)} The world advances only through sessions prescribed by ${escapeHtml(workspace.therapist?.display_name || "your physical therapist")}. Pain reports never reduce XP or progress.</span><span class="roadmap-contact-boundary">In-app messaging is disabled. For plan questions, use your clinic’s approved communication method.</span></footer></section>`;
 }
 
 function drawSessionPathTrail() {
