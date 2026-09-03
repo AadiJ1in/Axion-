@@ -104,6 +104,8 @@ let exerciseLibraryEquipment = "All";
 let exerciseLibraryPosition = "All";
 let exerciseLibraryProgram = "All";
 let exerciseLibraryCommonOnly = false;
+let prescriptionBodyArea = "All";
+let prescriptionSelectedOnly = false;
 let roadmapExpanded = false;
 let currentRoadmapNode = null;
 let patientRealtimeChannel = null;
@@ -136,6 +138,17 @@ let movementGameController = null;
 const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 let authIdleTimer = null;
 let lastTwinPoints = null;
+
+const prescriptionBodyAreas = {
+  All: null,
+  "Lower body": ["Hips & glutes", "Thighs & quads", "Hamstrings", "Knees", "Calves & shins", "Ankles & feet", "Balance"],
+  "Ankle & foot": ["Calves & shins", "Ankles & feet"],
+  Knee: ["Thighs & quads", "Hamstrings", "Knees"],
+  "Hip & glutes": ["Hips & glutes"],
+  "Core & back": ["Core & abs", "Lower back", "Upper back"],
+  "Upper body": ["Neck", "Shoulders", "Chest", "Upper back", "Arms & elbows"],
+  Balance: ["Balance"],
+};
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
@@ -973,6 +986,45 @@ function sessionSummary(session) {
   };
 }
 
+function localDayKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function reportPrescriptionAssignments(patientId) {
+  if (currentProfile?.role === "patient" && patientWorkspace?.profile?.id === patientId) {
+    return (patientWorkspace.assignments || []).filter((assignment) => assignment.status !== "archived");
+  }
+  const plan = activePlanForPatient(patientId);
+  return plan ? planExercises(plan.id).filter((assignment) => assignment.status !== "archived") : [];
+}
+
+function dailyExerciseSummary(sessions, prescribedAssignments) {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const sessionsForKey = (key) => sessions.filter((session) => localDayKey(session.completed_at || session.created_at) === key);
+  const todaySessions = sessionsForKey(localDayKey(now));
+  const yesterdaySessions = sessionsForKey(localDayKey(yesterday));
+  const periodSessions = todaySessions.length ? todaySessions : yesterdaySessions;
+  const period = todaySessions.length ? "Today" : yesterdaySessions.length ? "Yesterday" : "Today";
+  const uniqueExercises = new Map();
+  periodSessions.forEach((session) => {
+    const key = session.assignment_id || session.exercise_key || session.id;
+    if (!uniqueExercises.has(key)) uniqueExercises.set(key, session);
+  });
+  const completedExercises = [...uniqueExercises.values()];
+  const prescribedKeys = new Set((prescribedAssignments || []).map((assignment) => assignment.id || assignment.exercise_key));
+  const prescribedCount = prescribedKeys.size || completedExercises.length;
+  const completedCount = completedExercises.length;
+  const completionPercent = prescribedCount ? Math.min(100, Math.round((completedCount / prescribedCount) * 100)) : 0;
+  const consistencies = completedExercises.map((session) => sessionSummary(session).consistency).filter((value) => value > 0);
+  const averageConsistency = consistencies.length ? Math.round(average(consistencies)) : 0;
+  const totalDuration = periodSessions.reduce((sum, session) => sum + Number(session.duration_seconds || 0), 0);
+  return { period, periodSessions, completedExercises, completedCount, prescribedCount, completionPercent, averageConsistency, totalDuration };
+}
+
 function safetyEventLabel(event) {
   if (event.event_type === "pain") return `Pain ${event.pain_score}/10`;
   if (event.event_type === "felt_wrong") return "Felt wrong";
@@ -989,9 +1041,9 @@ function realReportView() {
   const patientName = patient?.display_name || "Selected patient";
   const initials = patientName.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const backTarget = currentProfile?.role === "patient" ? "patient" : "therapist";
-  const latest = reportSessions[0] || null;
+  const latestRecorded = reportSessions[0] || null;
 
-  if (!latest) {
+  if (!latestRecorded) {
     app.innerHTML = layout(`
       <main class="state-page container-wide">
         <div class="empty-state">
@@ -1009,6 +1061,8 @@ function realReportView() {
     return;
   }
 
+  const daily = dailyExerciseSummary(reportSessions, reportPrescriptionAssignments(patient?.id));
+  const latest = daily.completedExercises[0] || latestRecorded;
   const stats = sessionSummary(latest);
   const exerciseDetails = assignmentDetails({ exercise_key: latest.exercise_key });
   const exercise = exerciseDetails.display_name;
@@ -1016,18 +1070,27 @@ function realReportView() {
   const completedAt = new Date(latest.completed_at || latest.created_at);
   const duration = latest.duration_seconds ? `${Math.floor(latest.duration_seconds / 60)}m ${latest.duration_seconds % 60}s` : "Not recorded";
   const metric = (value, suffix = "") => value > 0 ? `${Number(value).toFixed(suffix ? 1 : 0)}${suffix}` : "—";
+  const dailyDuration = daily.totalDuration ? `${Math.floor(daily.totalDuration / 60)}m ${daily.totalDuration % 60}s` : "—";
+  const dailyHasActivity = daily.periodSessions.length > 0;
+  const dailyTitle = dailyHasActivity
+    ? `${daily.completedCount} of ${daily.prescribedCount} prescribed exercise${daily.prescribedCount === 1 ? "" : "s"} completed.`
+    : "No exercises recorded today or yesterday.";
+  const dailyCopy = dailyHasActivity
+    ? `${daily.period}'s summary combines ${daily.completedCount} unique exercise${daily.completedCount === 1 ? "" : "s"}. Repeated attempts do not inflate completion.`
+    : "The daily summary resets at the start of each day. Older sessions remain available in the history below.";
 
   app.innerHTML = layout(`
     <main class="report-page container-wide">
       <div class="report-header">
-        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} ${currentProfile?.role === "patient" ? "My recovery" : "Patient overview"}</button><div class="patient-title"><span class="patient-avatar mint">${escapeHtml(initials)}</span><div><span class="section-kicker">PRIVATE MOVEMENT REPORT</span><h1>${escapeHtml(patientName)}</h1><p>${escapeHtml(exercise)} · ${completedAt.toLocaleString()}</p></div></div></div>
+        <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} ${currentProfile?.role === "patient" ? "My recovery" : "Patient overview"}</button><div class="patient-title"><span class="patient-avatar mint">${escapeHtml(initials)}</span><div><span class="section-kicker">PRIVATE MOVEMENT REPORT</span><h1>${escapeHtml(patientName)}</h1><p>Most recent exercise: ${escapeHtml(exercise)} · ${completedAt.toLocaleString()}</p></div></div></div>
         <div class="report-actions"><button class="button button--ghost" data-export-report>Export summary</button>${currentProfile?.role === "therapist" ? `<button class="button button--primary" data-add-therapist-note>Add therapist note</button>` : ""}</div>
       </div>
-      <section class="pulse-banner">
-        <div class="pulse-score"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle cx="50" cy="50" r="42"/></svg><span><b>${stats.consistency || "—"}</b><small>CONSISTENCY</small></span></div>
-        <div class="pulse-copy"><span class="positive-pill">MEASURED SESSION</span><h2>Session summary at a glance.</h2><p>These descriptive measurements come only from ${escapeHtml(patientName)}’s completed session. They do not diagnose injury or automatically change treatment.</p></div>
-        <div class="pulse-factors"><div><span>COMPLETED</span><b>${completedAt.toLocaleDateString()}</b></div><div><span>DURATION</span><b>${duration}</b></div><div><span>DISCOMFORT</span><b>${escapeHtml(latest.discomfort || "Not reported")}</b></div></div>
+      <section class="pulse-banner daily-session-summary ${dailyHasActivity ? "" : "empty"}">
+        <div class="pulse-score"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle cx="50" cy="50" r="42" style="stroke-dashoffset:${Math.round(264 * (1 - daily.completionPercent / 100))}"/></svg><span><b>${daily.completionPercent}</b><small>DAILY PROGRESS</small></span></div>
+        <div class="pulse-copy"><span class="positive-pill">${daily.period.toUpperCase()}’S SESSION SUMMARY</span><h2>${dailyTitle}</h2><p>${dailyCopy}</p></div>
+        <div class="pulse-factors"><div><span>EXERCISES</span><b>${daily.completedCount} / ${daily.prescribedCount}</b></div><div><span>TOTAL TIME</span><b>${dailyDuration}</b></div><div><span>AVG. CONSISTENCY</span><b>${daily.averageConsistency || "—"}</b></div></div>
       </section>
+      <div class="report-detail-heading"><span class="section-kicker">MOST RECENT EXERCISE DETAIL</span><p>${escapeHtml(exercise)} · ${duration} · ${escapeHtml(latest.discomfort || "No discomfort response")}</p></div>
       <section class="report-metrics">
         <article><span>REPETITIONS</span><b>${latest.repetitions ?? 0}</b><em>Completed</em></article>
         <article><span>AVG. ${escapeHtml(trackedJoint.toUpperCase())} ANGLE</span><b>${metric(stats.jointAngle, "°")}</b><em>3D landmark angle</em></article>
@@ -1051,7 +1114,7 @@ function realReportView() {
     </main>
   `);
   bindEvents();
-  if (stats.consistency) animateNumber(document.querySelector(".pulse-score b"), stats.consistency);
+  animateNumber(document.querySelector(".pulse-score b"), daily.completionPercent);
 }
 
 async function openRealReport(patient = null) {
@@ -1179,7 +1242,7 @@ function exercisePrescriptionRows() {
     const movementProfile = getMovementProfile(key, exercise.trackingMode);
     const programs = exercisePrograms(key);
     const searchText = `${exercise.name} ${exercise.category} ${exercise.focus.join(" ")} ${exercise.equipment} ${programs.join(" ")}`.toLowerCase();
-    return `<label class="prescription-row" data-prescription-row="${key}" data-prescription-search="${escapeHtml(searchText)}" data-prescription-programs="${escapeHtml(programs.join("|"))}" data-prescription-common="${commonlyPrescribedExerciseKeys.includes(key) ? "true" : "false"}">
+    return `<label class="prescription-row ${index === 0 ? "selected" : ""}" data-prescription-row="${key}" data-prescription-category="${escapeHtml(exercise.category)}" data-prescription-search="${escapeHtml(searchText)}" data-prescription-programs="${escapeHtml(programs.join("|"))}" data-prescription-common="${commonlyPrescribedExerciseKeys.includes(key) ? "true" : "false"}">
       <input class="prescription-toggle" type="checkbox" value="${key}" ${index === 0 ? "checked" : ""}/>
       <span class="prescription-name"><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(exercise.region)} · ${movementProfile.mode === "hold" ? "times" : "counts"} ${escapeHtml(movementProfile.label.toLowerCase())}${commonlyPrescribedExerciseKeys.includes(key) ? " · Common" : ""}</small></span>
       <span class="dosage-control"><small>SETS</small><input class="prescription-sets" type="number" min="1" max="20" value="${exercise.defaultSets}" ${index === 0 ? "" : "disabled"}/></span>
@@ -1206,11 +1269,14 @@ function renderPlanBuilder(isDemoTherapist) {
       </div>
       <div class="path-plan-summary"><span>${icon("map",18)}</span><div><b id="planned-node-count">84 touchable session nodes</b><small>The patient advances only after every prescribed exercise in a node is saved.</small></div><label><input id="plan-game-enabled" type="checkbox" checked/> Enable optional game view</label></div>
       <div class="prescription-toolbar"><div><b>Exercise prescription</b><small>Select up to 12 exercises. Dosage is independent for each one.</small></div><span id="selected-exercise-count">1 selected</span></div>
+      <div class="prescription-area-filter"><span>Filter by body area</span><div>${Object.entries(prescriptionBodyAreas).map(([area, categories]) => { const count = categories ? Object.values(exerciseCatalog).filter((exercise) => categories.includes(exercise.category)).length : Object.keys(exerciseCatalog).length; return `<button type="button" class="${prescriptionBodyArea === area ? "active" : ""}" data-prescription-area="${escapeHtml(area)}">${escapeHtml(area)} <small>${count}</small></button>`; }).join("")}</div></div>
       <div class="prescription-filters">
         <label><span>Find an exercise</span><input id="prescription-search" type="search" placeholder="Search movement, region, or equipment" autocomplete="off"/></label>
         <label><span>Clinical program</span><select id="prescription-program"><option value="All">All exercises</option>${Object.keys(exerciseProgramPresets).map((program) => `<option value="${escapeHtml(program)}">${escapeHtml(program)}</option>`).join("")}</select></label>
         <label class="prescription-common-filter"><input id="prescription-common-only" type="checkbox"/> Commonly used</label>
+        <label class="prescription-common-filter"><input id="prescription-selected-only" type="checkbox" ${prescriptionSelectedOnly ? "checked" : ""}/> Selected only</label>
         <span id="prescription-visible-count">${Object.keys(exerciseCatalog).length} shown</span>
+        <button class="prescription-clear" type="button" data-clear-prescription-filters>Clear filters</button>
       </div>
       <div class="prescription-list">${exercisePrescriptionRows()}</div>
       <label class="wide">Patient instructions<textarea id="plan-instructions" rows="3" maxlength="2000" placeholder="Add patient-specific positioning, equipment, precautions, and stop criteria."></textarea></label>
@@ -1380,6 +1446,7 @@ function therapistView() {
     </main>
   `, { full: true });
   bindEvents();
+  applyPrescriptionFilters();
   document.querySelectorAll(".dashboard-stats article > div > b").forEach((element) => {
     const value = Number(element.textContent);
     if (!Number.isNaN(value)) animateNumber(element, value);
@@ -2600,15 +2667,19 @@ function applyPrescriptionFilters() {
   const query = (document.querySelector("#prescription-search")?.value || "").trim().toLowerCase();
   const program = document.querySelector("#prescription-program")?.value || "All";
   const commonOnly = Boolean(document.querySelector("#prescription-common-only")?.checked);
+  const selectedOnly = Boolean(document.querySelector("#prescription-selected-only")?.checked);
+  const allowedCategories = prescriptionBodyAreas[prescriptionBodyArea];
   let visible = 0;
   document.querySelectorAll("[data-prescription-row]").forEach((row) => {
     const queryMatch = !query || (row.dataset.prescriptionSearch || "").includes(query);
     const programMatch = program === "All" || (row.dataset.prescriptionPrograms || "").split("|").includes(program);
     const commonMatch = !commonOnly || row.dataset.prescriptionCommon === "true";
-    row.hidden = !(queryMatch && programMatch && commonMatch);
+    const areaMatch = !allowedCategories || allowedCategories.includes(row.dataset.prescriptionCategory);
+    const selectedMatch = !selectedOnly || Boolean(row.querySelector(".prescription-toggle")?.checked);
+    row.hidden = !(queryMatch && programMatch && commonMatch && areaMatch && selectedMatch);
     if (!row.hidden) visible += 1;
   });
-  setText("#prescription-visible-count", `${visible} shown`);
+  setText("#prescription-visible-count", `${visible} exercise${visible === 1 ? "" : "s"} shown`);
 }
 
 function armAuthIdleTimeout() {
@@ -2719,10 +2790,35 @@ function bindEvents() {
     const count = document.querySelectorAll(".prescription-toggle:checked").length;
     setText("#selected-exercise-count", `${count} selected`);
     row?.classList.toggle("selected", toggle.checked);
+    applyPrescriptionFilters();
   }));
   document.querySelector("#prescription-search")?.addEventListener("input", applyPrescriptionFilters);
   document.querySelector("#prescription-program")?.addEventListener("change", applyPrescriptionFilters);
   document.querySelector("#prescription-common-only")?.addEventListener("change", applyPrescriptionFilters);
+  document.querySelector("#prescription-selected-only")?.addEventListener("change", (event) => {
+    prescriptionSelectedOnly = event.currentTarget.checked;
+    applyPrescriptionFilters();
+  });
+  document.querySelectorAll("[data-prescription-area]").forEach((button) => button.addEventListener("click", () => {
+    prescriptionBodyArea = button.dataset.prescriptionArea;
+    document.querySelectorAll("[data-prescription-area]").forEach((item) => item.classList.toggle("active", item === button));
+    applyPrescriptionFilters();
+    document.querySelector(".prescription-list")?.scrollTo({ top: 0, behavior: "smooth" });
+  }));
+  document.querySelector("[data-clear-prescription-filters]")?.addEventListener("click", () => {
+    prescriptionBodyArea = "All";
+    prescriptionSelectedOnly = false;
+    const search = document.querySelector("#prescription-search");
+    const program = document.querySelector("#prescription-program");
+    const common = document.querySelector("#prescription-common-only");
+    const selected = document.querySelector("#prescription-selected-only");
+    if (search) search.value = "";
+    if (program) program.value = "All";
+    if (common) common.checked = false;
+    if (selected) selected.checked = false;
+    document.querySelectorAll("[data-prescription-area]").forEach((item) => item.classList.toggle("active", item.dataset.prescriptionArea === "All"));
+    applyPrescriptionFilters();
+  });
   document.querySelector("#exercise-library-search")?.addEventListener("input", (event) => {
     exerciseLibraryQuery = event.currentTarget.value;
     therapistView();
