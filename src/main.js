@@ -34,6 +34,14 @@ import {
 } from "./portal.js";
 
 const app = document.querySelector("#app");
+function createUuid() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 const authQuery = new URLSearchParams(window.location.search);
 const authFragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 const uiScenario = authQuery.get("state");
@@ -632,14 +640,51 @@ function sessionPathMarkup(workspace) {
   let lastBiome = 0;
   const nodes = path.nodes.map((node, index) => {
     const biome = ROADMAP_BIOMES[node.biome] || ROADMAP_BIOMES[1];
-    const biomeHeading = node.biome !== lastBiome ? `<div class="path-biome-heading biome-${node.biome}"><span>${icon(biome.icon,18)}</span><div><small>BIOME ${node.biome}</small><b>${biome.name}</b><em>${biome.caption}</em></div></div>` : "";
+    const biomeHeading = node.biome !== lastBiome ? `<div class="path-biome-heading biome-${node.biome}"><span>${icon(biome.icon,20)}</span><div><small>PHASE ${node.biome}</small><b>${biome.name}</b><em>${biome.caption}</em></div></div>` : "";
     lastBiome = node.biome;
     const completeExercises = node.completedAssignmentIds.size;
     const exerciseCount = node.assignmentIds.length;
     const checkpoint = node.session_number % 7 === 0 ? `<div class="path-reward ${node.state === "complete" ? "earned" : ""}">${icon("trophy",16)}<span><b>Week ${node.week_number} checkpoint</b><small>${node.state === "complete" ? "+50 XP earned" : "Complete the week to reach this marker"}</small></span></div>` : "";
-    return `${biomeHeading}<div class="path-step ${index % 2 ? "right" : "left"}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${node.state}"><span class="path-node-core">${node.state === "complete" ? icon("check",22) : node.state === "locked" ? icon("lock",18) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · DAY ${node.session_in_week}</small><b>Session ${node.session_number}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Ready now" : node.state === "override" ? "Therapist unlocked" : "Complete the prior session"}</em><i>${completeExercises}/${exerciseCount} exercises</i></span></button>${checkpoint}</div>`;
+    const status = node.state === "complete" ? "Complete" : node.state === "current" ? "Start here" : node.state === "override" ? "Unlocked" : "Locked";
+    const statusIcon = node.state === "complete" ? icon("check",14) : node.state === "locked" ? icon("lock",13) : icon("play",13);
+    return `${biomeHeading}<div class="path-step ${index % 2 ? "right" : "left"}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${status}" ${node.state === "current" ? 'aria-current="step"' : ""}><span class="path-node-status">${statusIcon}${status}</span><span class="path-node-core">${node.state === "complete" ? icon("check",28) : node.state === "locked" ? icon("lock",22) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · SESSION ${node.session_in_week}</small><b>${escapeHtml(node.title || `Session ${node.session_number}`)}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Your next prescribed session" : node.state === "override" ? "Ready by therapist approval" : "Finish the session before this one"}</em><i>${completeExercises}/${exerciseCount} exercises complete</i></span></button>${checkpoint}</div>`;
   }).join("");
-  return `<section class="session-path-card" aria-label="Therapist-prescribed session roadmap"><div class="session-path-head"><div><span class="section-kicker">YOUR SESSION PATH</span><h2>${escapeHtml(workspace.plan?.title || "Treatment roadmap")}</h2><p>${escapeHtml(cadence)} · Each node opens only the exercises prescribed for that session.</p></div><div class="session-path-progress"><strong>${path.completed}<span>/${total}</span></strong><small>SESSIONS COMPLETE</small></div></div><div class="session-path-bar"><span style="width:${progress}%"></span></div><div class="session-path-legend"><span><i class="complete"></i>Done</span><span><i class="current"></i>Ready</span><span><i class="locked"></i>Locked</span><em>${progress}% complete</em></div><div class="session-path-scroll"><div class="session-path-line"></div>${nodes}<div class="path-summit ${path.completed === total ? "earned" : ""}">${icon("trophy",24)}<div><small>RETURN MILESTONE</small><b>${path.completed === total ? "Path complete" : `${total - path.completed} sessions remain`}</b></div></div></div><footer><span>${icon("shield",15)} Session order and cadence are controlled by ${escapeHtml(workspace.therapist?.display_name || "your physical therapist")}. Pain reporting never removes XP or a streak.</span><span class="roadmap-contact-boundary">In-app messaging is disabled. For plan questions, use your clinic’s approved communication method.</span></footer></section>`;
+  const trailProgress = Math.max(2, Math.min(98, progress));
+  return `<section class="session-path-card session-path-card--duo" aria-label="Therapist-prescribed session roadmap"><div class="session-path-head"><div><span class="section-kicker">YOUR RECOVERY ROADMAP</span><h2>${escapeHtml(workspace.plan?.title || "Your recovery journey")}</h2><p>Move up the path one prescribed session at a time. Tap the highlighted node to begin.</p></div><div class="session-path-progress"><strong>${path.completed}<span>/${total}</span></strong><small>SESSIONS COMPLETE</small></div></div><div class="session-path-overview"><div class="session-path-bar" aria-label="${progress}% roadmap complete"><span style="width:${progress}%"></span></div><div class="session-path-legend"><span><i class="complete"></i>Completed</span><span><i class="current"></i>Do this now</span><span><i class="locked"></i>Coming next</span><em>${escapeHtml(cadence)}</em></div></div><div class="session-path-scroll" data-session-path-scroll tabindex="0" aria-label="Scrollable recovery session path"><svg class="session-path-trail" data-session-path-trail aria-hidden="true"><defs><linearGradient id="roadmap-trail-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6fe9b2"/><stop offset="${trailProgress}%" stop-color="#6fe9b2"/><stop offset="${trailProgress}%" stop-color="#32473f"/><stop offset="100%" stop-color="#263830"/></linearGradient></defs><path data-session-path-line fill="none" stroke="url(#roadmap-trail-gradient)" stroke-width="6" stroke-linecap="round" stroke-dasharray="4 13"/></svg>${nodes}<div class="path-summit ${path.completed === total ? "earned" : ""}">${icon("trophy",28)}<div><small>FINAL MILESTONE</small><b>${path.completed === total ? "Roadmap complete" : `${total - path.completed} sessions to the summit`}</b></div></div></div><footer><span>${icon("shield",15)} ${escapeHtml(workspace.therapist?.display_name || "Your physical therapist")} controls session order and progression. Reporting pain never removes XP or your streak.</span><span class="roadmap-contact-boundary">In-app messaging is disabled. For plan questions, use your clinic’s approved communication method.</span></footer></section>`;
+}
+
+function drawSessionPathTrail() {
+  const container = document.querySelector("[data-session-path-scroll]");
+  const svg = container?.querySelector("[data-session-path-trail]");
+  const trail = svg?.querySelector("[data-session-path-line]");
+  const cores = Array.from(container?.querySelectorAll(".path-node-core") || []);
+  if (!container || !svg || !trail || cores.length < 2) return;
+  const containerRect = container.getBoundingClientRect();
+  const width = container.scrollWidth;
+  const height = container.scrollHeight;
+  const points = cores.map((core) => {
+    const rect = core.getBoundingClientRect();
+    return {
+      x: rect.left - containerRect.left + container.scrollLeft + (rect.width / 2),
+      y: rect.top - containerRect.top + container.scrollTop + (rect.height / 2),
+    };
+  });
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const middleY = (previous.y + current.y) / 2;
+    d += ` C ${previous.x} ${middleY}, ${current.x} ${middleY}, ${current.x} ${current.y}`;
+  }
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.style.width = `${width}px`;
+  svg.style.height = `${height}px`;
+  trail.setAttribute("d", d);
+  if (!container.dataset.roadmapAutofocused) {
+    const currentStep = container.querySelector(".path-node.current, .path-node.override")?.closest(".path-step");
+    if (currentStep) container.scrollTop = Math.max(0, currentStep.offsetTop - (container.clientHeight * .15));
+    container.dataset.roadmapAutofocused = "true";
+  }
 }
 
 function currentRoadmapSessionMarkup(workspace) {
@@ -695,13 +740,7 @@ function patientView() {
   const profile = workspace.profile || {};
   const sessions = workspace.sessions || [];
   const assignments = workspace.assignments || [];
-  const roadmap = workspace.roadmap?.length ? workspace.roadmap : [{ stage_number: 1, title: "Getting started", status: "current" }];
   const completedRoadmapSessions = workspace.roadmapCompletions || [];
-  const journey = roadmapPresentation(roadmap, completedRoadmapSessions.length);
-  const progress = journey.progress;
-  const activeStage = journey.stages[journey.activeIndex] || journey.stages[0];
-  const nextStage = journey.stages[journey.activeIndex + 1];
-  const sessionsToReview = nextStage ? Math.max(0, Number(nextStage.unlock_after_sessions || 0) - completedRoadmapSessions.length) : 0;
   const weekStart = new Date();
   weekStart.setHours(0, 0, 0, 0);
   weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
@@ -715,19 +754,15 @@ function patientView() {
       <section class="care-team-pill">${icon("shield", 17)}<div><small>VERIFIED CARE TEAM</small><b>${escapeHtml(therapistName)}</b></div><span>Connected</span></section>
       ${currentRoadmapSessionMarkup(workspace)}
       ${sessionPathMarkup(workspace)}
-      <section class="patient-grid"><article class="recovery-map-card recovery-map-card--v2">
-        <div class="roadmap-heading"><div><span class="section-kicker">YOUR TREATMENT ROADMAP</span><h2>${escapeHtml(workspace.plan?.title || "Personal recovery roadmap")}</h2><p>A therapist-guided path from first movement to confident return.</p></div><div class="roadmap-score"><strong>${progress}%</strong><span>journey progress</span></div></div>
-        <div class="roadmap-progress" aria-label="${progress}% roadmap progress"><span style="width:${progress}%"></span></div>
-        <div class="biome-strip" aria-label="Three recovery zones"><span class="foundation"><i>01</i><b>Foundation</b><small>Move with control</small></span><span class="rebuild"><i>02</i><b>Rebuild</b><small>Restore capacity</small></span><span class="return"><i>03</i><b>Return</b><small>Move with confidence</small></span></div>
-        <div class="recovery-journey" aria-label="Patient-specific roadmap milestones"><div class="journey-rail"><span style="width:${progress}%"></span></div>${journey.stages.map((stage, index) => `<article class="journey-stage ${stage.state} biome-${stage.tone}" style="--stage-progress:${stage.stageProgress}%"><div class="journey-marker"><span>${stage.state === "complete" ? icon("check",16) : stage.state === "locked" ? icon("lock",15) : String(stage.stage_number).padStart(2,"0")}</span><i></i></div><div class="journey-stage-card"><div><small>${escapeHtml(stage.name)} · MILESTONE ${String(index + 1).padStart(2,"0")}</small><em>${stage.state === "complete" ? "COMPLETE" : stage.state === "current" ? "IN PROGRESS" : "LOCKED"}</em></div><h3>${escapeHtml(stage.title)}</h3><p>${escapeHtml(stage.detail || stage.caption)}</p>${stage.state === "current" ? `<div class="stage-mini-progress"><span style="width:${stage.stageProgress}%"></span></div><b>${stage.stageSessions}/${stage.stageGoal} sessions toward review</b>` : stage.state === "locked" ? `<b>${Number(stage.unlock_after_sessions || 0)} sessions + therapist approval</b>` : `<b>${icon("check",12)} Milestone achieved</b>`}</div></article>`).join("")}</div>
-        <div class="roadmap-focus"><span class="focus-icon">${icon("activity",19)}</span><div><small>CURRENT FOCUS</small><h3>${escapeHtml(activeStage?.title || "Your next milestone")}</h3><p>${escapeHtml(activeStage?.detail || "Complete your prescribed movements with control.")}</p></div><div class="focus-action"><small>${nextStage ? `${sessionsToReview} SESSION${sessionsToReview === 1 ? "" : "S"} TO REVIEW` : "FINAL MILESTONE"}</small><button class="roadmap-open-button" data-open-roadmap>${roadmapExpanded ? "Hide exercises" : `View ${assignments.length} prescribed exercise${assignments.length === 1 ? "" : "s"}`} ${icon(roadmapExpanded ? "back" : "arrow",16)}</button></div></div>
-        <div class="roadmap-governance">${icon("shield",15)} <span><b>Clinician controlled</b> · ${escapeHtml(therapistName)} reviews milestones and unlocks progression.</span><strong id="roadmap-live-state">Updated live</strong></div>
-      </article><aside class="patient-side-stack"><article class="daily-goal-card"><div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32" style="stroke-dashoffset:${Math.round(201 * (1 - weeklyProgress))}"/></svg><b>${Math.min(weeklySessions,weeklyGoal)}/${weeklyGoal}</b></div><div><span class="section-kicker">THERAPIST-PRESCRIBED WEEK</span><h3>${weeklySessions >= weeklyGoal ? "Weekly plan complete." : `${weeklyGoal - weeklySessions} session${weeklyGoal - weeklySessions === 1 ? "" : "s"} remaining.`}</h3><p>Only fully completed roadmap nodes count as sessions.</p></div></article><article class="reward-card"><span>${icon("activity",24)}</span><div><small>MY MOVEMENT SCIENCE LAB</small><h3>Calibrated per session</h3><p>Your assignment, camera landmarks, and movement summary stay tied to your patient ID.</p></div></article></aside></section>
+      <section class="roadmap-support-grid"><article class="daily-goal-card"><div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32" style="stroke-dashoffset:${Math.round(201 * (1 - weeklyProgress))}"/></svg><b>${Math.min(weeklySessions,weeklyGoal)}/${weeklyGoal}</b></div><div><span class="section-kicker">THIS WEEK</span><h3>${weeklySessions >= weeklyGoal ? "Weekly goal complete!" : `${weeklyGoal - weeklySessions} session${weeklyGoal - weeklySessions === 1 ? "" : "s"} to your weekly goal.`}</h3><p>Only fully completed roadmap nodes count as sessions.</p></div></article><article class="reward-card"><span>${icon("activity",24)}</span><div><small>YOUR MOVEMENT LAB</small><h3>Every node opens the right exercises</h3><p>Tap your highlighted roadmap node to see and start only that session’s prescribed movements.</p></div></article></section>
       <section id="patient-exercises" class="today-plan ${roadmapExpanded ? "expanded" : "collapsed"}"><div class="section-heading compact"><div><span class="section-kicker">YOUR PRESCRIPTION</span><h2>${assignments.length} exercise${assignments.length === 1 ? "" : "s"} from your therapist.</h2></div><p>Prescribed by ${escapeHtml(therapistName)}</p></div><div class="exercise-list">${assignments.length ? assignments.map((assignment, index) => patientExerciseCard(assignment, index, sessions)).join("") : `<div class="empty-state"><span>${icon("map",24)}</span><h3>Your prescription is being prepared</h3><p>${escapeHtml(therapistName)} has not added an active exercise yet.</p></div>`}</div></section>
     </main>
   `, { full: true });
   bindEvents();
-  requestAnimationFrame(() => updateSyntheticTwin(0.25));
+  requestAnimationFrame(() => {
+    updateSyntheticTwin(0.25);
+    drawSessionPathTrail();
+  });
 }
 
 function labView() {
@@ -1565,9 +1600,9 @@ async function submitPatientReport(event) {
   button.disabled = true;
   status.textContent = "Saving securely…";
   try {
-    const input = { patientId: currentSession.user.id, assignmentId, clientSessionId: crypto.randomUUID(), exerciseKey: assignment.exercise_key, eventType, painScore, comment, setNumber: null, repNumber: null };
+    const input = { patientId: currentSession.user.id, assignmentId, clientSessionId: createUuid(), exerciseKey: assignment.exercise_key, eventType, painScore, comment, setNumber: null, repNumber: null };
     const saved = currentSession.demo ? {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       patient_id: input.patientId,
       assignment_id: input.assignmentId,
       client_session_id: input.clientSessionId,
@@ -1718,7 +1753,7 @@ async function initializeLab() {
   if (!video || !canvas) return;
   tracker?.stop?.();
   sessionStartedAt = Date.now();
-  sessionClientId = crypto.randomUUID();
+  sessionClientId = createUuid();
   sessionSafetyEvents = [];
   updateSyntheticTwin(0);
   const activeProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
@@ -2022,7 +2057,7 @@ function resetLab() {
   sessionSafetyEvents = [];
   movementGameController?.consume({ type: MOVEMENT_EVENT.RESET });
   sessionStartedAt = Date.now();
-  sessionClientId = crypto.randomUUID();
+  sessionClientId = createUuid();
   document.querySelector("#calibration-overlay")?.classList.remove("complete");
   document.querySelector(".camera-placeholder")?.classList.remove("demo-active");
   updateCalibration(0, "Stand naturally with your full body in view.");
@@ -2094,7 +2129,7 @@ function showSafetyEventModal() {
       const isRealPatientSession = Boolean(currentSession?.user && !currentSession.demo);
       const saved = isRealPatientSession
         ? await recordPatientSafetyEvent(supabase, safetyEvent)
-        : { ...safetyEvent, id: crypto.randomUUID(), occurred_at: new Date().toISOString() };
+        : { ...safetyEvent, id: createUuid(), occurred_at: new Date().toISOString() };
       sessionSafetyEvents.push(saved);
       setText("#safety-save-state", isRealPatientSession ? "Saved privately and shared with your connected therapist." : "Saved in this synthetic demo only.");
       button.textContent = "Saved";
@@ -2150,7 +2185,7 @@ async function saveSessionSummary(reps, feedback = {}) {
     .from("exercise_sessions")
     .insert({
       patient_id: currentSession.user.id,
-      client_session_id: sessionClientId || crypto.randomUUID(),
+      client_session_id: sessionClientId || createUuid(),
       assignment_id: currentAssignment?.id?.startsWith?.("demo-") ? null : (currentAssignment?.id || null),
       roadmap_node_id: currentRoadmapNode?.id?.startsWith?.("demo-") ? null : (currentRoadmapNode?.id || null),
       exercise_key: currentAssignment?.exercise_key || "bodyweight_squat",
@@ -2343,7 +2378,7 @@ function showTherapistNoteModal() {
     message.textContent = "Saving note…";
     try {
       if (currentSession?.demo) {
-        therapistNotes.unshift({ id: crypto.randomUUID(), patient_id: patient.id || "demo", session_id: latest?.id || null, note, created_at: new Date().toISOString() });
+        therapistNotes.unshift({ id: createUuid(), patient_id: patient.id || "demo", session_id: latest?.id || null, note, created_at: new Date().toISOString() });
       } else {
         const saved = await createTherapistNote(supabase, currentSession.user.id, patient.id, latest?.id || null, note);
         therapistNotes.unshift(saved);
@@ -2769,6 +2804,7 @@ document.addEventListener("keydown", (event) => {
 ["pointerdown", "touchstart"].forEach((eventName) => document.addEventListener(eventName, armAuthIdleTimeout, { passive: true }));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") armAuthIdleTimeout(); });
 window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); });
+window.addEventListener("resize", () => requestAnimationFrame(drawSessionPathTrail));
 
 async function bootstrap() {
   if (supabase) {

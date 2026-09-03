@@ -140,3 +140,254 @@
 @media(max-width:900px){.patient-nav{grid-template-columns:repeat(5,1fr)}.patient-nav button{display:grid;justify-items:center;gap:.2rem}.patient-nav button span{display:block;font-size:.48rem}.patient-profile-page,.patient-report-page{padding-bottom:7.5rem}}
 @media(max-width:680px){.profile-hero-card{grid-template-columns:1fr;justify-items:center;text-align:center;padding:1.1rem}.profile-hero-stats{grid-template-columns:repeat(3,1fr)}.profile-hero-copy>small{text-align:left}.avatar-choice-grid,.achievement-grid{grid-template-columns:1fr}.profile-settings-link{grid-template-columns:auto 1fr}.profile-settings-link .button{grid-column:1/-1;width:100%}.patient-report-hero{align-items:flex-start;padding:1.1rem}.patient-report-hero>span{display:none}.patient-report-types{grid-template-columns:1fr}.patient-checkin-card{padding:.9rem}.patient-nav{left:6px;right:6px;bottom:6px}.patient-nav button{padding:.48rem .15rem}.patient-nav button span{font-size:.41rem}.patient-nav svg{width:16px;height:16px}}
 .avatar-button.avatar-summit{background:linear-gradient(135deg,#7d5729,#2a1c10)}.avatar-button.avatar-orbit{background:linear-gradient(135deg,#5443a2,#211a46)}.avatar-button.avatar-trail{background:linear-gradient(135deg,#275979,#102331)}
+
+/* Duolingo-inspired recovery roadmap: one clear winding path, large touch
+   targets, and unmistakable completed/current/locked states. */
+.session-path-card--duo{
+  margin:1rem 0;
+  padding:0;
+  border-color:#29483d;
+  border-radius:24px;
+  background:linear-gradient(180deg,#0d1c18 0%,#081411 100%);
+  box-shadow:0 24px 70px rgba(0,0,0,.24);
+}
+.session-path-card--duo .session-path-head{
+  padding:1.5rem 1.5rem .85rem;
+  align-items:center;
+}
+.session-path-card--duo .session-path-head h2{
+  margin:.35rem 0 .28rem;
+  font-size:clamp(1.7rem,3vw,2.65rem);
+  letter-spacing:-.045em;
+}
+.session-path-card--duo .session-path-head p{
+  max-width:650px;
+  color:#9aada6;
+  font-size:.75rem;
+  line-height:1.55;
+}
+.session-path-card--duo .session-path-progress{
+  min-width:130px;
+  padding:.8rem 1rem;
+  border:1px solid rgba(110,240,177,.17);
+  border-radius:15px;
+  background:rgba(110,240,177,.05);
+}
+.session-path-card--duo .session-path-progress strong{font-size:2.15rem}
+.session-path-overview{padding:0 1.5rem .95rem}
+.session-path-card--duo .session-path-bar{height:9px;margin:.35rem 0 .8rem;background:#172923}
+.session-path-card--duo .session-path-legend{margin:0;font-size:.65rem}
+.session-path-card--duo .session-path-legend i{width:10px;height:10px}
+.session-path-card--duo .session-path-legend em{font-size:.62rem}
+.session-path-card--duo .session-path-scroll{
+  position:relative;
+  max-height:780px;
+  margin:0;
+  padding:2.2rem 1.5rem 4rem;
+  overflow:auto;
+  overscroll-behavior:contain;
+  border-top:1px solid rgba(255,255,255,.055);
+  border-bottom:1px solid rgba(255,255,255,.055);
+  background:
+    radial-gradient(circle at 18% 12%,rgba(110,240,177,.08),transparent 25%),
+    radial-gradient(circle at 82% 52%,rgba(156,140,255,.075),transparent 25%),
+    linear-gradient(rgba(110,240,177,.018) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(110,240,177,.018) 1px,transparent 1px),
+    #07110f;
+  background-size:auto,auto,32px 32px,32px 32px,auto;
+  scrollbar-color:#3c6656 transparent;
+}
+.session-path-trail{
+  position:absolute;
+  inset:0 auto auto 0;
+  z-index:0;
+  pointer-events:none;
+  filter:drop-shadow(0 0 7px rgba(110,240,177,.15));
+}
+.session-path-card--duo .path-biome-heading{
+  position:relative;
+  z-index:3;
+  width:min(430px,90%);
+  min-height:64px;
+  margin:1.4rem auto 2rem;
+  padding:.7rem .9rem;
+  border-radius:16px;
+  background:linear-gradient(115deg,#123126,#0d1d18);
+  box-shadow:0 10px 28px rgba(0,0,0,.2);
+}
+.session-path-card--duo .path-biome-heading:first-of-type{margin-top:0}
+.session-path-card--duo .path-biome-heading>span{width:40px;height:40px}
+.session-path-card--duo .path-biome-heading small{font-size:.6rem;letter-spacing:.1em}
+.session-path-card--duo .path-biome-heading b{font-size:.9rem}
+.session-path-card--duo .path-biome-heading em{font-size:.65rem}
+.session-path-card--duo .path-step,
+.session-path-card--duo .path-step.right{
+  position:relative;
+  z-index:2;
+  width:100%;
+  min-height:185px;
+  margin:0;
+  padding:0;
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+}
+.session-path-card--duo .path-node{
+  position:relative;
+  width:240px;
+  padding:0;
+  display:grid;
+  justify-items:center;
+  gap:0;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  color:#d8e6e1;
+  text-align:center;
+  transform:translateX(-118px);
+  transition:transform .18s ease,filter .18s ease;
+}
+.session-path-card--duo .path-step.right .path-node{transform:translateX(118px)}
+.session-path-card--duo .path-step.left .path-node:hover{transform:translate(-118px,-4px)}
+.session-path-card--duo .path-step.right .path-node:hover{transform:translate(118px,-4px)}
+.session-path-card--duo .path-node:focus-visible{outline:3px solid #d6fff0;outline-offset:8px;border-radius:18px}
+.path-node-status{
+  min-height:25px;
+  display:flex;
+  align-items:center;
+  gap:.3rem;
+  margin-bottom:.42rem;
+  padding:.3rem .55rem;
+  border:1px solid #34483f;
+  border-radius:999px;
+  background:#0b1814;
+  color:#7f938b;
+  font:700 .58rem Manrope,sans-serif;
+  letter-spacing:.03em;
+  text-transform:uppercase;
+}
+.session-path-card--duo .path-node-core{
+  width:72px;
+  height:66px;
+  border:3px solid #40544c;
+  border-radius:50%;
+  background:#25352f;
+  color:#71857d;
+  font:800 1rem Manrope,sans-serif;
+  box-shadow:0 8px 0 #17241f,0 13px 24px rgba(0,0,0,.28);
+}
+.session-path-card--duo .path-node-copy{
+  width:100%;
+  margin-top:.9rem;
+  padding:.72rem .8rem;
+  border:1px solid #2c4038;
+  border-radius:13px;
+  background:rgba(10,23,19,.95);
+  box-shadow:0 10px 25px rgba(0,0,0,.2);
+}
+.session-path-card--duo .path-node-copy small{color:#7d9189;font-size:.57rem;letter-spacing:.07em}
+.session-path-card--duo .path-node-copy b{margin:.25rem 0;color:#dce9e4;font-size:.82rem;line-height:1.25}
+.session-path-card--duo .path-node-copy em{color:#9badA6;font-size:.63rem;line-height:1.35}
+.session-path-card--duo .path-node-copy i{margin-top:.34rem;color:#71857d;font-size:.57rem}
+.session-path-card--duo .path-node.complete .path-node-core{
+  border-color:#8ff3c4;
+  background:#50c98f;
+  color:#082116;
+  box-shadow:0 8px 0 #277b56,0 13px 25px rgba(38,174,113,.22);
+}
+.session-path-card--duo .path-node.complete .path-node-status{
+  border-color:rgba(110,240,177,.3);
+  background:#102a20;
+  color:#84eab9;
+}
+.session-path-card--duo .path-node.complete .path-node-copy{border-color:rgba(110,240,177,.2)}
+.session-path-card--duo .path-node.current .path-node-core,
+.session-path-card--duo .path-node.override .path-node-core{
+  width:84px;
+  height:76px;
+  border-color:#c0b7ff;
+  background:linear-gradient(145deg,#9c8cff,#6d58df);
+  color:white;
+  box-shadow:0 9px 0 #46368f,0 0 0 8px rgba(156,140,255,.12),0 17px 32px rgba(89,68,196,.35);
+  animation:roadmap-ready-pulse 2.2s ease-in-out infinite;
+}
+.session-path-card--duo .path-node.current .path-node-status,
+.session-path-card--duo .path-node.override .path-node-status{
+  border-color:rgba(192,183,255,.45);
+  background:#29224d;
+  color:#dcd7ff;
+}
+.session-path-card--duo .path-node.current .path-node-copy,
+.session-path-card--duo .path-node.override .path-node-copy{
+  border-color:rgba(156,140,255,.48);
+  background:linear-gradient(145deg,#1b1734,#0c1a16);
+  box-shadow:0 0 0 4px rgba(156,140,255,.08),0 14px 32px rgba(0,0,0,.24);
+}
+.session-path-card--duo .path-node.locked{opacity:1}
+.session-path-card--duo .path-node.locked .path-node-copy{opacity:.62}
+.session-path-card--duo .path-node.locked:hover{filter:brightness(1.12)}
+.session-path-card--duo .path-reward{
+  position:absolute;
+  top:52px;
+  left:calc(50% + 210px);
+  width:170px;
+  margin:0;
+  padding:.55rem .65rem;
+  border-radius:10px;
+  background:#0d1713;
+}
+.session-path-card--duo .path-step.right .path-reward{right:calc(50% + 210px);left:auto}
+.session-path-card--duo .path-reward b{font-size:.6rem}
+.session-path-card--duo .path-reward small{font-size:.53rem;line-height:1.35}
+.session-path-card--duo .path-summit{
+  z-index:3;
+  margin:2rem auto 0;
+  padding:.9rem 1.15rem;
+  border-radius:15px;
+  box-shadow:0 12px 30px rgba(0,0,0,.24);
+}
+.session-path-card--duo .path-summit small{font-size:.55rem}
+.session-path-card--duo .path-summit b{font-size:.78rem}
+.session-path-card--duo>footer{padding:1rem 1.5rem 1.15rem;font-size:.62rem;line-height:1.45}
+.roadmap-support-grid{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-top:.9rem}
+.roadmap-support-grid .daily-goal-card,.roadmap-support-grid .reward-card{min-height:150px}
+@keyframes roadmap-ready-pulse{
+  0%,100%{filter:brightness(1);transform:translateY(0)}
+  50%{filter:brightness(1.12);transform:translateY(-3px)}
+}
+@media(prefers-reduced-motion:reduce){
+  .session-path-card--duo .path-node.current .path-node-core,
+  .session-path-card--duo .path-node.override .path-node-core{animation:none}
+}
+@media(max-width:900px){
+  .session-path-card--duo .path-node{transform:translateX(-82px)}
+  .session-path-card--duo .path-step.right .path-node{transform:translateX(82px)}
+  .session-path-card--duo .path-step.left .path-node:hover{transform:translate(-82px,-4px)}
+  .session-path-card--duo .path-step.right .path-node:hover{transform:translate(82px,-4px)}
+  .session-path-card--duo .path-reward{display:none}
+}
+@media(max-width:680px){
+  .session-path-card--duo{border-radius:18px}
+  .session-path-card--duo .session-path-head{padding:1.1rem;align-items:flex-start}
+  .session-path-card--duo .session-path-head p{display:block;font-size:.68rem}
+  .session-path-card--duo .session-path-progress{min-width:0;padding:.65rem .75rem;text-align:left}
+  .session-path-card--duo .session-path-progress strong{font-size:1.55rem}
+  .session-path-overview{padding:0 1.1rem .9rem}
+  .session-path-card--duo .session-path-legend{display:grid;grid-template-columns:repeat(3,auto);gap:.5rem}
+  .session-path-card--duo .session-path-legend em{grid-column:1/-1;margin-left:0}
+  .session-path-card--duo .session-path-scroll{max-height:690px;padding:1.5rem .5rem 3rem}
+  .session-path-card--duo .path-step,.session-path-card--duo .path-step.right{min-height:177px;padding:0}
+  .session-path-card--duo .path-node{width:205px;transform:translateX(-48px)}
+  .session-path-card--duo .path-step.right .path-node{transform:translateX(48px)}
+  .session-path-card--duo .path-step.left .path-node:hover{transform:translate(-48px,-3px)}
+  .session-path-card--duo .path-step.right .path-node:hover{transform:translate(48px,-3px)}
+  .session-path-card--duo .path-node-copy{padding:.65rem}
+  .session-path-card--duo .path-biome-heading{width:calc(100% - 1rem);margin-bottom:1.5rem}
+  .roadmap-support-grid{grid-template-columns:1fr}
+}
+@media(max-width:410px){
+  .session-path-card--duo .path-node{width:190px;transform:translateX(-34px)}
+  .session-path-card--duo .path-step.right .path-node{transform:translateX(34px)}
+  .session-path-card--duo .path-step.left .path-node:hover{transform:translate(-34px,-3px)}
+  .session-path-card--duo .path-step.right .path-node:hover{transform:translate(34px,-3px)}
+}
