@@ -744,3 +744,51 @@
   .plan-builder-card--v2 .prescription-filters{grid-template-columns:1fr}
   .prescription-area-filter{padding:.7rem}
 }
+
+/* Therapist assignment filters and the first movement-controlled story mission. */
+.plan-builder-card--v2 .prescription-filters{grid-template-columns:minmax(230px,1.5fr) repeat(3,minmax(145px,1fr))}
+.prescription-filters select{width:100%}
+.prescription-selected-tray{min-height:54px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.7rem;padding:.65rem .75rem;border:1px solid rgba(110,240,177,.2);border-radius:9px;background:rgba(110,240,177,.035)}
+.prescription-selected-tray>span{color:var(--mint);font:700 .52rem "DM Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+.prescription-selected-tray>div{display:flex;gap:.35rem;overflow-x:auto;scrollbar-width:thin}
+.prescription-selected-tray button{display:flex;align-items:center;gap:.35rem;flex:none;padding:.38rem .5rem;border:1px solid var(--line-strong);border-radius:999px;background:#0b1714;color:#c8d7d1;font-size:.55rem}
+.prescription-selected-tray button small{color:#9c8aff;font-size:.48rem}.prescription-selected-tray>em,.prescription-selected-tray>p{margin:0;color:#71857d;font-size:.5rem;font-style:normal;white-space:nowrap}
+.prescription-row{grid-template-columns:auto minmax(0,1fr) 78px 96px 130px}
+.prescription-mode-control select{min-height:36px;padding:.45rem;border:1px solid rgba(139,114,255,.3);border-radius:6px;background:#101824;color:#d8d1ff;font-size:.54rem}
+.prescription-mode-control em{min-height:36px;display:flex;align-items:center;color:#71847d;font-size:.52rem;font-style:normal}
+.prescription-empty{grid-column:1/-1;min-height:230px;display:grid;place-items:center;align-content:center;gap:.55rem;padding:1.5rem;border:1px dashed var(--line-strong);border-radius:10px;text-align:center}
+.prescription-empty>span{color:#8a7bde}.prescription-empty b{font-size:.85rem}.prescription-empty p{max-width:460px;margin:0;font-size:.62rem}
+.path-plan-summary>em{color:#b5a9ff;font-size:.58rem;font-style:normal;text-align:right}
+
+.movement-game-card{margin-top:.85rem;border:1px solid rgba(241,201,123,.26);border-radius:14px;overflow:hidden;background:#0b1210;box-shadow:0 18px 60px rgba(0,0,0,.22)}
+.movement-game-heading{display:grid;grid-template-columns:1fr auto;align-items:center;gap:1rem;padding:.9rem 1rem;background:linear-gradient(100deg,rgba(241,201,123,.08),rgba(110,240,177,.03))}
+.movement-game-heading h3{margin:.18rem 0;font-size:1rem}.movement-game-heading p{max-width:650px;margin:0;color:#9aaca5;font-size:.65rem}
+.game-kicker{color:#efc779;font:700 .52rem "DM Mono",monospace;letter-spacing:.1em}
+.movement-game-card .movement-game-stage{display:none;padding:0;border:0;border-radius:0;background:#07100e}
+.movement-game-card .movement-game-stage.active{display:block}
+.game-story-bar{min-height:58px;display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.65rem 1rem;border-block:1px solid rgba(255,255,255,.06)}
+.game-story-bar>div{display:grid;gap:.18rem}.game-story-bar small{color:#efc779;font:700 .48rem "DM Mono",monospace;letter-spacing:.1em}.game-story-bar b{font-size:.65rem}.game-story-bar>span{padding:.3rem .45rem;border:1px solid rgba(241,201,123,.22);border-radius:999px;color:#dcc18d;font-size:.5rem;white-space:nowrap}
+.ruins-game{height:310px;position:relative;overflow:hidden;background:radial-gradient(circle at 82% 38%,rgba(249,202,119,.2),transparent 7rem),linear-gradient(180deg,#17243a 0%,#14262b 45%,#101b17 100%)}
+.ruins-depth{position:absolute;inset:0;pointer-events:none}.ruins-depth--far{opacity:.35;background:linear-gradient(90deg,transparent 8%,#0a1117 8% 13%,transparent 13% 28%,#11171a 28% 34%,transparent 34% 62%,#0c1415 62% 70%,transparent 70%)}
+.ruins-depth--near{opacity:.55;background:linear-gradient(0deg,rgba(5,10,8,.72),transparent 40%),repeating-linear-gradient(90deg,transparent 0 17%,rgba(0,0,0,.16) 17% 18%)}
+.game-ground{position:absolute;left:0;right:0;bottom:8%;height:13%;border-top:2px solid rgba(241,201,123,.24);background:linear-gradient(#17251f,#0b120f)}
+.game-runner{position:absolute;z-index:6;left:20%;top:18%;width:46px;height:46px;display:grid;place-items:center;border:2px solid #fff1bc;border-radius:14px 14px 18px 18px;background:linear-gradient(145deg,#f2cb75,#bf7a38);color:#281b0b;box-shadow:0 0 0 5px rgba(241,201,123,.1),0 12px 22px rgba(0,0,0,.35);transform:translate(-50%,-50%);transition:top .08s linear}
+.game-runner>i{position:absolute;left:50%;top:42px;width:2px;height:34px;background:linear-gradient(rgba(241,201,123,.7),transparent)}
+.ruins-obstacle{position:absolute;z-index:5;left:108%;top:0;width:74px;height:100%;filter:drop-shadow(-10px 8px 10px rgba(0,0,0,.28))}
+.ruins-obstacle>span{position:absolute;left:0;width:74px;border:1px solid rgba(255,221,157,.25);background:linear-gradient(135deg,#5f5648,#2c302b 55%,#1d2420)}
+.ruins-obstacle>span:first-child{top:0;height:46%}.ruins-obstacle>span:nth-child(2){bottom:0;height:16%}.ruins-obstacle>i{position:absolute;left:10px;right:10px;top:48%;height:2px;background:#f1c97b;box-shadow:0 0 14px #f1c97b}
+.ruins-obstacle[data-pattern="1"]>span:first-child{height:43%}.ruins-obstacle[data-pattern="2"]>span:first-child{height:49%}
+.game-collectible{position:absolute;z-index:4;left:116%;top:67%;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:#82edba;color:#092117;box-shadow:0 0 18px rgba(110,240,177,.6)}
+.ruins-checkpoint{position:absolute;z-index:2;right:5%;bottom:21%;display:grid;place-items:center}.ruins-checkpoint>span{width:68px;height:108px;border:3px solid rgba(241,201,123,.28);border-bottom:0;border-radius:40px 40px 0 0}.ruins-checkpoint small{color:#efd69e;font:.48rem "DM Mono",monospace;letter-spacing:.12em}
+.game-feedback{position:absolute;z-index:10;left:50%;bottom:12%;transform:translateX(-50%);padding:.38rem .58rem;border:1px solid rgba(255,255,255,.16);border-radius:999px;background:rgba(4,11,9,.8);color:#d3dfda;font-size:.54rem;white-space:nowrap;backdrop-filter:blur(8px)}
+.movement-game-stage.collision .game-feedback{border-color:#d87b60;color:#ffd0c2}.movement-game-stage.collision .game-runner{animation:game-bump .35s ease}
+.game-completion{position:absolute;z-index:12;inset:0;display:flex;align-items:center;justify-content:center;gap:1rem;padding:2rem;background:rgba(5,13,10,.91);backdrop-filter:blur(8px)}
+.game-completion>span{width:58px;height:58px;display:grid;place-items:center;border-radius:50%;background:#f1c97b;color:#241807;box-shadow:0 0 30px rgba(241,201,123,.35)}.game-completion>div{display:grid}.game-completion small{color:#f1c97b;font:.52rem "DM Mono",monospace;letter-spacing:.12em}.game-completion b{margin:.3rem 0;font-size:1.05rem}.game-completion p{margin:0;font-size:.62rem}
+.game-hud{display:grid;grid-template-columns:repeat(4,minmax(74px,1fr)) minmax(180px,1.5fr) auto;align-items:center;border-top:1px solid rgba(255,255,255,.06)}
+.game-hud>div{min-height:62px;display:grid;align-content:center;gap:.2rem;padding:.6rem .75rem;border-right:1px solid rgba(255,255,255,.06)}.game-hud small{color:#70847c;font:.46rem "DM Mono",monospace;letter-spacing:.08em}.game-hud b{font-size:.75rem}.game-hud>button{margin:.55rem .7rem;padding:.5rem .65rem;border:1px solid var(--line-strong);border-radius:7px;background:#111d19;color:#c3d2cc;font-size:.55rem}
+.game-quality b{color:var(--mint)}.game-mission-progress{display:grid;grid-template-columns:1fr auto;align-items:center;gap:.8rem;padding:.65rem .85rem;border-top:1px solid rgba(255,255,255,.06)}.game-mission-progress>span{height:7px;overflow:hidden;border-radius:999px;background:#16231e}.game-mission-progress i{display:block;width:0;height:100%;background:linear-gradient(90deg,#6ef0b1,#f1c97b);transition:width .25s ease}.game-mission-progress small{color:#7f938b;font-size:.5rem}
+.movement-game-stage.paused .ruins-game:after{content:"MISSION PAUSED";position:absolute;z-index:20;inset:0;display:grid;place-items:center;background:rgba(5,11,9,.72);color:#fff0c7;font:700 .72rem "DM Mono",monospace;letter-spacing:.12em}
+@keyframes game-bump{0%,100%{transform:translate(-50%,-50%)}40%{transform:translate(calc(-50% - 10px),-50%) rotate(-8deg)}}
+@media(prefers-reduced-motion:reduce){.game-runner,.game-mission-progress i{transition:none}.movement-game-stage.collision .game-runner{animation:none}}
+@media(max-width:1050px){.plan-builder-card--v2 .prescription-filters{grid-template-columns:repeat(2,1fr)}.prescription-row{grid-template-columns:auto minmax(0,1fr) 78px 96px}.prescription-mode-control{grid-column:2/-1}.game-hud{grid-template-columns:repeat(3,1fr)}.game-hud>button{min-height:42px}.prescription-selected-tray{grid-template-columns:auto 1fr}.prescription-selected-tray>em{grid-column:2}}
+@media(max-width:680px){.plan-builder-card--v2 .prescription-filters{grid-template-columns:1fr}.prescription-selected-tray{grid-template-columns:1fr}.prescription-selected-tray>em{grid-column:auto}.prescription-row{grid-template-columns:auto 1fr}.prescription-mode-control{grid-column:2}.movement-game-heading{grid-template-columns:1fr}.ruins-game{height:280px}.game-hud{grid-template-columns:repeat(2,1fr)}.game-hud .game-quality{grid-column:1/-1}.game-mission-progress{grid-template-columns:1fr}.game-story-bar{align-items:flex-start}.game-feedback{max-width:90%;white-space:normal;text-align:center}}
