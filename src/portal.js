@@ -18,6 +18,7 @@ export function assignmentDetails(assignment = {}) {
     ...assignment,
     display_name: assignment.display_name || catalog.name || "Assigned exercise",
     tracking_mode: assignment.tracking_mode || catalog.trackingMode || "guided_reps",
+    exercise_mode: assignment.exercise_mode === "movement_game" ? "movement_game" : "standard",
     focus: catalog.focus || ["Range", "Rhythm", "Control"],
     joint: catalog.joint || "knee",
     region: catalog.region || "General",
@@ -68,7 +69,7 @@ export async function loadPatientWorkspace(client, userId) {
     plan = planResult.data;
     if (plan) {
       const [assignmentResult, roadmapResult, nodeResult, nodeAssignmentResult, completionResult] = await Promise.all([
-        client.from("exercise_assignments").select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, target_sets, target_repetitions, duration_seconds, instructions, status").eq("plan_id", plan.id).eq("status", "active").order("sequence"),
+        client.from("exercise_assignments").select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, target_sets, target_repetitions, duration_seconds, instructions, status").eq("plan_id", plan.id).eq("status", "active").order("sequence"),
         client.from("roadmap_stages").select("id, plan_id, stage_number, title, detail, status, unlock_after_sessions").eq("plan_id", plan.id).order("stage_number"),
         client.from("roadmap_nodes").select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at").eq("plan_id", plan.id).order("session_number"),
         client.from("roadmap_node_assignments").select("roadmap_node_id, assignment_id, sequence").order("sequence"),
@@ -168,7 +169,7 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
   const assignments = planIds.length
     ? await throwIfError(
       await client.from("exercise_assignments")
-        .select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, target_sets, target_repetitions, duration_seconds, instructions, status")
+        .select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, target_sets, target_repetitions, duration_seconds, instructions, status")
         .in("plan_id", planIds)
         .order("sequence"),
       "Could not load roadmap exercises"
@@ -339,12 +340,13 @@ export async function createPersonalPlan(client, therapistId, patientId, input) 
       sets: Number(item.sets) || catalog.defaultSets,
       repetitions: Number(item.repetitions) || catalog.defaultReps,
       duration_seconds: catalog.trackingMode === "timed_hold" ? (Number(item.durationSeconds) || catalog.defaultDuration || 30) : null,
+      exercise_mode: item.exerciseMode === "movement_game" && item.exerciseKey === "bodyweight_squat" ? "movement_game" : "standard",
     };
   });
   if (!exercises.length) throw new Error("Choose at least one supported exercise.");
   if (exercises.length > 12) throw new Error("Choose no more than 12 exercises for one roadmap.");
   return throwIfError(
-    await client.rpc("publish_patient_plan_v3", {
+    await client.rpc("publish_patient_plan_v4", {
       p_patient_id: patientId,
       p_title: input.title.trim() || "Personal recovery roadmap",
       p_program_label: input.programLabel.trim() || "Personal recovery plan",

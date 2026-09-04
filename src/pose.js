@@ -550,9 +550,26 @@ export async function createMovementTracker({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
+  function pause() {
+    if (!running) return;
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    repCycle.cancelPending();
+    pauseMeasurement("Session paused. Your completed repetitions are preserved.");
+  }
+
+  function resume() {
+    if (running || !stream?.active) return;
+    running = true;
+    lastVideoTime = -1;
+    frame();
+  }
+
   return {
     start,
     stop,
+    pause,
+    resume,
     reset,
     getReps: () => reps,
     getMetrics: () => ({
