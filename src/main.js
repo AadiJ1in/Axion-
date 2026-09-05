@@ -2,6 +2,8 @@ import { isConfigured, supabase } from "./supabase.js";
 import { createMovementTracker } from "./pose.js";
 import { getMovementProfile } from "./movement-profiles.js";
 import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "./movement-game.js";
+import { adventureMarkup } from "./adventure-ui.js";
+import { motionInput, doseProgress, sessionCompletesDose } from "./adventure-definitions.js";
 import { matchesPrescriptionFilters } from "./prescription-filters.js";
 
 const FLEXION_ARC_SIGNALS = new Set(["knee_bend", "hip_flexion", "elbow_flexion", "torso_flexion"]);
@@ -137,6 +139,9 @@ let sessionClientId = null;
 let sessionSafetyEvents = [];
 let movementGameController = null;
 let movementGameAnimation = null;
+let gameTrackingReady = false;
+let adventureScene = null;
+let simulationSession = false;
 let setRestTimer = null;
 let setRestEndsAt = null;
 const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
@@ -404,7 +409,7 @@ function renderLoadedPatientWorkspace() {
 }
 
 async function refreshPatientWorkspaceFromRealtime() {
-  const patientViews = new Set(["patient", "patient-profile", "patient-report"]);
+  const patientViews = new Set(["patient", "patient-profile", "patient-report", "awaiting-plan"]);
   if (!patientViews.has(currentView) || !currentSession?.user || currentSession.demo) return;
   const viewToRefresh = currentView;
   try {
@@ -671,11 +676,13 @@ function sessionPathPresentation(workspace) {
   const firstIncomplete = (workspace.roadmapNodes || []).findIndex((node) => !completedIds.has(node.id));
   const nodes = (workspace.roadmapNodes || []).map((node, index) => {
     const assignmentIds = (workspace.roadmapNodeAssignments || []).filter((item) => item.roadmap_node_id === node.id).sort((a, b) => a.sequence - b.sequence).map((item) => item.assignment_id);
-    const completedAssignmentIds = new Set((workspace.sessions || []).filter((session) => session.roadmap_node_id === node.id).map((session) => session.assignment_id));
+    const completedAssignmentIds = new Set((workspace.sessions || []).filter((session) => session.roadmap_node_id === node.id && sessionCompletesDose(session, (workspace.assignments || []).find(a => a.id === session.assignment_id))).map((session) => session.assignment_id));
+    const adventureStars = Math.max(0, ...(workspace.sessions || []).filter(session => session.roadmap_node_id === node.id && completedAssignmentIds.has(session.assignment_id)).map(session => Math.min(3, Number(session.movement_summary?.adventure?.stars) || 0)));
     const done = completedIds.has(node.id);
+    if (done) assignmentIds.forEach(id => completedAssignmentIds.add(id));
     const current = !done && index === firstIncomplete;
     const unlocked = !done && Boolean(node.unlock_override);
-    return { ...node, assignmentIds, completedAssignmentIds, state: done ? "complete" : current ? "current" : unlocked ? "override" : "locked" };
+    return { ...node, assignmentIds, completedAssignmentIds, adventureStars, state: done ? "complete" : current ? "current" : unlocked ? "override" : "locked" };
   });
   return { nodes, completed: nodes.filter((node) => node.state === "complete").length };
 }
@@ -697,7 +704,7 @@ function sessionPathMarkup(workspace) {
     const statusIcon = node.state === "complete" ? icon("check",14) : node.state === "locked" ? icon("lock",13) : icon("play",13);
     const character = node.state === "current" ? `<span class="world-character" aria-hidden="true">${roadmapCharacterMarkup(avatarKey)}<b>You are here</b></span>` : "";
     const action = node.state === "current" || node.state === "override" ? `<strong class="world-node-action">${icon("play",12)} Start session</strong>` : "";
-    return `<div class="path-step ${index % 2 ? "right" : "left"} biome-${node.biome}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${status}" ${node.state === "current" ? 'aria-current="step"' : ""}><span class="path-node-aura" aria-hidden="true"><i></i><i></i><i></i></span>${character}<span class="path-node-status">${statusIcon}${status}</span><span class="path-node-core">${node.state === "complete" ? icon("check",28) : node.state === "locked" ? icon("lock",22) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · SESSION ${node.session_in_week}</small><b>${escapeHtml(node.title || `Session ${node.session_number}`)}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Your next prescribed session" : node.state === "override" ? "Ready by therapist approval" : "Finish the session before this one"}</em><i>${completeExercises}/${exerciseCount} exercises complete</i>${action}</span></button>${checkpoint}</div>`;
+    return `<div class="path-step ${index % 2 ? "right" : "left"} biome-${node.biome}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${status}" ${node.state === "current" ? 'aria-current="step"' : ""}><span class="path-node-aura" aria-hidden="true"><i></i><i></i><i></i></span>${character}<span class="path-node-status">${statusIcon}${status}</span><span class="path-node-core">${node.state === "complete" ? icon("check",28) : node.state === "locked" ? icon("lock",22) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · SESSION ${node.session_in_week}</small><b>${escapeHtml(node.title || `Session ${node.session_number}`)}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Your next prescribed session" : node.state === "override" ? "Ready by therapist approval" : "Finish the session before this one"}</em><i>${completeExercises}/${exerciseCount} exercises complete${node.adventureStars ? ` · ${node.adventureStars}/3 adventure stars` : ""}</i>${action}</span></button>${checkpoint}</div>`;
   };
   const biomeOrder = [...new Set(path.nodes.map((node) => Number(node.biome) || 1))];
   const worldRegions = biomeOrder.map((biomeNumber) => {
@@ -783,7 +790,7 @@ function showRoadmapNode(nodeId) {
   const assignments = node.assignmentIds.map((id) => workspace.assignments.find((item) => item.id === id)).filter(Boolean);
   const modal = document.createElement("div");
   modal.className = "modal-layer";
-  modal.innerHTML = `<section class="roadmap-node-modal"><div class="node-modal-head"><div><span class="section-kicker">WEEK ${node.week_number} · SESSION ${node.session_number}</span><h2>${node.state === "complete" ? "Session complete" : "Your prescribed session"}</h2><p>Finish each movement below to complete this node and earn 50 recovery XP.</p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div><div class="node-exercise-list">${assignments.map((assignment, index) => { const complete = node.completedAssignmentIds.has(assignment.id); return `<article><span>${complete ? icon("check",18) : String(index + 1).padStart(2,"0")}</span><div><b>${escapeHtml(assignment.display_name)}</b><small>${escapeHtml(prescriptionTarget(assignment))}</small></div><button class="button ${complete ? "button--ghost" : "button--primary"}" data-start-node-assignment="${assignment.id}">${complete ? "Do again" : "Start"} ${icon("arrow",14)}</button></article>`; }).join("") || `<p>No active exercises are mapped to this session. Contact your physical therapist.</p>`}</div>${node.unlock_override ? `<div class="node-override-note">${icon("shield",14)} Unlocked by your therapist: ${escapeHtml(node.override_reason || "clinical override")}</div>` : ""}</section>`;
+  modal.innerHTML = `<section class="roadmap-node-modal"><div class="node-modal-head"><div><span class="section-kicker">WEEK ${node.week_number} · SESSION ${node.session_number}</span><h2>${node.state === "complete" ? "Session complete" : "Your prescribed session"}</h2><p>Finish each movement below to complete this node and earn 50 recovery XP.</p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div><div class="node-exercise-list">${assignments.map((assignment, index) => { const complete = node.completedAssignmentIds.has(assignment.id); return `<article><span>${complete ? icon("check",18) : String(index + 1).padStart(2,"0")}</span><div><b>${escapeHtml(assignment.display_name)}</b><small>${escapeHtml(prescriptionTarget(assignment))}${assignment.exercise_mode === "movement_game" ? ` · ${escapeHtml(getMovementGameMapping(assignment.exercise_key)?.title || "Adventure")}` : ""}</small></div><button class="button ${complete ? "button--ghost" : "button--primary"}" data-start-node-assignment="${assignment.id}">${complete ? "Do again" : "Start"} ${icon("arrow",14)}</button></article>`; }).join("") || `<p>No active exercises are mapped to this session. Contact your physical therapist.</p>`}</div>${node.unlock_override ? `<div class="node-override-note">${icon("shield",14)} Unlocked by your therapist: ${escapeHtml(node.override_reason || "clinical override")}</div>` : ""}</section>`;
   document.body.appendChild(modal);
   modal.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", () => modal.remove()));
   modal.querySelectorAll("[data-start-node-assignment]").forEach((button) => button.addEventListener("click", () => {
@@ -829,37 +836,14 @@ function patientView() {
 }
 
 function movementGameMarkup(mapping, targetReps, assignment) {
-  return `<section class="movement-game-card">
-    <div class="movement-game-heading"><div><span class="game-kicker">MOVEMENT GAME · SQUAT MISSION</span><h3>${escapeHtml(mapping.title)}</h3><p>${escapeHtml(mapping.instruction)}</p></div><div class="mode-switch" role="group" aria-label="Session view"><button data-movement-mode="standard">Exit game</button><button class="active" data-movement-mode="game">Play mission</button></div></div>
-    <div id="movement-game-stage" class="movement-game-stage active" aria-live="polite">
-      <div class="game-story-bar"><div><small id="game-chapter">ENTER THE RUINS</small><b id="game-story">Practice one controlled squat as the first gate approaches.</b></div><span id="game-mission-length">${targetReps <= 8 ? "Short" : targetReps <= 12 ? "Medium" : "Long"} mission</span></div>
-      <div class="ruins-game" id="ruins-game" role="img" aria-label="Explorer moving through ancient ruins using your squat">
-        <div class="ruins-depth ruins-depth--far"></div><div class="ruins-depth ruins-depth--near"></div>
-        <div class="ruins-checkpoint"><span></span><small>EXIT</small></div>
-        <div id="game-collectible" class="game-collectible" aria-hidden="true">${icon("spark",16)}</div>
-        <div id="game-obstacle" class="ruins-obstacle" aria-hidden="true"><span></span><span></span><i></i></div>
-        <div id="game-runner" class="game-runner"><span>${icon("activity",20)}</span><i></i></div>
-        <div class="game-ground"></div>
-        <div id="game-feedback" class="game-feedback">Move when you are ready</div>
-        <div id="game-completion" class="game-completion hidden"><span>${icon("trophy",24)}</span><div><small>MISSION COMPLETE</small><b>You escaped with controlled movement.</b><p>Your prescribed repetitions are complete. No extra exercise is needed.</p></div></div>
-      </div>
-      <div class="game-hud">
-        <div><small>CURRENT SET</small><b><span id="game-set">1</span> / ${assignment.target_sets || 1}</b></div>
-        <div><small>SET REPS</small><b><span id="game-set-reps">0</span> / ${assignment.target_repetitions || 10}</b></div>
-        <div><small>REMAINING</small><b id="game-remaining">${targetReps}</b></div>
-        <div><small>ENERGY</small><b id="game-collectibles">0</b></div>
-        <div><small>SCORE</small><b id="game-score">0</b></div>
-        <div class="game-quality"><small>MOVEMENT QUALITY</small><b id="game-quality">Waiting for camera</b></div>
-        <button id="game-pause" type="button">${icon("pause",15)} Pause</button>
-      </div>
-      <div class="game-mission-progress"><span><i id="game-progress"></i></span><small id="game-status">Your safe calibrated range controls the explorer. Extra depth never earns more points.</small></div>
-    </div>
-  </section>`;
+  return adventureMarkup(mapping, targetReps, assignment, escapeHtml);
 }
 
 function labView() {
   clearSetRest();
+  gameTrackingReady = false;
   currentView = "lab";
+  simulationSession = Boolean(demoScriptActive);
   sessionReps = [];
   currentAssignment = currentAssignment || patientWorkspace?.assignments?.[0] || assignmentDetails({ id: "demo-assignment", exercise_key: "bodyweight_squat", display_name: "Bodyweight Squat", target_sets: 1, target_repetitions: 8, tracking_mode: "pose_reps", exercise_mode: "movement_game" });
   const assignment = assignmentDetails(currentAssignment);
@@ -878,13 +862,13 @@ function labView() {
   const assignmentCount = Math.max(1, patientWorkspace?.assignments?.length || 1);
   const backTarget = currentProfile?.role === "patient" || demoRole === "patient" ? "patient" : "home";
   app.innerHTML = layout(`
-    <main class="lab-page">
+    <main class="lab-page ${gameMapping ? "adventure-lab" : ""}">
       <div class="lab-header container-wide">
         <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to ${escapeHtml(patientName.split(" ")[0])}’s recovery</button><div class="eyebrow"><span></span> ${escapeHtml(patientName)}’s Movement Science Lab · ${currentRoadmapNode ? `Roadmap session ${currentRoadmapNode.session_number} · ` : ""}Exercise ${assignmentNumber} of ${assignmentCount}</div><h1>${escapeHtml(assignment.display_name)}</h1><p class="lab-prescriber">Prescribed by ${escapeHtml(therapistName)} · ${escapeHtml(dosageLabel)}</p></div>
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
       </div>
       <div class="personal-lab-banner container-wide">${icon("shield", 17)}<div><small>PRIVATE PATIENT LAB</small><b>${escapeHtml(patientName)} · ${escapeHtml(patientWorkspace?.plan?.title || "Personal recovery plan")}</b></div><span>Session summaries save only to this patient account</span></div>
-      <section class="lab-exercise-guide container-wide"><div><span class="section-kicker">BEFORE YOU MOVE</span><h2>Review your setup and technique</h2><p>Axion tracks <b>${escapeHtml(movementProfile.label.toLowerCase())}</b> for this exercise. ${escapeHtml(movementProfile.cameraHint)}</p><small class="tracking-boundary">The camera detects movement cycles—not pain, muscle activation, clinical safety, or treatment quality.</small></div>${exerciseGuideMarkup(assignment, { open: true })}</section>
+      <section class="lab-exercise-guide container-wide"><div><span class="section-kicker">BEFORE YOU MOVE</span><h2>Review your setup and technique</h2><p>Axion tracks <b>${escapeHtml(movementProfile.label.toLowerCase())}</b> for this exercise. ${escapeHtml(movementProfile.cameraHint)}</p><small class="tracking-boundary">The camera detects movement cycles—not pain, muscle activation, clinical safety, or treatment quality.</small></div>${exerciseGuideMarkup(assignment, { open: !gameMapping })}</section>
       <section class="motion-workspace container-wide">
         <div class="capture-panel">
           <div class="panel-topline">
@@ -899,16 +883,16 @@ function labView() {
           </div>
           ${gameMapping ? movementGameMarkup(gameMapping, targetReps, assignment) : ""}
           <div class="motion-stage">
-            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera setup</b><small>${escapeHtml(movementProfile.cameraHint)}</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button><button id="recovery-demo">View tracker simulation</button></div></div><span class="pane-label">YOU</span></div>
+            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera setup</b><small>${escapeHtml(movementProfile.cameraHint)}</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button>${currentSession?.demo ? `<button id="recovery-demo">View tracker simulation</button>` : ""}</div></div><span class="pane-label">YOU</span></div>
             <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> <span id="twin-target-label">${movementProfile.overlayJoint && movementProfile.unit === "°" ? `${escapeHtml(movementProfile.overlayJoint)} angle` : "Movement path"}</span></div></div>
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
           <div class="live-metrics"><div><span>CURRENT SET</span><b><i id="live-set">1</i><small>/ ${assignment.target_sets || 1}</small></b></div><div><span>${timedExercise ? "HOLD" : "REPS THIS SET"}</span><b><i id="live-reps">0</i><small>/ ${timedExercise ? `${assignment.duration_seconds || 30}s` : repsPerSet}</small></b></div><div><span>TOTAL VALID</span><b id="live-total-reps">0 / ${targetReps}</b></div><div><span id="live-angle-label">${escapeHtml(jointLabel.toUpperCase())}</span><b id="live-depth">—</b></div></div>
           <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S AXION COACH</small><p id="coach-message" aria-live="polite">${escapeHtml(assignment.instructions || "Stand naturally for three seconds. Axion will learn your baseline for this session.")}</p></div><span id="coach-state">READY</span></div>
-          <div id="set-rest-overlay" class="set-rest-overlay hidden" role="status" aria-live="assertive"><span>${icon("pause",24)}</span><div><small id="set-rest-kicker">SET COMPLETE</small><b id="set-rest-title">Recovery break</b><p>Your therapist scheduled this rest before the next set.</p><strong><i id="set-rest-seconds">0</i>s</strong></div></div>
+          <div id="set-rest-overlay" class="set-rest-overlay hidden" role="status" aria-live="assertive"><span>${icon("pause",24)}</span><div><small id="set-rest-kicker">SET COMPLETE</small><b id="set-rest-title">Recovery break</b><p>The chamber is restored. Rest while the next passage opens. No movement is needed.</p><strong><i id="set-rest-seconds">0</i>s</strong></div></div>
           <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: demoScriptActive ? 5 : Math.min(targetReps, 30) }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
           <div class="safety-action"><button class="button button--safety" id="report-safety-event">${icon("activity",17)} Pain or movement concern</button><span>Reporting a concern pauses tracking. Stopping safely never removes progress or a streak.</span></div>
-          <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Restart camera scan</button><button class="button button--primary" id="run-demo">${icon("play", 17)} ${currentSession?.demo ? "Synthetic product demo" : "View tracker simulation"} <small>${currentSession?.demo ? "70 sec" : "not saved"}</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
+          <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Restart camera scan</button>${currentSession?.demo ? `<button class="button button--primary" id="run-demo">${icon("play", 17)} ${currentSession?.demo ? "Synthetic product demo" : "View tracker simulation"} <small>${currentSession?.demo ? "70 sec" : "not saved"}</small></button>` : ""}<button class="button button--quiet" id="session-pause">Pause session</button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
         </div>
         <aside class="journey-panel">
           <div class="journey-head"><span class="section-kicker">${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S ROADMAP</span><span>${escapeHtml(patientWorkspace?.plan?.phase_label || "Current phase")}</span></div>
@@ -1326,8 +1310,8 @@ function exercisePrescriptionRows() {
     const facets = exerciseFacets(exercise);
     const gameSupported = Boolean(getMovementGameMapping(key));
     const searchText = `${exercise.name} ${exercise.category} ${exercise.region} ${exercise.focus.join(" ")} ${exercise.equipment} ${facets.goals.join(" ")} ${facets.position} ${programs.join(" ")} ${movementProfile.label}`.toLowerCase();
-    return `<label class="prescription-row ${index === 0 ? "selected" : ""}" data-prescription-row="${key}" data-prescription-category="${escapeHtml(exercise.category)}" data-prescription-search="${escapeHtml(searchText)}" data-prescription-programs="${escapeHtml(programs.join("|"))}" data-prescription-goals="${escapeHtml(facets.goals.join("|"))}" data-prescription-equipment="${escapeHtml(facets.equipment.join("|"))}" data-prescription-position="${escapeHtml(facets.position)}" data-prescription-tracking="${escapeHtml(exercise.trackingMode)}" data-prescription-game="${gameSupported ? "true" : "false"}" data-prescription-common="${commonlyPrescribedExerciseKeys.includes(key) ? "true" : "false"}">
-      <input class="prescription-toggle" type="checkbox" value="${key}" ${index === 0 ? "checked" : ""}/>
+    return `<div class="prescription-row ${index === 0 ? "selected" : ""}" data-prescription-row="${key}" data-prescription-category="${escapeHtml(exercise.category)}" data-prescription-search="${escapeHtml(searchText)}" data-prescription-programs="${escapeHtml(programs.join("|"))}" data-prescription-goals="${escapeHtml(facets.goals.join("|"))}" data-prescription-equipment="${escapeHtml(facets.equipment.join("|"))}" data-prescription-position="${escapeHtml(facets.position)}" data-prescription-tracking="${escapeHtml(exercise.trackingMode)}" data-prescription-game="${gameSupported ? "true" : "false"}" data-prescription-common="${commonlyPrescribedExerciseKeys.includes(key) ? "true" : "false"}">
+      <input aria-label="Select ${escapeHtml(exercise.name)}" class="prescription-toggle" type="checkbox" value="${key}" ${index === 0 ? "checked" : ""}/>
       <span class="prescription-name"><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(exercise.region)} · ${movementProfile.mode === "hold" ? "times" : "counts"} ${escapeHtml(movementProfile.label.toLowerCase())}${commonlyPrescribedExerciseKeys.includes(key) ? " · Common" : ""}</small></span>
       <span class="dosage-control"><small>SETS</small><input class="prescription-sets" type="number" min="1" max="20" value="${exercise.defaultSets}" ${index === 0 ? "" : "disabled"}/></span>
       ${timed
@@ -1336,8 +1320,9 @@ function exercisePrescriptionRows() {
       <span class="dosage-control prescription-mode-control"><small>MODE</small>${gameSupported
         ? `<select class="prescription-mode" ${index === 0 ? "" : "disabled"}><option value="movement_game">Movement Game</option><option value="standard">Standard</option></select>`
         : `<input class="prescription-mode" type="hidden" value="standard"/><em>Standard</em>`}</span>
-      <span class="dosage-control prescription-rest-control"><small>REST BETWEEN SETS</small><label><input class="prescription-rest-enabled" type="checkbox" ${index === 0 ? "checked" : "disabled"}/><input class="prescription-rest" type="number" min="5" max="900" value="60" ${index === 0 ? "" : "disabled"}/><em>sec</em></label></span>
-    </label>`;
+      ${key === "forward_lunge" || key === "standing_shoulder_abduction" ? `<span class="dosage-control"><small>PRESCRIBED SIDE</small><select class="prescription-side" ${index === 0 ? "" : "disabled"}><option value="either">Either side</option><option value="left">Left</option><option value="right">Right</option></select></span>` : ""}
+      <span class="dosage-control prescription-rest-control"><small>REST BETWEEN SETS</small><label><input class="prescription-rest-enabled" type="checkbox" checked ${index === 0 ? "" : "disabled"}/><input class="prescription-rest" type="number" min="5" max="900" value="60" ${index === 0 ? "" : "disabled"}/><em>sec</em></label></span>
+    </div>`;
   }).join("");
 }
 
@@ -1355,7 +1340,7 @@ function renderPlanBuilder(isDemoTherapist) {
         <label>Plan length (weeks)<input id="plan-duration-weeks" type="number" min="1" max="52" value="12" required/></label>
         <label>Sessions each week<input id="plan-sessions-week" type="number" min="1" max="7" value="7" required/></label>
       </div>
-      <div class="path-plan-summary"><span>${icon("map",18)}</span><div><b id="planned-node-count">84 touchable session nodes</b><small>The patient advances only after every prescribed exercise in a node is saved.</small></div><em>Movement Game is available for Bodyweight Squat in this first release.</em></div>
+      <div class="path-plan-summary"><span>${icon("map",18)}</span><div><b id="planned-node-count">84 touchable session nodes</b><small>The patient advances only after every prescribed exercise in a node is fully completed and saved.</small></div><em>Movement Adventure supports squats, push-ups, supported lunges, and shoulder abduction.</em></div>
       <div class="prescription-toolbar"><div><b>Exercise prescription</b><small>Select up to 12 exercises. Dosage is independent for each one.</small></div><span id="selected-exercise-count">1 selected</span></div>
       <div class="prescription-area-filter"><span>Filter by body area</span><div>${Object.entries(prescriptionBodyAreas).map(([area, categories]) => { const count = categories ? Object.values(exerciseCatalog).filter((exercise) => categories.includes(exercise.category)).length : Object.keys(exerciseCatalog).length; return `<button type="button" class="${prescriptionBodyArea === area ? "active" : ""}" data-prescription-area="${escapeHtml(area)}">${escapeHtml(area)} <small>${count}</small></button>`; }).join("")}</div></div>
       <div class="prescription-filters">
@@ -1614,6 +1599,7 @@ async function submitPersonalPlan(event) {
         exerciseMode: row.querySelector(".prescription-mode")?.value || "standard",
         restEnabled: Boolean(row.querySelector(".prescription-rest-enabled")?.checked),
         restSeconds: row.querySelector(".prescription-rest")?.value || 0,
+        prescribedSide: row.querySelector(".prescription-side")?.value || "either",
       }));
     const patientSelect = document.querySelector("#plan-patient");
     const patientId = patientSelect.value;
@@ -2044,33 +2030,13 @@ async function initializeLab() {
     video, canvas,
     exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
     trackingMode: currentAssignment?.tracking_mode || "pose_reps",
+    prescribedSide: currentAssignment?.prescribed_side || "either",
     onCalibration: ({ progress, status }) => updateCalibration(progress, status),
     onPose: updateTwinFromLandmarks,
     onTrackingState: handleTrackingState,
-    onRep: (rep) => {
-      const consistency = Math.max(45, Math.round(100 - (rep.symmetryDelta ?? 4) * 2 - Math.abs((rep.tempo || 3) - 3) * 6));
-      const target = Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10);
-      if (sessionReps.length >= target) return;
-      const gameState = movementGameController?.consume({ type: MOVEMENT_EVENT.REP_COMPLETE, rep });
-      if (gameState?.mode === "game" && gameState.lastOutcome === "collision") {
-        setText("#coach-message", "That movement met the exercise range, but the explorer touched the gate. Your saved reps stay intact—reset and continue when ready.");
-        setText("#coach-state", "KEEP GOING");
-        setText("#live-reps", sessionReps.length);
-        return;
-      }
-      sessionReps.push({ ...rep, attemptIndex: rep.index, index: sessionReps.length + 1, consistency });
-      updateLiveSession();
-      if (sessionReps.length >= target) {
-        tracker?.pause?.();
-        setText("#capture-status", "PRESCRIPTION COMPLETE");
-      } else if (sessionReps.length % Math.max(1, Number(currentAssignment?.target_repetitions || 1)) === 0) {
-        startSetRest(
-          Math.max(0, Number(currentAssignment?.rest_seconds || 0)),
-          sessionReps.length / Math.max(1, Number(currentAssignment?.target_repetitions || 1)),
-        );
-      }
-    },
+    onRep: acceptValidatedRep,
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
+      if (setRestEndsAt || movementGameController?.getState().safetyFlagged || doseProgress(currentAssignment, sessionReps.length).done) return;
       const sideLabel = measurementSide ? `${measurementSide} ` : "";
       setText("#live-angle-label", `${sideLabel}${angleLabel || "Joint angle"}`.toUpperCase());
       setText("#twin-target-label", activeProfile.overlayJoint && measurementUnit === "°"
@@ -2093,18 +2059,18 @@ async function initializeLab() {
       );
       const gameState = movementGameController?.getState();
       setText("#coach-message", gameState?.lastOutcome === "collision"
-        ? "The gate touched the explorer, so that attempt was not counted. Your completed reps are preserved."
+        ? "Gate touched. Game combo reset; valid exercise reps still count."
         : message);
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
-      if (activeProfile.mode === "rep") {
-        movementGameController?.consume({
-          type: MOVEMENT_EVENT.MOVEMENT_PROGRESS,
-          progress: Math.min(1, Math.max(0, Number(movementRange || 0) / Math.max(1, activeProfile.startThreshold))),
-          stage,
-        });
-      }
+      gameTrackingReady = Number.isFinite(movementRange) && !["calibrating", "positioning"].includes(stage);
+      const input = motionInput(activeProfile, { movementRange, stage, measurementSide });
+      if (input) movementGameController?.consume(input);
       if (stage === "hold" && (elapsedSeconds || 0) >= Math.min(5, currentAssignment?.duration_seconds || 30)) document.querySelector("#finish-session")?.removeAttribute("disabled");
-      if (stage === "hold") movementGameController?.consume({ type: MOVEMENT_EVENT.HOLD_PROGRESS, seconds: elapsedSeconds || 0 });
+      if (stage === "hold" && elapsedSeconds >= (currentAssignment?.duration_seconds || 30)) {
+        const metrics = tracker?.getMetrics?.() || {};
+        tracker?.resetHold?.();
+        acceptValidatedRep({ jointAngle, depthAngle: jointAngle, symmetryDelta, movementRangeDegrees: movementRange, measurementUnit, tempo: currentAssignment?.duration_seconds || 30, holdSeconds: currentAssignment?.duration_seconds || 30, measurementSide: metrics.measurementSide });
+      }
     },
     onError: (message) => {
       setText("#capture-status", "CAMERA NEEDS ATTENTION");
@@ -2112,9 +2078,11 @@ async function initializeLab() {
       showCameraRecovery("Camera needs attention", message);
     },
   });
-  document.querySelector("#start-camera")?.addEventListener("click", async () => { stopDemo(); document.querySelector(".camera-pane")?.classList.add("camera-on"); setText("#capture-status", "CAMERA ACTIVE"); await tracker.start(); });
+  document.querySelector("#start-camera")?.addEventListener("click", async () => {
+    if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return; stopDemo(); document.querySelector(".camera-pane")?.classList.add("camera-on"); setText("#capture-status", "CAMERA ACTIVE"); await tracker.start(); });
   document.querySelector("#run-demo")?.addEventListener("click", runPitchDemo);
   document.querySelector("#retry-camera")?.addEventListener("click", async () => {
+    if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return;
     hideCameraRecovery();
     await tracker.start();
   });
@@ -2123,11 +2091,13 @@ async function initializeLab() {
   document.querySelector("#finish-session")?.addEventListener("click", finishSession);
   document.querySelector("#report-safety-event")?.addEventListener("click", showSafetyEventModal);
   document.querySelectorAll("[data-movement-mode]").forEach((button) => button.addEventListener("click", () => {
-    if (button.dataset.movementMode === "standard" && movementGameController?.getState().paused) tracker?.resume?.();
+    if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return;
+
     movementGameController?.setMode(button.dataset.movementMode);
     document.querySelectorAll("[data-movement-mode]").forEach((item) => item.classList.toggle("active", item === button));
   }));
-  document.querySelector("#game-pause")?.addEventListener("click", () => {
+  document.querySelectorAll("#game-pause, #session-pause").forEach(button => button.addEventListener("click", () => {
+    if (setRestEndsAt || movementGameController?.getState().safetyFlagged || doseProgress(currentAssignment, sessionReps.length).done) return;
     const state = movementGameController?.getState();
     if (!state) return;
     if (state.paused) {
@@ -2137,8 +2107,20 @@ async function initializeLab() {
       tracker?.pause?.();
       movementGameController.consume({ type: MOVEMENT_EVENT.PAUSE });
     }
-  });
+  }));
   if (currentAssignment?.exercise_mode === "movement_game") movementGameController.setMode("game");
+  const gameCanvas = document.querySelector("#adventure-canvas");
+  if (gameCanvas) {
+    const { createAdventureScene } = await import("./adventure-scene.js");
+    if (!gameCanvas.isConnected) return;
+    adventureScene = createAdventureScene(gameCanvas, getMovementGameMapping(currentAssignment.exercise_key));
+    document.querySelector("#adventure-sound")?.addEventListener("click", async (event) => {
+      const enabled = await adventureScene.toggleSound();
+      event.currentTarget.textContent = enabled ? "Sound on" : "Sound off";
+      event.currentTarget.setAttribute("aria-pressed", String(enabled));
+    });
+    document.querySelector("#adventure-save")?.addEventListener("click", finishSession);
+  }
   startMovementGameAnimation();
   if (!currentSession?.demo) {
     document.querySelector(".camera-pane")?.classList.add("camera-on");
@@ -2148,9 +2130,11 @@ async function initializeLab() {
 }
 
 function renderMovementGameState(state) {
+  setText("#session-pause", state.paused ? "Resume session" : "Pause session");
   const stage = document.querySelector("#movement-game-stage");
   if (!stage) return;
   stage.classList.toggle("active", state.mode === "game");
+  document.querySelectorAll("[data-movement-mode]").forEach(button => button.classList.toggle("active", button.dataset.movementMode === state.mode));
   stage.classList.toggle("paused", state.paused);
   stage.classList.toggle("complete", state.lastOutcome === "complete");
   stage.classList.toggle("collision", state.lastOutcome === "collision");
@@ -2174,27 +2158,32 @@ function renderMovementGameState(state) {
   setText("#game-remaining", state.remaining);
   setText("#game-collectibles", state.collectibles);
   setText("#game-score", state.score.toLocaleString());
-  setText("#game-feedback", state.lastOutcome === "collision"
-    ? "Gate touched · rep not counted · progress preserved"
+  setText("#adventure-stars", state.stars ? `${state.stars} / 3 adventure stars` : "");
+  setText("#adventure-reward", state.stars ? `${state.mapping.artifact} discovered · save to keep your progress` : "");
+  setText("#game-feedback", !gameTrackingReady && !state.paused && state.remaining > 0 ? "Tracking paused · follow the camera guidance" : state.lastOutcome === "collision"
+    ? "Gate touched · game combo reset · clinical reps preserved"
+    : state.lastOutcome === "collision_counted" ? "Valid rep counted · game combo reset"
     : state.lastOutcome === "form_retry"
       ? "Movement not validated · reset your form and try again"
     : state.lastOutcome === "counted"
       ? "Valid rep · path cleared"
       : state.paused ? "Mission paused · progress preserved" : "Move when you are ready");
   setText("#game-pause", state.paused ? "Resume mission" : "Pause");
+  setText("#session-pause", state.paused ? "Resume session" : "Pause session");
   document.querySelector("#game-completion")?.classList.toggle("hidden", state.lastOutcome !== "complete");
   setText("#game-status", state.paused
     ? "Paused for safety. Your progress is preserved."
     : state.mode === "game"
-      ? `${state.completed} valid of ${state.clinicalTarget} prescribed reps. Collisions skip only that attempt.`
+      ? `${state.completed} valid of ${state.clinicalTarget} prescribed reps. Collisions affect game score only.`
       : "Standard view is active. Your prescribed dosage is unchanged.");
 }
 
 function startMovementGameAnimation() {
-  stopMovementGameAnimation();
+  if (movementGameAnimation) cancelAnimationFrame(movementGameAnimation);
   let previous = performance.now();
   const frame = (now) => {
-    movementGameController?.tick(now - previous);
+    const state = gameTrackingReady ? movementGameController?.tick(now - previous) : movementGameController?.getState();
+    if (state) adventureScene?.draw(state);
     previous = now;
     movementGameAnimation = requestAnimationFrame(frame);
   };
@@ -2202,11 +2191,14 @@ function startMovementGameAnimation() {
 }
 
 function stopMovementGameAnimation() {
+  adventureScene?.destroy();
+  adventureScene = null;
   if (movementGameAnimation) cancelAnimationFrame(movementGameAnimation);
   movementGameAnimation = null;
 }
 
 function handleTrackingState({ code, label, quality, confidence }) {
+  gameTrackingReady = code === "body_detected";
   const bodyState = document.querySelector("#body-state");
   const qualityState = document.querySelector("#quality-state");
   if (bodyState) {
@@ -2258,6 +2250,7 @@ function updateCalibration(progress, status) {
 }
 
 function runPitchDemo() {
+  if (currentSession?.user && !currentSession.demo) return;
   stopDemo();
   tracker?.stop?.();
   demoScriptActive = true;
@@ -2396,6 +2389,22 @@ function celebrateMilestone() {
   setTimeout(() => layer.remove(), 1400);
 }
 
+function acceptValidatedRep(rep) {
+  const dose = doseProgress(currentAssignment, sessionReps.length);
+  if (dose.done || setRestEndsAt || movementGameController?.getState().paused) return;
+  const consistency = Math.max(45, Math.round(100 - (rep.symmetryDelta ?? 4) * 2));
+  movementGameController?.consume({ type: MOVEMENT_EVENT.REP_COMPLETE, rep });
+  sessionReps.push({ ...rep, attemptIndex: rep.index, index: sessionReps.length + 1, consistency });
+  updateLiveSession();
+  const next = doseProgress(currentAssignment, sessionReps.length);
+  if (next.done) {
+    tracker?.pause?.();
+    setText("#capture-status", "PRESCRIPTION COMPLETE");
+  } else if (next.rest) {
+    startSetRest(Math.max(0, Number(currentAssignment?.rest_seconds ?? 60)), next.completedSets);
+  }
+}
+
 function clearSetRest() {
   if (setRestTimer) clearInterval(setRestTimer);
   setRestTimer = null;
@@ -2411,7 +2420,7 @@ function startSetRest(seconds, completedSet) {
   setRestEndsAt = Date.now() + seconds * 1000;
   const overlay = document.querySelector("#set-rest-overlay");
   overlay?.classList.remove("hidden");
-  setText("#set-rest-kicker", `SET ${completedSet} COMPLETE`);
+  setText("#set-rest-kicker", `CHAMBER CLEARED · SET ${completedSet} COMPLETE`);
   setText("#set-rest-title", `Next: set ${completedSet + 1} of ${currentAssignment?.target_sets || 1}`);
   setText("#capture-status", "THERAPIST-SCHEDULED REST");
   const tick = () => {
@@ -2419,6 +2428,7 @@ function startSetRest(seconds, completedSet) {
     setText("#set-rest-seconds", remaining);
     if (remaining > 0) return;
     clearSetRest();
+    if (movementGameController?.getState().safetyFlagged) return;
     movementGameController?.consume({ type: MOVEMENT_EVENT.RESUME });
     tracker?.resume?.();
     setText("#capture-status", "MOVEMENT TRACKING");
@@ -2436,7 +2446,7 @@ function updateLiveSession() {
   const unit = last?.measurementUnit || trackingProfile.unit || "°";
   const angleValue = last ? (last.jointAngle ?? last.depthAngle) : null;
   setText("#live-angle-label", trackingProfile.label.toUpperCase());
-  const repsPerSet = Math.max(1, Number(currentAssignment?.target_repetitions || 1));
+  const repsPerSet = doseProgress(currentAssignment).reps;
   const totalSets = Math.max(1, Number(currentAssignment?.target_sets || 1));
   const totalTarget = repsPerSet * totalSets;
   const currentSet = Math.min(totalSets, Math.floor(sessionReps.length / repsPerSet) + (sessionReps.length >= totalTarget ? 0 : 1));
@@ -2455,8 +2465,8 @@ function updateLiveSession() {
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
   if (last) {
     let message = `Rep ${last.index} captured at ${Math.round(angleValue)}${unit} ${trackingProfile.label.toLowerCase()}. Keep that rhythm.`;
-    if (last.index === 4) message = "Rep 4 is your most consistent so far.";
-    if (last.index >= 8) message = "Depth has decreased across the late set. Finish with control.";
+
+
     setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${Math.round(angleValue)}${unit}`);
     updateSyntheticTwin(jointAngleToTwinDepth(angleValue, last.movementRangeDegrees), true);
   }
@@ -2465,6 +2475,7 @@ function updateLiveSession() {
 }
 
 function resetLab() {
+  if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return;
   clearSetRest(); stopDemo(); tracker?.reset?.(); sessionReps = [];
   sessionSafetyEvents = [];
   movementGameController?.consume({ type: MOVEMENT_EVENT.RESET });
@@ -2481,6 +2492,9 @@ function resetLab() {
 }
 
 async function finishSession() {
+  clearSetRest();
+  tracker?.pause?.();
+  movementGameController?.consume({ type: MOVEMENT_EVENT.PAUSE });
   stopDemo();
   const liveMetrics = tracker?.getMetrics?.();
   if (!sessionReps.length && liveMetrics?.reps?.length) sessionReps = liveMetrics.reps;
@@ -2501,6 +2515,7 @@ async function finishSession() {
 }
 
 function showSafetyEventModal() {
+  // Keep the prescribed rest deadline; safety pause takes precedence over auto-resume.
   stopDemo();
   tracker?.stop?.();
   movementGameController?.consume({ type: MOVEMENT_EVENT.SAFETY_FLAG });
@@ -2553,6 +2568,7 @@ function showSafetyEventModal() {
         movementGameController?.consume({ type: MOVEMENT_EVENT.RESUME });
         setText("#capture-status", "RESTARTING CAMERA");
         await tracker?.start?.();
+        if (setRestEndsAt) { tracker?.pause?.(); movementGameController?.consume({ type: MOVEMENT_EVENT.PAUSE }); }
       });
     } catch (error) {
       setText("#safety-save-state", safeOperationalMessage(error, "The report could not be saved. Keep the session paused and try again."));
@@ -2587,7 +2603,7 @@ function showReflection() {
 }
 
 async function saveSessionSummary(reps, feedback = {}) {
-  if (!supabase || !currentSession?.user || currentSession.demo || !reps.length) return null;
+  if (!supabase || !currentSession?.user || currentSession.demo || simulationSession || !reps.length) return null;
 
   const stats = summaryFor(reps);
   const trackingProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
@@ -2615,10 +2631,20 @@ async function saveSessionSummary(reps, feedback = {}) {
         average_joint_angle_degrees: degreeMetric ? stats.jointAngle : null,
         average_joint_movement_range_degrees: degreeMetric ? stats.movementRange : null,
         average_knee_bend_degrees: trackingProfile.signal === "knee_bend" ? stats.kneeBend : null,
-        measured_hold_seconds: trackingProfile.mode === "hold" ? (tracker?.getMetrics?.().holdSeconds || 0) : null,
+        measured_hold_seconds: trackingProfile.mode === "hold" ? reps.reduce((total, rep) => total + (rep.holdSeconds || 0), 0) : null,
         average_tempo_seconds: Number(stats.tempo),
         average_symmetry_delta: Number(stats.symmetry),
-        movement_consistency: stats.consistency
+        movement_consistency: stats.consistency,
+        completed_sets: doseProgress(currentAssignment, reps.length).completedSets,
+        prescribed_sets: currentAssignment?.target_sets,
+        prescribed_reps_per_set: currentAssignment?.target_repetitions,
+        adventure: movementGameController?.getState().mode === "game" ? {
+          version: 1, scene: movementGameController.getState().mapping?.scene,
+          score: movementGameController.getState().score,
+          stars: movementGameController.getState().stars,
+          collectibles: movementGameController.getState().collectibles,
+          collisions: movementGameController.getState().collisions,
+        } : null
       },
       difficulty: Number(feedback.difficulty) || null,
       discomfort: ["none", "mild", "moderate", "stop"].includes(feedback.discomfort) ? feedback.discomfort : null,
@@ -3282,11 +3308,21 @@ document.addEventListener("keydown", (event) => {
 });
 
 ["pointerdown", "touchstart"].forEach((eventName) => document.addEventListener(eventName, armAuthIdleTimeout, { passive: true }));
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") armAuthIdleTimeout(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { armAuthIdleTimeout(); void refreshPatientWorkspaceFromRealtime(); } });
 window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); });
 window.addEventListener("resize", () => requestAnimationFrame(drawSessionPathTrail));
 
 async function bootstrap() {
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('prescription-playtest')) {
+    // Isolated UI fixture: no auth bootstrap and no publish requests.
+    assignedPatients = [{id:'local-fixture-a',display_name:'Local patient A'},{id:'local-fixture-b',display_name:'Local patient B'}];
+    app.innerHTML = `<main class="container-wide"><p>LOCAL FILTER PLAYTEST · publishing disabled</p>${renderPlanBuilder(false)}</main>`;
+    const form = document.querySelector('#plan-builder-form');
+    form.addEventListener('submit', event => { event.preventDefault(); event.stopImmediatePropagation(); }, true);
+    form.querySelector('[type="submit"]')?.setAttribute('disabled','');
+    bindEvents();
+    return;
+  }
   if (supabase) {
     supabase.auth.onAuthStateChange((event, session) => {
       currentSession = session;

@@ -1,0 +1,40 @@
+# Build the Vite application; never publish raw source or local playtest pages.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/reset-password"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    "Content-Security-Policy" = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'; manifest-src 'self'; script-src 'self' 'wasm-unsafe-eval'; script-src-attr 'none'; style-src 'self' https://fonts.googleapis.com; style-src-elem 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob: https://qjcxelpzcfmcsrpsnlrs.supabase.co wss://qjcxelpzcfmcsrpsnlrs.supabase.co https://storage.googleapis.com; upgrade-insecure-requests"
+    "Strict-Transport-Security" = "max-age=63072000; includeSubDomains; preload"
+    "X-Content-Type-Options" = "nosniff"
+    "X-Frame-Options" = "DENY"
+    "Referrer-Policy" = "strict-origin-when-cross-origin"
+    "Permissions-Policy" = "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
+    "Cross-Origin-Opener-Policy" = "same-origin"
+    "X-DNS-Prefetch-Control" = "off"
+    "X-Permitted-Cross-Domain-Policies" = "none"
+    "Origin-Agent-Cluster" = "?1"
+    "Cross-Origin-Resource-Policy" = "same-origin"
+    "X-Robots-Tag" = "noindex, nofollow, noarchive"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "private, no-store, max-age=0"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "private, no-store, max-age=0"
+
+[[headers]]
+  for = "/reset-password"
+  [headers.values]
+    Cache-Control = "private, no-store, max-age=0"
