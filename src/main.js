@@ -137,6 +137,8 @@ let sessionClientId = null;
 let sessionSafetyEvents = [];
 let movementGameController = null;
 let movementGameAnimation = null;
+let setRestTimer = null;
+let setRestEndsAt = null;
 const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 let authIdleTimer = null;
 let lastTwinPoints = null;
@@ -616,12 +618,13 @@ function patientExerciseCard(assignment, index, sessions) {
   const target = assignment.tracking_mode === "timed_hold"
     ? `${assignment.target_sets || 1} sets · ${assignment.duration_seconds || 30} second hold`
     : `${assignment.target_sets || 1} sets · ${assignment.target_repetitions || 10} repetitions`;
+  const restLabel = Number(assignment.rest_seconds || 0) > 0 && Number(assignment.target_sets || 1) > 1 ? `${assignment.rest_seconds}s rest between sets` : "No timed rest";
   const movementProfile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
   const trackingLabel = movementProfile.mode === "hold" ? "camera-timed position hold" : "automatic exercise-specific rep tracking";
   return `<article class="exercise-card ${index === 0 ? "exercise-card--primary" : ""} ${completed ? "complete" : ""}">
     <div class="exercise-order">${String(index + 1).padStart(2, "0")}</div>
     ${index === 0 ? `<div class="exercise-visual">${twinSvg()}</div>` : `<span class="exercise-icon">${icon(completed ? "check" : "activity", 24)}</span>`}
-    <div class="exercise-copy"><span class="live-pill">${assignment.exercise_mode === "movement_game" ? "MOVEMENT GAME" : completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${escapeHtml(assignment.summary)}</p><p>${target} · ${trackingLabel}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div><small><b>Camera setup:</b> ${escapeHtml(movementProfile.cameraHint)}</small>${assignment.instructions ? `<small><b>Therapist note:</b> ${escapeHtml(assignment.instructions)}</small>` : ""}${exerciseGuideMarkup(assignment, { compact: true })}</div>
+    <div class="exercise-copy"><span class="live-pill">${assignment.exercise_mode === "movement_game" ? "MOVEMENT GAME" : completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${escapeHtml(assignment.summary)}</p><div class="dose-summary"><b>${escapeHtml(target)}</b><span>${escapeHtml(restLabel)}</span></div><p>${trackingLabel}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div><small><b>Camera setup:</b> ${escapeHtml(movementProfile.cameraHint)}</small>${assignment.instructions ? `<small><b>Therapist note:</b> ${escapeHtml(assignment.instructions)}</small>` : ""}${exerciseGuideMarkup(assignment, { compact: true })}</div>
     <button class="button button--primary" data-start-assignment="${assignment.id}">${assignment.exercise_mode === "movement_game" ? "Start mission" : completed ? "Do again" : "Start exercise"} ${icon("arrow", 16)}</button>
   </article>`;
 }
@@ -825,7 +828,7 @@ function patientView() {
   });
 }
 
-function movementGameMarkup(mapping, targetReps) {
+function movementGameMarkup(mapping, targetReps, assignment) {
   return `<section class="movement-game-card">
     <div class="movement-game-heading"><div><span class="game-kicker">MOVEMENT GAME · SQUAT MISSION</span><h3>${escapeHtml(mapping.title)}</h3><p>${escapeHtml(mapping.instruction)}</p></div><div class="mode-switch" role="group" aria-label="Session view"><button data-movement-mode="standard">Exit game</button><button class="active" data-movement-mode="game">Play mission</button></div></div>
     <div id="movement-game-stage" class="movement-game-stage active" aria-live="polite">
@@ -841,7 +844,8 @@ function movementGameMarkup(mapping, targetReps) {
         <div id="game-completion" class="game-completion hidden"><span>${icon("trophy",24)}</span><div><small>MISSION COMPLETE</small><b>You escaped with controlled movement.</b><p>Your prescribed repetitions are complete. No extra exercise is needed.</p></div></div>
       </div>
       <div class="game-hud">
-        <div><small>VALID REPS</small><b><span id="game-reps">0</span> / ${targetReps}</b></div>
+        <div><small>CURRENT SET</small><b><span id="game-set">1</span> / ${assignment.target_sets || 1}</b></div>
+        <div><small>SET REPS</small><b><span id="game-set-reps">0</span> / ${assignment.target_repetitions || 10}</b></div>
         <div><small>REMAINING</small><b id="game-remaining">${targetReps}</b></div>
         <div><small>ENERGY</small><b id="game-collectibles">0</b></div>
         <div><small>SCORE</small><b id="game-score">0</b></div>
@@ -854,6 +858,7 @@ function movementGameMarkup(mapping, targetReps) {
 }
 
 function labView() {
+  clearSetRest();
   currentView = "lab";
   sessionReps = [];
   currentAssignment = currentAssignment || patientWorkspace?.assignments?.[0] || assignmentDetails({ id: "demo-assignment", exercise_key: "bodyweight_squat", display_name: "Bodyweight Squat", target_sets: 1, target_repetitions: 8, tracking_mode: "pose_reps", exercise_mode: "movement_game" });
@@ -892,14 +897,15 @@ function labView() {
               <span>${icon("shield", 12)} On-device</span>
             </div>
           </div>
+          ${gameMapping ? movementGameMarkup(gameMapping, targetReps, assignment) : ""}
           <div class="motion-stage">
             <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera setup</b><small>${escapeHtml(movementProfile.cameraHint)}</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button><button id="recovery-demo">View tracker simulation</button></div></div><span class="pane-label">YOU</span></div>
             <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> <span id="twin-target-label">${movementProfile.overlayJoint && movementProfile.unit === "°" ? `${escapeHtml(movementProfile.overlayJoint)} angle` : "Movement path"}</span></div></div>
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
-          <div class="live-metrics"><div><span>${timedExercise ? "HOLD" : "REPS"}</span><b><i id="live-reps">0</i><small>/ ${timedExercise ? `${assignment.duration_seconds || 30}s` : (demoScriptActive ? 5 : targetReps)}</small></b></div><div><span id="live-angle-label">${escapeHtml(jointLabel.toUpperCase())}</span><b id="live-depth">—</b></div><div><span>MOVEMENT RANGE</span><b id="live-tempo">—</b></div><div><span>SYMMETRY Δ</span><b id="live-symmetry">—</b></div></div>
+          <div class="live-metrics"><div><span>CURRENT SET</span><b><i id="live-set">1</i><small>/ ${assignment.target_sets || 1}</small></b></div><div><span>${timedExercise ? "HOLD" : "REPS THIS SET"}</span><b><i id="live-reps">0</i><small>/ ${timedExercise ? `${assignment.duration_seconds || 30}s` : repsPerSet}</small></b></div><div><span>TOTAL VALID</span><b id="live-total-reps">0 / ${targetReps}</b></div><div><span id="live-angle-label">${escapeHtml(jointLabel.toUpperCase())}</span><b id="live-depth">—</b></div></div>
           <div class="coach-card"><span class="coach-orb">${icon("spark", 19)}</span><div><small>${escapeHtml(patientName.split(" ")[0].toUpperCase())}’S AXION COACH</small><p id="coach-message" aria-live="polite">${escapeHtml(assignment.instructions || "Stand naturally for three seconds. Axion will learn your baseline for this session.")}</p></div><span id="coach-state">READY</span></div>
-          ${gameMapping ? movementGameMarkup(gameMapping, targetReps) : ""}
+          <div id="set-rest-overlay" class="set-rest-overlay hidden" role="status" aria-live="assertive"><span>${icon("pause",24)}</span><div><small id="set-rest-kicker">SET COMPLETE</small><b id="set-rest-title">Recovery break</b><p>Your therapist scheduled this rest before the next set.</p><strong><i id="set-rest-seconds">0</i>s</strong></div></div>
           <div class="rep-timeline"><span>REP SEQUENCE</span><div id="rep-dots">${Array.from({ length: demoScriptActive ? 5 : Math.min(targetReps, 30) }, (_, i) => `<i data-rep="${i + 1}">${i + 1}</i>`).join("")}</div></div>
           <div class="safety-action"><button class="button button--safety" id="report-safety-event">${icon("activity",17)} Pain or movement concern</button><span>Reporting a concern pauses tracking. Stopping safely never removes progress or a streak.</span></div>
           <div class="capture-actions"><button class="button button--ghost" id="start-camera">${icon("camera", 17)} Restart camera scan</button><button class="button button--primary" id="run-demo">${icon("play", 17)} ${currentSession?.demo ? "Synthetic product demo" : "View tracker simulation"} <small>${currentSession?.demo ? "70 sec" : "not saved"}</small></button><button class="button button--quiet" id="reset-session">Reset</button><button class="button button--finish" id="finish-session" disabled>Finish session ${icon("arrow", 17)}</button></div>
@@ -1306,9 +1312,10 @@ function planExercises(planId) {
 }
 
 function prescriptionTarget(exercise) {
-  return exercise.tracking_mode === "timed_hold"
+  const dose = exercise.tracking_mode === "timed_hold"
     ? `${exercise.target_sets || 1} sets · ${exercise.duration_seconds || 30}s hold`
     : `${exercise.target_sets || 1} sets · ${exercise.target_repetitions || 10} reps`;
+  return `${dose}${Number(exercise.rest_seconds || 0) > 0 && Number(exercise.target_sets || 1) > 1 ? ` · ${exercise.rest_seconds}s rest` : ""}`;
 }
 
 function exercisePrescriptionRows() {
@@ -1327,8 +1334,9 @@ function exercisePrescriptionRows() {
         ? `<span class="dosage-control"><small>HOLD (SEC)</small><input class="prescription-duration" type="number" min="5" max="3600" value="${exercise.defaultDuration || 30}" ${index === 0 ? "" : "disabled"}/><input class="prescription-reps" type="hidden" value="1"/></span>`
         : `<span class="dosage-control"><small>REPS</small><input class="prescription-reps" type="number" min="1" max="500" value="${exercise.defaultReps}" ${index === 0 ? "" : "disabled"}/></span>`}
       <span class="dosage-control prescription-mode-control"><small>MODE</small>${gameSupported
-        ? `<select class="prescription-mode" ${index === 0 ? "" : "disabled"}><option value="standard">Standard</option><option value="movement_game">Movement Game</option></select>`
+        ? `<select class="prescription-mode" ${index === 0 ? "" : "disabled"}><option value="movement_game">Movement Game</option><option value="standard">Standard</option></select>`
         : `<input class="prescription-mode" type="hidden" value="standard"/><em>Standard</em>`}</span>
+      <span class="dosage-control prescription-rest-control"><small>REST BETWEEN SETS</small><label><input class="prescription-rest-enabled" type="checkbox" ${index === 0 ? "checked" : "disabled"}/><input class="prescription-rest" type="number" min="5" max="900" value="60" ${index === 0 ? "" : "disabled"}/><em>sec</em></label></span>
     </label>`;
   }).join("");
 }
@@ -1604,8 +1612,13 @@ async function submitPersonalPlan(event) {
         repetitions: row.querySelector(".prescription-reps").value,
         durationSeconds: row.querySelector(".prescription-duration")?.value || null,
         exerciseMode: row.querySelector(".prescription-mode")?.value || "standard",
+        restEnabled: Boolean(row.querySelector(".prescription-rest-enabled")?.checked),
+        restSeconds: row.querySelector(".prescription-rest")?.value || 0,
       }));
-    await createPersonalPlan(supabase, currentSession.user.id, document.querySelector("#plan-patient").value, {
+    const patientSelect = document.querySelector("#plan-patient");
+    const patientId = patientSelect.value;
+    const patientName = patientSelect.selectedOptions[0]?.textContent || "the selected patient";
+    await createPersonalPlan(supabase, currentSession.user.id, patientId, {
       title: document.querySelector("#plan-title").value,
       programLabel: document.querySelector("#plan-program").value,
       phaseLabel: document.querySelector("#plan-phase").value,
@@ -1619,7 +1632,7 @@ async function submitPersonalPlan(event) {
     therapistSection = "roadmaps";
     therapistView();
     const updatedResult = document.querySelector("#plan-result");
-    if (updatedResult) updatedResult.textContent = "Plan published. It is now visible only to this patient and your therapist account.";
+    if (updatedResult) updatedResult.textContent = `Plan published for ${patientName}. Sets, reps, rest intervals, and exercise mode are now available in that patient’s account.`;
   } catch (error) { result.textContent = safeOperationalMessage(error, "The roadmap could not be published. Review the selected exercises and try again."); }
   finally { button.disabled = false; }
 }
@@ -2050,6 +2063,11 @@ async function initializeLab() {
       if (sessionReps.length >= target) {
         tracker?.pause?.();
         setText("#capture-status", "PRESCRIPTION COMPLETE");
+      } else if (sessionReps.length % Math.max(1, Number(currentAssignment?.target_repetitions || 1)) === 0) {
+        startSetRest(
+          Math.max(0, Number(currentAssignment?.rest_seconds || 0)),
+          sessionReps.length / Math.max(1, Number(currentAssignment?.target_repetitions || 1)),
+        );
       }
     },
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
@@ -2058,7 +2076,9 @@ async function initializeLab() {
       setText("#twin-target-label", activeProfile.overlayJoint && measurementUnit === "°"
         ? `${measurementSide ? `${measurementSide} ` : ""}${activeProfile.overlayJoint} angle`
         : "Movement path");
-      setText("#live-reps", stage === "hold" ? Math.min(currentAssignment?.duration_seconds || 30, Math.round(elapsedSeconds || 0)) : sessionReps.length);
+      setText("#live-reps", stage === "hold"
+        ? Math.min(currentAssignment?.duration_seconds || 30, Math.round(elapsedSeconds || 0))
+        : sessionReps.length % Math.max(1, Number(currentAssignment?.target_repetitions || 1)));
       setText("#live-depth", jointAngle === null ? "—" : `${jointAngle}${measurementUnit}`);
       setText("#live-tempo", movementRange === null ? "—" : `${movementRange}${measurementUnit}`);
       setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}${measurementUnit}`);
@@ -2376,6 +2396,39 @@ function celebrateMilestone() {
   setTimeout(() => layer.remove(), 1400);
 }
 
+function clearSetRest() {
+  if (setRestTimer) clearInterval(setRestTimer);
+  setRestTimer = null;
+  setRestEndsAt = null;
+  document.querySelector("#set-rest-overlay")?.classList.add("hidden");
+}
+
+function startSetRest(seconds, completedSet) {
+  if (!seconds || completedSet >= Number(currentAssignment?.target_sets || 1)) return;
+  clearSetRest();
+  tracker?.pause?.();
+  movementGameController?.consume({ type: MOVEMENT_EVENT.PAUSE });
+  setRestEndsAt = Date.now() + seconds * 1000;
+  const overlay = document.querySelector("#set-rest-overlay");
+  overlay?.classList.remove("hidden");
+  setText("#set-rest-kicker", `SET ${completedSet} COMPLETE`);
+  setText("#set-rest-title", `Next: set ${completedSet + 1} of ${currentAssignment?.target_sets || 1}`);
+  setText("#capture-status", "THERAPIST-SCHEDULED REST");
+  const tick = () => {
+    const remaining = Math.max(0, Math.ceil((setRestEndsAt - Date.now()) / 1000));
+    setText("#set-rest-seconds", remaining);
+    if (remaining > 0) return;
+    clearSetRest();
+    movementGameController?.consume({ type: MOVEMENT_EVENT.RESUME });
+    tracker?.resume?.();
+    setText("#capture-status", "MOVEMENT TRACKING");
+    setText("#coach-message", `Set ${completedSet + 1} is ready. Continue with the same controlled range.`);
+    setText("#coach-state", "READY");
+  };
+  tick();
+  setRestTimer = setInterval(tick, 250);
+}
+
 function updateLiveSession() {
   const last = sessionReps.at(-1);
   const stats = summaryFor(sessionReps);
@@ -2383,7 +2436,16 @@ function updateLiveSession() {
   const unit = last?.measurementUnit || trackingProfile.unit || "°";
   const angleValue = last ? (last.jointAngle ?? last.depthAngle) : null;
   setText("#live-angle-label", trackingProfile.label.toUpperCase());
-  setText("#live-reps", sessionReps.length);
+  const repsPerSet = Math.max(1, Number(currentAssignment?.target_repetitions || 1));
+  const totalSets = Math.max(1, Number(currentAssignment?.target_sets || 1));
+  const totalTarget = repsPerSet * totalSets;
+  const currentSet = Math.min(totalSets, Math.floor(sessionReps.length / repsPerSet) + (sessionReps.length >= totalTarget ? 0 : 1));
+  const setReps = sessionReps.length >= totalTarget ? repsPerSet : sessionReps.length % repsPerSet;
+  setText("#live-set", currentSet);
+  setText("#live-reps", setReps);
+  setText("#live-total-reps", `${sessionReps.length} / ${totalTarget}`);
+  setText("#game-set", currentSet);
+  setText("#game-set-reps", setReps);
   setText("#live-depth", angleValue === null ? "—" : `${Math.round(angleValue)}${unit}`);
   setText("#live-tempo", last?.movementRangeDegrees == null ? "—" : `${last.movementRangeDegrees}${unit}`);
   setText("#live-symmetry", last?.symmetryDelta == null ? "—" : `${last.symmetryDelta}${unit}`);
@@ -2403,7 +2465,7 @@ function updateLiveSession() {
 }
 
 function resetLab() {
-  stopDemo(); tracker?.reset?.(); sessionReps = [];
+  clearSetRest(); stopDemo(); tracker?.reset?.(); sessionReps = [];
   sessionSafetyEvents = [];
   movementGameController?.consume({ type: MOVEMENT_EVENT.RESET });
   sessionStartedAt = Date.now();
@@ -2411,7 +2473,7 @@ function resetLab() {
   document.querySelector("#calibration-overlay")?.classList.remove("complete");
   document.querySelector(".camera-placeholder")?.classList.remove("demo-active");
   updateCalibration(0, "Stand naturally with your full body in view.");
-  setText("#capture-status", "READY TO CALIBRATE"); setText("#live-reps", "0"); setText("#live-depth", "—"); setText("#live-tempo", "—"); setText("#live-symmetry", "—"); setText("#energy-value", "0%");
+  setText("#capture-status", "READY TO CALIBRATE"); setText("#live-set", "1"); setText("#live-reps", "0"); setText("#live-total-reps", `0 / ${Math.max(1, currentAssignment?.target_sets || 1) * Math.max(1, currentAssignment?.target_repetitions || 1)}`); setText("#live-depth", "—"); setText("#energy-value", "0%");
   document.querySelectorAll("#rep-dots i").forEach((dot) => dot.className = "");
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = "415";
   const finish = document.querySelector("#finish-session"); if (finish) finish.disabled = true;
@@ -2996,6 +3058,7 @@ function armAuthIdleTimeout() {
 }
 
 function navigateTo(target) {
+  clearSetRest();
   tracker?.stop?.();
   stopMovementGameAnimation();
   if (demoScriptActive) { stopDemo(); demoScriptActive = false; }
@@ -3095,10 +3158,17 @@ function bindEvents() {
     }
     const row = toggle.closest("[data-prescription-row]");
     row?.querySelectorAll("input:not(.prescription-toggle):not([type='hidden']), select").forEach((input) => { input.disabled = !toggle.checked; });
+    const restToggle = row?.querySelector(".prescription-rest-enabled");
+    const restSeconds = row?.querySelector(".prescription-rest");
+    if (restSeconds) restSeconds.disabled = !toggle.checked || !restToggle?.checked;
     const count = document.querySelectorAll(".prescription-toggle:checked").length;
     setText("#selected-exercise-count", `${count} selected`);
     row?.classList.toggle("selected", toggle.checked);
     applyPrescriptionFilters();
+  }));
+  document.querySelectorAll(".prescription-rest-enabled").forEach((toggle) => toggle.addEventListener("change", () => {
+    const seconds = toggle.closest(".prescription-rest-control")?.querySelector(".prescription-rest");
+    if (seconds) seconds.disabled = !toggle.checked;
   }));
   document.querySelector("#prescription-search")?.addEventListener("input", applyPrescriptionFilters);
   ["#prescription-program", "#prescription-goal", "#prescription-equipment", "#prescription-position", "#prescription-tracking", "#prescription-analysis"].forEach((selector) => {
