@@ -140,11 +140,11 @@ select public.approve_patient_connection(
   current_setting('axion.invitation_id')::uuid
 );
 
-select set_config('axion.plan_b', public.publish_patient_plan_v3(
+select set_config('axion.plan_b', public.publish_patient_plan_v6(
   '10000000-0000-4000-8000-000000000003'::uuid,
   'Patient B secure plan', 'Shoulder recovery', 'Phase 2',
   'Patient B only instructions',
-  '[{"exercise_key":"bodyweight_squat","sets":2,"repetitions":6,"duration_seconds":null},{"exercise_key":"wall_sit","sets":4,"repetitions":1,"duration_seconds":35}]'::jsonb,
+  '[{"exercise_key":"bodyweight_squat","sets":2,"repetitions":6,"duration_seconds":null,"exercise_mode":"movement_game","rest_seconds":75,"prescribed_side":"either"},{"exercise_key":"wall_sit","sets":4,"repetitions":1,"duration_seconds":35}]'::jsonb,
   2, 2, true
 )::text, true);
 
@@ -154,7 +154,7 @@ begin
     select 1 from public.exercise_assignments ea
     where ea.plan_id = current_setting('axion.plan_b')::uuid
       and ea.exercise_key = 'bodyweight_squat'
-      and ea.target_sets = 2 and ea.target_repetitions = 6
+      and ea.target_sets = 2 and ea.target_repetitions = 6 and ea.rest_seconds = 75 and ea.exercise_mode = 'movement_game'
   ) or not exists (
     select 1 from public.exercise_assignments ea
     where ea.plan_id = current_setting('axion.plan_b')::uuid
@@ -219,6 +219,7 @@ begin
 end
 $test$;
 
+savepoint partial_dose;
 insert into public.exercise_sessions (
   patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions, movement_summary,
   difficulty, discomfort, started_at, completed_at, duration_seconds, client_session_id
@@ -238,7 +239,39 @@ insert into public.exercise_sessions (
   '10000000-0000-4000-8000-000000000003'::uuid,
   current_setting('axion.assignment_b_wall')::uuid,
   current_setting('axion.node_b1')::uuid,
-  'wall_sit', 0, '{"source":"security-integration-test"}'::jsonb,
+  'wall_sit', 0, '{"source":"security-integration-test","measured_hold_seconds":140}'::jsonb,
+  2, 'none', now() - interval '35 seconds', now(), 35,
+  '11111111-1111-4111-8111-111111111112'::uuid
+);
+
+do $test$ begin
+  if exists (select 1 from public.roadmap_node_completions where roadmap_node_id = current_setting('axion.node_b1')::uuid) then
+    raise exception 'Partial exercise incorrectly unlocked roadmap completion';
+  end if;
+end $test$;
+rollback to savepoint partial_dose;
+release savepoint partial_dose;
+
+insert into public.exercise_sessions (
+  patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions, movement_summary,
+  difficulty, discomfort, started_at, completed_at, duration_seconds, client_session_id
+) values (
+  '10000000-0000-4000-8000-000000000003'::uuid,
+  current_setting('axion.assignment_b')::uuid,
+  current_setting('axion.node_b1')::uuid,
+  'bodyweight_squat', 12, '{"source":"security-integration-test"}'::jsonb,
+  2, 'none', now() - interval '30 seconds', now(), 30,
+  '11111111-1111-4111-8111-111111111111'::uuid
+);
+
+insert into public.exercise_sessions (
+  patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions, movement_summary,
+  difficulty, discomfort, started_at, completed_at, duration_seconds, client_session_id
+) values (
+  '10000000-0000-4000-8000-000000000003'::uuid,
+  current_setting('axion.assignment_b_wall')::uuid,
+  current_setting('axion.node_b1')::uuid,
+  'wall_sit', 0, '{"source":"security-integration-test","measured_hold_seconds":140}'::jsonb,
   2, 'none', now() - interval '35 seconds', now(), 35,
   '11111111-1111-4111-8111-111111111112'::uuid
 );
@@ -452,7 +485,7 @@ begin
   if not exists (
     select 1 from public.exercise_assignments ea
     where ea.id = current_setting('axion.assignment_b')::uuid
-      and ea.target_sets = 2 and ea.target_repetitions = 6
+      and ea.target_sets = 2 and ea.target_repetitions = 6 and ea.rest_seconds = 75 and ea.exercise_mode = 'movement_game'
   ) then
     raise exception 'Recommendation review changed the prescription';
   end if;

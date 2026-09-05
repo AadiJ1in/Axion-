@@ -141,6 +141,7 @@ export async function createMovementTracker({
   canvas,
   exerciseKey = "bodyweight_squat",
   trackingMode = "pose_reps",
+  prescribedSide = "either",
   onUpdate = () => {},
   onPose = () => {},
   onRep = () => {},
@@ -162,6 +163,7 @@ export async function createMovementTracker({
   let repStart = null;
   let peakAngle = null;
   let peakDelta = 0;
+  let peakMeasurementSide = null;
   let symmetrySamples = [];
   let calibrationStart = null;
   let calibrated = false;
@@ -315,6 +317,7 @@ export async function createMovementTracker({
       tempo: Number(duration.toFixed(1)),
       symmetryDelta: symmetryDelta === null ? null : Number(symmetryDelta.toFixed(1)),
       capturedAt: now,
+      measurementSide: peakMeasurementSide || latestMeasurementSide,
     };
     repHistory.push(rep);
     onRep(rep, [...repHistory]);
@@ -342,8 +345,9 @@ export async function createMovementTracker({
     const averageDelta = Math.abs(metrics.value - baselineAngle);
     // Use the side actually moving most. Averaging a working limb with a still limb
     // previously halved unilateral excursion and made valid reps harder to capture.
-    const movementDelta = sideDeltas.length ? Math.max(...sideDeltas) : averageDelta;
-    const measurementSide = Number.isFinite(leftDelta) || Number.isFinite(rightDelta)
+    const preferredDelta = prescribedSide === "left" ? leftDelta : prescribedSide === "right" ? rightDelta : null;
+    const movementDelta = prescribedSide !== "either" ? (preferredDelta ?? 0) : sideDeltas.length ? Math.max(...sideDeltas) : averageDelta;
+    const measurementSide = prescribedSide !== "either" ? prescribedSide : Number.isFinite(leftDelta) || Number.isFinite(rightDelta)
       ? ((leftDelta ?? -Infinity) >= (rightDelta ?? -Infinity) ? "left" : "right")
       : null;
     const displayValue = measurementSide && Number.isFinite(metrics[measurementSide]) ? metrics[measurementSide] : metrics.value;
@@ -374,6 +378,7 @@ export async function createMovementTracker({
 
     if (repStart) {
       if (movementDelta >= peakDelta) {
+        peakMeasurementSide = measurementSide;
         peakDelta = movementDelta;
         peakAngle = displayValue;
       }
@@ -383,6 +388,7 @@ export async function createMovementTracker({
     const cycle = repCycle.update(movementDelta, now);
     stage = cycle.stage;
     if (cycle.started) {
+      peakMeasurementSide = measurementSide;
       repStart = now;
       peakAngle = displayValue;
       peakDelta = movementDelta;
@@ -571,6 +577,7 @@ export async function createMovementTracker({
     pause,
     resume,
     reset,
+    resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; },
     getReps: () => reps,
     getMetrics: () => ({
       repetitions: reps,

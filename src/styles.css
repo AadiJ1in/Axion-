@@ -796,3 +796,44 @@
 @media(prefers-reduced-motion:reduce){.game-runner,.game-mission-progress i{transition:none}.movement-game-stage.collision .game-runner{animation:none}}
 @media(max-width:1050px){.plan-builder-card--v2 .prescription-filters{grid-template-columns:repeat(2,1fr)}.prescription-row{grid-template-columns:auto minmax(0,1fr) 78px 96px}.prescription-mode-control,.prescription-rest-control{grid-column:2/-1}.game-hud{grid-template-columns:repeat(3,1fr)}.game-hud>button{min-height:42px}.prescription-selected-tray{grid-template-columns:auto 1fr}.prescription-selected-tray>em{grid-column:2}}
 @media(max-width:680px){.plan-builder-card--v2 .prescription-filters{grid-template-columns:1fr}.prescription-selected-tray{grid-template-columns:1fr}.prescription-selected-tray>em{grid-column:auto}.prescription-row{grid-template-columns:auto 1fr}.prescription-mode-control,.prescription-rest-control{grid-column:2}.movement-game-heading{grid-template-columns:1fr}.ruins-game{height:280px}.game-hud{grid-template-columns:repeat(2,1fr)}.game-hud .game-quality{grid-column:1/-1}.game-mission-progress{grid-template-columns:1fr}.game-story-bar{align-items:flex-start}.game-feedback{max-width:90%;white-space:normal;text-align:center}.set-rest-overlay{inset:72px .5rem auto;min-height:250px;flex-direction:column;text-align:center}}
+
+/* Fractured World: the level is the main working surface. */
+.adventure-lab .motion-workspace{display:block;max-width:1400px}
+.adventure-lab .journey-panel{display:none}
+.adventure-lab .capture-panel{background:#091321}
+.adventure-lab .lab-exercise-guide{display:block;padding-block:.5rem}
+.adventure-lab .lab-exercise-guide>div{display:none}
+.adventure-lab .lab-header{padding-block:1rem}
+.adventure-lab .personal-lab-banner{display:none}
+.adventure-lab .capture-panel>.motion-stage{max-width:520px;height:230px;margin:1rem auto}
+.adventure-lab:has(.movement-game-stage.active) .capture-panel>.live-metrics{display:none}
+.adventure-lab .capture-panel>.rep-timeline{display:none}
+.adventure-lab .coach-card{margin:.75rem 1rem}
+.adventure-card{margin:0;border:0;border-radius:0;background:#101b30}
+.adventure-card .movement-game-heading h3{font-size:1.6rem;color:#f5e5bb}
+.adventure-card .movement-game-heading p{font-size:.9rem;line-height:1.5;max-width:780px}
+.adventure-card .game-kicker,.adventure-card .game-story-bar small{font-size:.72rem}
+.adventure-card .game-story-bar b{font-size:.9rem}
+.adventure-card .game-story-bar button{min-height:44px;background:#17273c;color:#dff4ff;border:1px solid #51647e;border-radius:8px;padding:.5rem 1rem}
+.adventure-viewport{position:relative;height:clamp(320px,50vw,590px);overflow:hidden}
+#adventure-canvas{display:block;width:100%;height:100%}
+.adventure-card .game-feedback{font-size:1rem;bottom:5%;padding:.65rem 1rem;white-space:normal;width:max-content;max-width:85%;text-align:center}
+.adventure-card .game-hud{grid-template-columns:1fr 1fr 2fr 1fr 1fr auto;background:#0a1424}
+.adventure-card .game-hud small{font-size:.72rem;color:#9eb6c9}
+.adventure-card .game-hud b{font-size:1.15rem;color:#e5f5ff}
+.adventure-card .game-hud button,.adventure-card .mode-switch button{min-height:44px;font-size:.88rem}
+.adventure-card .game-mission-progress small{font-size:.8rem}
+.adventure-card .game-completion{text-align:center;background:rgba(8,19,36,.92)}
+.adventure-card .game-completion b{font-size:1.8rem}.adventure-card .game-completion p{font-size:1rem}.adventure-card .game-completion strong{color:#f3d38c;font-size:1.5rem;margin:1rem}
+.adventure-card .movement-game-stage.paused .adventure-viewport:after{content:'Paused · your progress is preserved';position:absolute;inset:0;display:grid;place-items:center;background:#091321aa;color:#e5f5ff;font-size:1.1rem;pointer-events:none}
+.adventure-lab .set-rest-overlay{inset:8rem 1rem auto;min-height:340px;background:linear-gradient(#0c1830e8,#0c1830f5),url('/adventure/environments.webp') center/cover;border-color:#d4b87e}
+.adventure-lab .set-rest-overlay p{font-size:1rem;max-width:480px;line-height:1.6}.adventure-lab .set-rest-overlay b{font-size:1.4rem}.adventure-lab .set-rest-overlay strong{font-size:3rem}
+.prescription-row input:focus-visible,.prescription-row select:focus-visible{outline:3px solid #9fcfff;outline-offset:2px}
+.prescription-empty.hidden,.set-rest-overlay.hidden{display:none!important}
+@media(max-width:700px){.adventure-card .game-hud{grid-template-columns:repeat(2,1fr)}.adventure-card .game-quality{grid-column:1/-1}.adventure-card .game-hud small{font-size:.75rem}.adventure-card .movement-game-heading h3{font-size:1.3rem}.adventure-card .movement-game-heading p{font-size:.9rem}.adventure-card .game-story-bar{padding:.75rem}.adventure-card .game-feedback{font-size:.9rem}.adventure-lab .set-rest-overlay{inset:10rem .5rem auto}.adventure-lab .capture-panel>.motion-stage{height:200px}.adventure-card .game-mission-progress{display:block}.adventure-card .game-mission-progress>span{display:block;margin-bottom:.5rem}}
+/* Isolate the full game from the legacy compact progress-bar selectors. */
+.adventure-card .movement-game-stage>div{height:auto;overflow:visible;border-radius:0;background:transparent}
+.adventure-card .movement-game-stage>.adventure-viewport{height:clamp(320px,50vw,590px);overflow:hidden;background:#101b30}
+.adventure-card .movement-game-stage>.game-hud{background:#0a1424}
+.adventure-card .movement-game-stage>.game-story-bar{background:#122136}
+.adventure-card .movement-game-stage small{font-size:.75rem}

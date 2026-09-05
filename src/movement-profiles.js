@@ -45,6 +45,7 @@ export const movementProfiles = {
   serratus_wall_slide: rep("wrist_elevation", 16, { label: "Wall-slide elevation", cameraHint: "Use a side/¾ view with both wrists, shoulders, and hips visible." }),
 
   doorway_chest_stretch: hold("shoulder_opening", 8, { label: "Chest opening", cameraHint: "Use a front view with elbows and shoulders visible." }),
+  push_up: rep("elbow_flexion", 24, { label: "Elbow bend", cameraHint: "Place the camera at your side, showing shoulder, elbow, wrist, hip and feet. Start in the prescribed upper push-up position." }),
   wall_push_up: rep("elbow_flexion", 24, { label: "Elbow bend", cameraHint: "Use a side or ¾ view with shoulders, elbows, and wrists visible." }),
   supine_chest_opening: hold("shoulder_opening", 8, { label: "Chest opening", cameraHint: "Position the camera above or at a ¾ angle so both arms are visible." }),
 

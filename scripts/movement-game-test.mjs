@@ -28,14 +28,14 @@ const collision = createMovementGameController({ exerciseKey: "bodyweight_squat"
 collision.setMode("game");
 collision.consume({ type: MOVEMENT_EVENT.MOVEMENT_PROGRESS, progress: 0.2, stage: "up" });
 collision.tick(80);
-for (let index = 0; index < 30; index += 1) collision.tick(80);
+for (let index = 0; index < 60; index += 1) collision.tick(80);
 assert.equal(collision.getState().attemptCollided, true, "an obstacle touching the explorer marks only the current attempt");
 const rejected = collision.consume({ type: MOVEMENT_EVENT.REP_COMPLETE });
-assert.equal(rejected.completed, 0, "a collided rep is not counted");
+assert.equal(rejected.completed, 1, "a collision never removes a clinically valid rep");
 assert.equal(rejected.collisions, 1);
 collision.consume({ type: MOVEMENT_EVENT.MOVEMENT_PROGRESS, progress: 1, stage: "down" });
 collision.consume({ type: MOVEMENT_EVENT.REP_COMPLETE });
-assert.equal(collision.getState().completed, 1, "the next valid rep continues from preserved progress");
+assert.equal(collision.getState().completed, 2, "the next valid rep continues from preserved progress");
 
 const invalidCycle = createMovementGameController({ exerciseKey: "bodyweight_squat", targetReps: 8 });
 invalidCycle.setMode("game");
@@ -50,3 +50,10 @@ unsupported.setMode("game");
 assert.equal(unsupported.getState().mode, "standard");
 
 console.log("Movement/game boundary tests passed.");
+
+const paused = createMovementGameController({exerciseKey:'push_up', targetReps:4});
+paused.setMode('game'); paused.consume({type:MOVEMENT_EVENT.PAUSE});
+paused.setMode('standard');paused.consume({type:MOVEMENT_EVENT.REP_COMPLETE});
+assert.equal(paused.getState().completed,0,'switching mode cannot bypass a pause');
+paused.consume({type:MOVEMENT_EVENT.RESUME});paused.consume({type:MOVEMENT_EVENT.REP_COMPLETE,rep:{valid:false}});
+assert.equal(paused.getState().completed,0,'invalid form cannot count');

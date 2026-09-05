@@ -17,7 +17,7 @@ assert.equal(
 );
 
 const keys = Object.keys(exerciseCatalog);
-assert.equal(keys.length, 92, "The exercise catalog count changed; update tracker coverage intentionally.");
+assert.equal(keys.length, 93, "The exercise catalog count changed; update tracker coverage intentionally.");
 assert.deepEqual(assertMovementProfileCoverage(keys), [], "Every catalog exercise must have an explicit tracker profile.");
 assert.deepEqual(Object.keys(movementProfiles).filter((key) => !exerciseCatalog[key]), [], "Tracker profiles must map to real catalog exercises.");
 assert.deepEqual(exerciseFacets(exerciseCatalog.band_shoulder_extension), { goals: ["Strength", "Motor control"], equipment: ["Resistance band"], position: "Standing" }, "Band shoulder extension facets changed unexpectedly.");
