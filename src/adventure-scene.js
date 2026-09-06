@@ -1,6 +1,7 @@
+import { drawSquatCameraScene } from './squat-camera-scene.js';
 import { gameTarget } from './adventure-definitions.js';
 // Canvas renders entertainment only; it cannot write clinical repetitions.
-export function createAdventureScene(canvas, definition) {
+export function createAdventureScene(canvas, definition, { video = null } = {}) {
   const ctx=canvas.getContext('2d');
   if(!ctx)return {draw(){},destroy(){},async toggleSound(){return false;}};
   const backgrounds=new Image(), sprites=new Image();
@@ -23,6 +24,13 @@ export function createAdventureScene(canvas, definition) {
       const now=performance.now(),delta=Math.min(80,now-last);last=now;
       if(!state.paused&&state.attemptActive)time+=delta;
       const start=performance.now(),w=canvas.width,h=canvas.height;
+      if(state.camera){
+        drawSquatCameraScene(ctx,video,state,w,h);
+        mean=mean*.95+(performance.now()-start)*.05;frames++;
+        canvas.dataset.renderMs=mean.toFixed(2);canvas.dataset.frames=String(frames);
+        if(state.lastOutcome!==outcome){outcome=state.lastOutcome;if(['counted','complete'].includes(outcome))tone();}
+        return;
+      }
       ctx.fillStyle='#101b30';ctx.fillRect(0,0,w,h);
       if(backgrounds.complete&&backgrounds.naturalWidth){
         const bw=backgrounds.naturalWidth/2,bh=backgrounds.naturalHeight/2;

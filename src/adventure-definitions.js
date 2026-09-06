@@ -10,7 +10,7 @@ export const getAdventureDefinition = key => adventureDefinitions[key] || null;
 export const clamp01 = x => Math.min(1, Math.max(0, Number(x) || 0));
 export function motionInput(profile, sample) {
   if (profile.mode !== 'reps' || !Number.isFinite(sample.movementRange) || ['calibrating','positioning'].includes(sample.stage)) return null;
-  return { type: 'movement_progress', progress: clamp01(sample.movementRange / profile.startThreshold), stage: sample.stage, side: sample.measurementSide || null };
+  return { type: 'movement_progress', range: sample.movementRange, progress: clamp01(sample.movementRange / profile.startThreshold), stage: sample.stage, side: sample.measurementSide || null };
 }
 export function doseProgress(assignment = {}, count = 0) {
   const sets = Math.max(1, Number(assignment.target_sets) || 1);
