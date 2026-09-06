@@ -63,3 +63,37 @@ Generated with OpenAI image generation for this implementation, then encoded as 
 - Transparent sprite atlas: explorer idle/duck/jump, gravity ship, beam, portal, crossing stone and crystal.
 
 These assets are versioned with the application. Reduced-motion preferences disable ambient effects; renderer cost can suppress particles. Sound is opt-in.
+
+## Live-camera squat update — 2026-09-06
+
+Squats now use the actual mirrored camera image as the player, with a perspective
+light gate overlaid on the same contained video coordinate system. The former
+explorer remains only in the other existing exercise scenes. No video or landmark
+frames are uploaded. Gate approach follows squat excursion, with no countdown or
+extra range requirement. The first detector-validated prescribed rep calibrates
+camera head clearance and excursion; subsequent smaller valid ranges ease the
+opening rather than increase required movement. Tracking loss withdraws the gate;
+returning to neutral re-establishes the standing reference. Clinical counting stays
+with the existing movement detector, independent of game score.
+
+Real labs and saves require an active assignment on the signed-in patient's active
+plan and care connection. Anonymous lab entry opens sign-in. Assignment mode,
+sets, repetitions, rest and game results already live in exercise_assignments and
+patient-owned exercise_sessions; no separate public/global game record or new
+schema is needed. Saved mission history is shown on the corresponding patient's
+exercise card. Database RLS is authoritative beyond the frontend ownership guard.
+Adventure summaries use version 2 and identify the live_camera perspective.
+
+Camera restarts release the previous stream/animation loop. An operation generation
+prevents a delayed permission or model response from starting a departed session.
+Backgrounding the page pauses tracking and requires an explicit resume.
+
+Verification: npm run check (including camera-coordinate, gate, stale-pose,
+invalid-rep, pause, dose-cap and ownership tests), production build, browser preview
+and anonymous-entry checks, and the transactional Supabase RLS integration suite
+passed. Synthetic database rows were rolled back. No physical camera is available
+in the cloud browser. Real-device acceptance remains required: side-view camera
+setup, low light and occlusion, slow and small prescribed squat ranges, mobile
+orientation changes, repeated camera restarts, and two authenticated patient
+accounts completing/saving sets with therapist-prescribed rest. This release does
+not claim clinical validation or perfect tracking across devices.

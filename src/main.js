@@ -2,6 +2,7 @@ import { isConfigured, supabase } from "./supabase.js";
 import { createMovementTracker } from "./pose.js";
 import { getMovementProfile } from "./movement-profiles.js";
 import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "./movement-game.js";
+import { ownsActiveAssignment } from "./squat-camera.js";
 import { adventureMarkup } from "./adventure-ui.js";
 import { motionInput, doseProgress, sessionCompletesDose } from "./adventure-definitions.js";
 import { matchesPrescriptionFilters } from "./prescription-filters.js";
@@ -624,12 +625,13 @@ function patientExerciseCard(assignment, index, sessions) {
     ? `${assignment.target_sets || 1} sets · ${assignment.duration_seconds || 30} second hold`
     : `${assignment.target_sets || 1} sets · ${assignment.target_repetitions || 10} repetitions`;
   const restLabel = Number(assignment.rest_seconds || 0) > 0 && Number(assignment.target_sets || 1) > 1 ? `${assignment.rest_seconds}s rest between sets` : "No timed rest";
+  const savedGame = sessions.find(session => session.assignment_id === assignment.id && session.movement_summary?.adventure);
   const movementProfile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
   const trackingLabel = movementProfile.mode === "hold" ? "camera-timed position hold" : "automatic exercise-specific rep tracking";
   return `<article class="exercise-card ${index === 0 ? "exercise-card--primary" : ""} ${completed ? "complete" : ""}">
     <div class="exercise-order">${String(index + 1).padStart(2, "0")}</div>
     ${index === 0 ? `<div class="exercise-visual">${twinSvg()}</div>` : `<span class="exercise-icon">${icon(completed ? "check" : "activity", 24)}</span>`}
-    <div class="exercise-copy"><span class="live-pill">${assignment.exercise_mode === "movement_game" ? "MOVEMENT GAME" : completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${escapeHtml(assignment.summary)}</p><div class="dose-summary"><b>${escapeHtml(target)}</b><span>${escapeHtml(restLabel)}</span></div><p>${trackingLabel}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div><small><b>Camera setup:</b> ${escapeHtml(movementProfile.cameraHint)}</small>${assignment.instructions ? `<small><b>Therapist note:</b> ${escapeHtml(assignment.instructions)}</small>` : ""}${exerciseGuideMarkup(assignment, { compact: true })}</div>
+    <div class="exercise-copy"><span class="live-pill">${assignment.exercise_mode === "movement_game" ? "MOVEMENT GAME" : completed ? "COMPLETED BEFORE" : "PRESCRIBED FOR YOU"}</span><h3>${escapeHtml(assignment.display_name)}</h3><p>${escapeHtml(assignment.summary)}</p><div class="dose-summary"><b>${escapeHtml(target)}</b><span>${escapeHtml(restLabel)}</span></div><p>${assignment.exercise_mode === "movement_game" && assignment.exercise_key === "bodyweight_squat" ? "Live-camera squat mission · you are the player" : trackingLabel}</p><div>${assignment.focus.map((focus) => `<span>${escapeHtml(focus)}</span>`).join("")}</div><small><b>Camera setup:</b> ${escapeHtml(movementProfile.cameraHint)}</small>${assignment.instructions ? `<small><b>Therapist note:</b> ${escapeHtml(assignment.instructions)}</small>` : ""}${savedGame ? `<small>Last saved mission · ${Number(savedGame.repetitions) || 0} valid reps · ${Number(savedGame.movement_summary.adventure.score) || 0} points</small>` : ""}${exerciseGuideMarkup(assignment, { compact: true })}</div>
     <button class="button button--primary" data-start-assignment="${assignment.id}">${assignment.exercise_mode === "movement_game" ? "Start mission" : completed ? "Do again" : "Start exercise"} ${icon("arrow", 16)}</button>
   </article>`;
 }
@@ -840,6 +842,11 @@ function movementGameMarkup(mapping, targetReps, assignment) {
 }
 
 function labView() {
+  if (!currentSession?.demo && !ownsActiveAssignment(currentSession, patientWorkspace, currentAssignment)) {
+    if (!currentSession?.user) { authView(); return; }
+    routePatientPortal().catch(showPortalError);
+    return;
+  }
   clearSetRest();
   gameTrackingReady = false;
   currentView = "lab";
@@ -862,7 +869,7 @@ function labView() {
   const assignmentCount = Math.max(1, patientWorkspace?.assignments?.length || 1);
   const backTarget = currentProfile?.role === "patient" || demoRole === "patient" ? "patient" : "home";
   app.innerHTML = layout(`
-    <main class="lab-page ${gameMapping ? "adventure-lab" : ""}">
+    <main class="lab-page ${gameMapping ? "adventure-lab" : ""} ${gameMapping?.action === "duck" ? "camera-squat-lab" : ""}">
       <div class="lab-header container-wide">
         <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to ${escapeHtml(patientName.split(" ")[0])}’s recovery</button><div class="eyebrow"><span></span> ${escapeHtml(patientName)}’s Movement Science Lab · ${currentRoadmapNode ? `Roadmap session ${currentRoadmapNode.session_number} · ` : ""}Exercise ${assignmentNumber} of ${assignmentCount}</div><h1>${escapeHtml(assignment.display_name)}</h1><p class="lab-prescriber">Prescribed by ${escapeHtml(therapistName)} · ${escapeHtml(dosageLabel)}</p></div>
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
@@ -2023,6 +2030,7 @@ async function initializeLab() {
     exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
     targetReps: demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10),
     targetHoldSeconds: currentAssignment?.tracking_mode === "timed_hold" ? (currentAssignment?.duration_seconds || 30) : 0,
+    liveCamera: true,
     onState: renderMovementGameState,
   });
   setText("#calibration-copy", activeProfile.cameraHint);
@@ -2032,7 +2040,7 @@ async function initializeLab() {
     trackingMode: currentAssignment?.tracking_mode || "pose_reps",
     prescribedSide: currentAssignment?.prescribed_side || "either",
     onCalibration: ({ progress, status }) => updateCalibration(progress, status),
-    onPose: updateTwinFromLandmarks,
+    onPose: (points) => { updateTwinFromLandmarks(points); movementGameController?.updateCameraPose(points); },
     onTrackingState: handleTrackingState,
     onRep: acceptValidatedRep,
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
@@ -2063,6 +2071,7 @@ async function initializeLab() {
         : message);
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
       gameTrackingReady = Number.isFinite(movementRange) && !["calibrating", "positioning"].includes(stage);
+      movementGameController?.setCameraReady(gameTrackingReady);
       const input = motionInput(activeProfile, { movementRange, stage, measurementSide });
       if (input) movementGameController?.consume(input);
       if (stage === "hold" && (elapsedSeconds || 0) >= Math.min(5, currentAssignment?.duration_seconds || 30)) document.querySelector("#finish-session")?.removeAttribute("disabled");
@@ -2073,11 +2082,13 @@ async function initializeLab() {
       }
     },
     onError: (message) => {
+      gameTrackingReady = false; movementGameController?.setCameraReady(false);
       setText("#capture-status", "CAMERA NEEDS ATTENTION");
       setText("#coach-message", message);
       showCameraRecovery("Camera needs attention", message);
     },
   });
+  if (!video.isConnected) { tracker?.stop?.(); return; }
   document.querySelector("#start-camera")?.addEventListener("click", async () => {
     if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return; stopDemo(); document.querySelector(".camera-pane")?.classList.add("camera-on"); setText("#capture-status", "CAMERA ACTIVE"); await tracker.start(); });
   document.querySelector("#run-demo")?.addEventListener("click", runPitchDemo);
@@ -2113,7 +2124,7 @@ async function initializeLab() {
   if (gameCanvas) {
     const { createAdventureScene } = await import("./adventure-scene.js");
     if (!gameCanvas.isConnected) return;
-    adventureScene = createAdventureScene(gameCanvas, getMovementGameMapping(currentAssignment.exercise_key));
+    adventureScene = createAdventureScene(gameCanvas, getMovementGameMapping(currentAssignment.exercise_key), { video });
     document.querySelector("#adventure-sound")?.addEventListener("click", async (event) => {
       const enabled = await adventureScene.toggleSound();
       event.currentTarget.textContent = enabled ? "Sound on" : "Sound off";
@@ -2167,7 +2178,7 @@ function renderMovementGameState(state) {
       ? "Movement not validated · reset your form and try again"
     : state.lastOutcome === "counted"
       ? "Valid rep · path cleared"
-      : state.paused ? "Mission paused · progress preserved" : "Move when you are ready");
+      : state.paused ? "Mission paused · progress preserved" : state.camera && !state.camera.calibrated ? "First prescribed squat · learning your comfortable range" : state.camera ? "Squat at your own pace · the gate moves with you" : "Move when you are ready");
   setText("#game-pause", state.paused ? "Resume mission" : "Pause");
   setText("#session-pause", state.paused ? "Resume session" : "Pause session");
   document.querySelector("#game-completion")?.classList.toggle("hidden", state.lastOutcome !== "complete");
@@ -2183,6 +2194,7 @@ function startMovementGameAnimation() {
   let previous = performance.now();
   const frame = (now) => {
     const state = gameTrackingReady ? movementGameController?.tick(now - previous) : movementGameController?.getState();
+    if (state?.camera) document.querySelector(".adventure-card")?.classList.toggle("camera-live", state.camera.ready);
     if (state) adventureScene?.draw(state);
     previous = now;
     movementGameAnimation = requestAnimationFrame(frame);
@@ -2198,7 +2210,8 @@ function stopMovementGameAnimation() {
 }
 
 function handleTrackingState({ code, label, quality, confidence }) {
-  gameTrackingReady = code === "body_detected";
+  if (code === "camera_starting") movementGameController?.resetCamera();
+  if (code !== "body_detected") { gameTrackingReady = false; movementGameController?.setCameraReady(false); }
   const bodyState = document.querySelector("#body-state");
   const qualityState = document.querySelector("#quality-state");
   if (bodyState) {
@@ -2604,6 +2617,7 @@ function showReflection() {
 
 async function saveSessionSummary(reps, feedback = {}) {
   if (!supabase || !currentSession?.user || currentSession.demo || simulationSession || !reps.length) return null;
+  if (!ownsActiveAssignment(currentSession, patientWorkspace, currentAssignment)) return null;
 
   const stats = summaryFor(reps);
   const trackingProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
@@ -2639,7 +2653,7 @@ async function saveSessionSummary(reps, feedback = {}) {
         prescribed_sets: currentAssignment?.target_sets,
         prescribed_reps_per_set: currentAssignment?.target_repetitions,
         adventure: movementGameController?.getState().mode === "game" ? {
-          version: 1, scene: movementGameController.getState().mapping?.scene,
+          version: 2, perspective: currentAssignment.exercise_key === "bodyweight_squat" ? "live_camera" : "world", scene: movementGameController.getState().mapping?.scene,
           score: movementGameController.getState().score,
           stars: movementGameController.getState().stars,
           collectibles: movementGameController.getState().collectibles,
@@ -3308,7 +3322,12 @@ document.addEventListener("keydown", (event) => {
 });
 
 ["pointerdown", "touchstart"].forEach((eventName) => document.addEventListener(eventName, armAuthIdleTimeout, { passive: true }));
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { armAuthIdleTimeout(); void refreshPatientWorkspaceFromRealtime(); } });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && currentView === "lab") {
+    tracker?.pause?.(); movementGameController?.consume({ type: MOVEMENT_EVENT.PAUSE });
+    gameTrackingReady = false; movementGameController?.setCameraReady(false);
+  }
+  if (document.visibilityState === "visible") { armAuthIdleTimeout(); void refreshPatientWorkspaceFromRealtime(); } });
 window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); });
 window.addEventListener("resize", () => requestAnimationFrame(drawSessionPathTrail));
 

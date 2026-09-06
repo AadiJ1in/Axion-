@@ -837,3 +837,13 @@
 .adventure-card .movement-game-stage>.game-hud{background:#0a1424}
 .adventure-card .movement-game-stage>.game-story-bar{background:#122136}
 .adventure-card .movement-game-stage small{font-size:.75rem}
+
+/* Camera squat: the real patient fills the game; no movement twin. */
+.camera-squat-lab .twin-pane { display: none; }
+.camera-squat-lab .motion-stage { grid-template-columns: 1fr; }
+.camera-squat-lab .adventure-viewport { height: clamp(340px, 56vw, 660px); background: #071323; }
+.camera-squat-lab .adventure-card:has(.movement-game-stage.active).camera-live + .motion-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.camera-squat-lab .game-hud { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.camera-squat-lab .game-feedback { top: 14px; bottom: auto; max-width: calc(100% - 32px); background: #071323df; }
+@media (min-width: 980px) { .camera-squat-lab .game-hud { grid-template-columns: repeat(6, minmax(0, 1fr)) auto; } }
+@media (max-width: 600px) { .camera-squat-lab .game-feedback { font-size: 11px; } .camera-squat-lab .game-heading { flex-wrap: wrap; } }
