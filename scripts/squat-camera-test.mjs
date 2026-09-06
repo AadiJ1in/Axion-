@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createMovementGameController, MOVEMENT_EVENT as E } from '../src/movement-game.js';
-import { containedFrame, ownsActiveAssignment } from '../src/squat-camera.js';
+import { containedFrame, ownsActiveAssignment, createSquatCameraControl } from '../src/squat-camera.js';
 let time = 0;
 const game = createMovementGameController({exerciseKey:'bodyweight_squat',targetReps:3,liveCamera:true,now:()=>time});
 game.setMode('game');
@@ -60,3 +60,9 @@ for(const [s,w,a] of [
   [null,workspace,assignment]
 ]) assert.equal(ownsActiveAssignment(s,w,a),false,'unassigned, anonymous, revoked or another patient cannot start/save a real mission');
 console.log('Camera squat: motion, calibration, matching collision geometry, dropout, pause, dosage and patient ownership passed.');
+
+const sideView = createSquatCameraControl();
+const sidePose = Array.from({length:33},()=>({x:.5,y:.3,visibility:1}));
+sidePose[12].visibility = .1;
+sideView.pose(sidePose,0); sideView.setReady(true);
+assert.equal(sideView.snapshot(0).ready,true,'side-view camera needs one visible shoulder, not an occluded far shoulder');

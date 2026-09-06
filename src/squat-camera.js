@@ -15,7 +15,8 @@ export function createSquatCameraControl() {
     setReady(value) { ready = Boolean(value); if (!ready) { lastAt = null; standing = null; resetAttempt(); } },
     pose(points, now) {
       const nose = points?.[0], shoulders = [points?.[11], points?.[12]];
-      if (![nose, ...shoulders].every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility ?? 0) >= .62)) {
+      const visible = p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility ?? 0) >= .62;
+      if (!visible(nose) || !shoulders.some(visible)) {
         ready = false; lastAt = null; resetAttempt(); return;
       }
       // A modest forehead margin makes the visible clearance match the collider.

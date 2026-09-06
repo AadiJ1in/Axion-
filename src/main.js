@@ -2065,10 +2065,7 @@ async function initializeLab() {
         measurementSide,
         activeProfile.signal,
       );
-      const gameState = movementGameController?.getState();
-      setText("#coach-message", gameState?.lastOutcome === "collision"
-        ? "Gate touched. Game combo reset; valid exercise reps still count."
-        : message);
+      setText("#coach-message", message);
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
       gameTrackingReady = Number.isFinite(movementRange) && !["calibrating", "positioning"].includes(stage);
       movementGameController?.setCameraReady(gameTrackingReady);
