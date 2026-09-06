@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "serve": "python3 -m http.server 4173",
-    "check": "node --check src/main.js && node --check src/pose.js && node --check src/supabase.js && node --check src/exercise-catalog.js && node --check src/movement-profiles.js && node --check src/movement-game.js && node --check src/prescription-filters.js && node scripts/movement-profile-test.mjs && node scripts/movement-game-test.mjs && node scripts/squat-camera-test.mjs && node scripts/adventure-dose-test.mjs && node scripts/prescription-filter-test.mjs && node scripts/smoke-test.mjs"
+    "check": "node --check src/main.js && node --check src/pose.js && node --check src/supabase.js && node --check src/exercise-catalog.js && node --check src/movement-profiles.js && node --check src/movement-game.js && node --check src/prescription-filters.js && node scripts/movement-profile-test.mjs && node scripts/movement-game-test.mjs && node scripts/squat-camera-test.mjs && node scripts/tracker-lifecycle-test.mjs && node scripts/adventure-dose-test.mjs && node scripts/prescription-filter-test.mjs && node scripts/smoke-test.mjs"
   },
   "devDependencies": {
     "vite": "7.1.3"
