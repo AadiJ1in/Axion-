@@ -97,3 +97,19 @@ setup, low light and occlusion, slow and small prescribed squat ranges, mobile
 orientation changes, repeated camera restarts, and two authenticated patient
 accounts completing/saving sets with therapist-prescribed rest. This release does
 not claim clinical validation or perfect tracking across devices.
+
+## Session lifecycle hardening — 2026-09-06
+
+Reset now clears the detector's previous calibration and resumes an available
+camera after a completed or paused session. Rest expiry respects a background-tab
+pause even if the patient returns before the timer finishes; explicit Resume is
+required. A failed inference/render frame releases the stream and failed model,
+withdraws movement feedback, and offers a camera restart while retaining completed
+repetitions.
+
+The automated tracker lifecycle suite invokes the real createMovementTracker
+implementation with deterministic media/model doubles (no network or clinical
+data). It verifies stable-stance calibration, reset/recalibration, pause/resume,
+one tracking loop after restart, previous stream release, inference failure and
+recovery, and cancellation of a delayed camera grant after exit. This complements
+rather than replaces physical-camera and authenticated patient acceptance testing.

@@ -433,8 +433,19 @@ export async function createMovementTracker({
     if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
       lastVideoTime = video.currentTime;
       const now = performance.now();
-      const result = landmarker.detectForVideo(video, now);
-      draw(result);
+      let result;
+      try {
+        result = landmarker.detectForVideo(video, now);
+        draw(result);
+      } catch {
+        stop();
+        try { landmarker?.close?.(); } catch { /* The failed model may already be disposed. */ }
+        landmarker = null;
+        pauseMeasurement("Tracking stopped. Your completed reps are preserved.");
+        onTrackingState({ code: "camera_error", label: "Movement tracking needs a restart", quality: null });
+        onError("The movement model stopped responding. Restart the camera scan to continue; your completed reps are preserved.");
+        return;
+      }
       if ((result.landmarks?.length ?? 0) > 1) {
         onTrackingState({ code: "multiple_people", label: "Multiple people detected", quality: "Low" });
         pauseMeasurement("Only one person should be visible during the session. Rep counting is paused.");
@@ -539,6 +550,17 @@ export async function createMovementTracker({
   }
 
   function reset() {
+    calibrated = false;
+    calibrationStart = null;
+    calibrationSamples = [];
+    calibrationLeftSamples = [];
+    calibrationRightSamples = [];
+    baselineAngle = null;
+    baselineLeft = null;
+    baselineRight = null;
+    lastVideoTime = -1;
+    sessionStart = performance.now();
+    onCalibration({ progress: 0, status: "Learning a fresh session baseline" });
     reps = 0;
     stage = "up";
     repCycle.reset();

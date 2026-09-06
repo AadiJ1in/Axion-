@@ -841,6 +841,8 @@ function movementGameMarkup(mapping, targetReps, assignment) {
   return adventureMarkup(mapping, targetReps, assignment, escapeHtml);
 }
 
+let backgroundPaused = false;
+
 function labView() {
   if (!currentSession?.demo && !ownsActiveAssignment(currentSession, patientWorkspace, currentAssignment)) {
     if (!currentSession?.user) { authView(); return; }
@@ -848,6 +850,7 @@ function labView() {
     return;
   }
   clearSetRest();
+  backgroundPaused = false;
   gameTrackingReady = false;
   currentView = "lab";
   simulationSession = Boolean(demoScriptActive);
@@ -2109,6 +2112,7 @@ async function initializeLab() {
     const state = movementGameController?.getState();
     if (!state) return;
     if (state.paused) {
+      backgroundPaused = false;
       tracker?.resume?.();
       movementGameController.consume({ type: MOVEMENT_EVENT.RESUME });
     } else {
@@ -2439,6 +2443,11 @@ function startSetRest(seconds, completedSet) {
     if (remaining > 0) return;
     clearSetRest();
     if (movementGameController?.getState().safetyFlagged) return;
+    if (backgroundPaused || document.visibilityState !== "visible") {
+      setText("#capture-status", "REST COMPLETE · SESSION PAUSED");
+      setText("#coach-message", `Your break is complete. Press Resume session when you are ready for set ${completedSet + 1}.`);
+      return;
+    }
     movementGameController?.consume({ type: MOVEMENT_EVENT.RESUME });
     tracker?.resume?.();
     setText("#capture-status", "MOVEMENT TRACKING");
@@ -2486,9 +2495,10 @@ function updateLiveSession() {
 
 function resetLab() {
   if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return;
-  clearSetRest(); stopDemo(); tracker?.reset?.(); sessionReps = [];
+  clearSetRest(); stopDemo(); gameTrackingReady = false; backgroundPaused = false; tracker?.reset?.(); sessionReps = [];
   sessionSafetyEvents = [];
   movementGameController?.consume({ type: MOVEMENT_EVENT.RESET });
+  tracker?.resume?.();
   sessionStartedAt = Date.now();
   sessionClientId = createUuid();
   document.querySelector("#calibration-overlay")?.classList.remove("complete");
@@ -3321,6 +3331,7 @@ document.addEventListener("keydown", (event) => {
 ["pointerdown", "touchstart"].forEach((eventName) => document.addEventListener(eventName, armAuthIdleTimeout, { passive: true }));
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && currentView === "lab") {
+    backgroundPaused = true;
     tracker?.pause?.(); movementGameController?.consume({ type: MOVEMENT_EVENT.PAUSE });
     gameTrackingReady = false; movementGameController?.setCameraReady(false);
   }
