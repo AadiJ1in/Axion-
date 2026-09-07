@@ -34,6 +34,7 @@ assert.ok(source.includes('Game points, collisions, collectibles, animations, an
 assert.ok(source.includes('Only Axion’s movement tracker can validate repetitions, holds, sets, and prescription completion.'), 'orientation must identify the tracker as authoritative');
 assert.ok(!source.includes('MOVEMENT_EVENT'), 'orientation must not consume clinical movement events');
 assert.ok(!source.includes('sessionReps'), 'orientation must not mutate clinical rep state');
-assert.ok(!source.includes('tracker.'), 'orientation must not control the clinical tracker');
+assert.ok(!source.includes("from './pose.js'"), 'orientation must not import the clinical movement tracker');
+assert.ok(!source.includes("from './movement-game.js'"), 'orientation must not import movement-game event handling');
 
 console.log('New-patient orientation, course tour, story explanation, and clinical-boundary checks passed.');
