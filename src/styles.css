@@ -847,3 +847,113 @@
 .camera-squat-lab .game-feedback { top: 14px; bottom: auto; max-width: calc(100% - 32px); background: #071323df; }
 @media (min-width: 980px) { .camera-squat-lab .game-hud { grid-template-columns: repeat(6, minmax(0, 1fr)) auto; } }
 @media (max-width: 600px) { .camera-squat-lab .game-feedback { font-size: 11px; } .camera-squat-lab .game-heading { flex-wrap: wrap; } }
+
+/* The treatment journey: live session nodes over a quiet illustrated landscape. */
+body:has(.journey-page){background:#f2f0e8;color:#263c34}
+.journey-page{padding-top:24px;padding-bottom:40px}
+.journey-welcome{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:10px 0 24px}
+.journey-welcome h1{color:#213b32;font-size:clamp(28px,3.5vw,46px);margin:5px 0 0;letter-spacing:-1.5px}
+.journey-welcome .section-kicker{color:#587363}.journey-welcome>span{display:flex;gap:8px;align-items:center;color:#66776c;font-size:13px}
+.journey-atlas{background:#fbfaf5;border:1px solid #dddccf;border-radius:20px;overflow:hidden;box-shadow:0 15px 55px #172e2610}
+.journey-heading{display:flex;justify-content:space-between;align-items:center;padding:24px 28px;gap:24px}
+.journey-heading .section-kicker{color:#687969}.journey-heading h2{color:#243c33;font-size:27px;margin:5px 0;letter-spacing:-.8px}.journey-heading p{color:#718074;font-size:13px;margin:0}
+.journey-count{color:#6b796b;font-size:15px;white-space:nowrap}.journey-count b{color:#284b39;font-size:26px}.journey-count small{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px}
+.journey-body{display:grid;grid-template-columns:minmax(0,1fr) 285px;min-height:610px}
+.journey-world{position:relative;isolation:isolate;background:#87927c url('/journey/landscape.webp') center/cover;min-width:0;overflow:hidden}
+.journey-world::before{content:'';position:absolute;inset:0;background:#12291e30;z-index:-1}
+.journey-map-controls{display:flex;gap:8px;position:relative;z-index:5;padding:16px 18px 8px}
+.journey-map-controls button{background:#f8f7edeb;color:#304c3d;border:1px solid #e8e6d6;border-radius:24px;padding:10px 14px;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700}
+.journey-map-controls button[aria-pressed=true]{background:#264936;color:#fff;border-color:#264936}
+.journey-region-nav{position:relative;z-index:5;display:flex;gap:7px;padding:0 18px 10px;flex-wrap:wrap}
+.journey-region-nav button{font-size:11px;display:flex;gap:6px;align-items:center;border-radius:5px;border:1px solid #f7f4e67a;padding:5px 8px;color:#fff;background:#193b2dbd}
+.journey-region-nav button small{opacity:.7}.journey-region-nav button[aria-pressed=true]{background:#f6f0dc;color:#2b4639}
+.journey-scroll{position:relative;height:500px;overflow-y:auto;overflow-x:hidden;scrollbar-color:#f1e8c7 #263b3277;scrollbar-width:thin;overscroll-behavior:contain;scroll-behavior:smooth;isolation:isolate}
+.journey-region[hidden]{display:none}.journey-region{position:relative;padding:12px 22px 28px}
+.journey-region>header{position:relative;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:3px;margin:0 0 24px 6px;color:#fff;text-shadow:0 2px 8px #13271d}
+.journey-region>header small{font:10px var(--mono);letter-spacing:1.5px;color:#f3e1b8}.journey-region>header h3{font-size:25px;font-weight:600;font-family:Georgia,serif;margin:0;color:#fff}.journey-region>header span{font-size:10px}
+.journey-node-grid{display:grid;grid-auto-rows:120px;position:relative;z-index:2;padding:16px 0 8px}
+.journey-step{display:flex;align-items:center;justify-content:center;position:relative}
+.journey-node{display:flex;flex-direction:column;align-items:center;position:relative;width:100%;max-width:128px;min-height:90px;justify-content:center;gap:6px;border:0;background:none;color:#fff;padding:8px;transition:transform .18s}
+.journey-node:hover{transform:translateY(-3px)}.journey-node:focus-visible{outline:3px solid #fff;border-radius:14px;outline-offset:3px}
+.journey-node-core{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#48564ae8;border:3px solid #e8e1c9;box-shadow:0 4px 0 #1a322aa8,0 7px 16px #0c24194d;font-weight:700;font-size:20px;color:#f7f3e5;flex-shrink:0}
+.journey-node.complete .journey-node-core{background:#355e43;border-color:#d7e0c9;width:36px;height:36px}
+.journey-node.locked .journey-node-core{background:#687368df;color:#e1e5da;border-color:#b6c1b1}.journey-node.locked .journey-node-name{color:#e6eadf}
+.journey-node.current .journey-node-core,.journey-node.override .journey-node-core{width:60px;height:60px;background:#426a42;border:4px solid #faf3d3;box-shadow:0 0 0 7px #f2de9c39,0 5px 0 #263f2e,0 10px 20px #172e234d}
+.journey-node.current .journey-node-core{animation:journey-location 3s ease-in-out infinite}
+.journey-node-name{font-size:10px;font-weight:600;background:#172f25d9;border:1px solid #f5f1e333;border-radius:5px;padding:4px 7px;max-width:120px;text-align:center;line-height:1.3}
+.journey-pawn{position:absolute;right:0;top:-11px;display:flex;align-items:center;gap:3px;padding:4px 6px;border-radius:8px 8px 8px 0;background:#fff9e9;color:#314d36;box-shadow:0 4px 12px #102a2140}.journey-pawn small{font-size:9px;font-weight:800}
+.journey-stars{display:flex;gap:2px;color:#f5d49a}.journey-trail{position:absolute;inset:0;z-index:1;pointer-events:none;filter:drop-shadow(0 2px 2px #233b23)}
+.journey-legend{display:flex;gap:18px;align-items:center;padding:12px 20px;background:#193427dd;color:#ebeede;font-size:10px}.journey-legend span{display:flex;align-items:center;gap:5px}.journey-legend i{height:7px;width:7px;background:#a6b6a1;border-radius:50%}.journey-legend .done{background:#94bc7d}.journey-legend .now{background:#f6dba4}
+.journey-mission{background:#f8f5eb;padding:28px 24px;display:flex;flex-direction:column;justify-content:space-between;gap:35px;border-left:1px solid #e5dfcf;color:#263e31}
+.journey-mission .next-session-card{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:0;margin:0;background:none;border:none;box-shadow:none;border-radius:0;color:#2c4438}
+.journey-mission .next-session-card>small{font-size:10px;letter-spacing:1px;color:#7a836d}.journey-mission .next-session-card h2{font-size:28px;color:#263f32;margin:0;letter-spacing:-.7px}.journey-mission .next-session-card p{font-size:12px;color:#778071;margin:0 0 8px}
+.mission-dose{padding:16px 0;border-top:1px solid #ddd8c7;display:flex;flex-direction:column;gap:7px}.mission-dose b{font-size:15px}.mission-dose span{font-size:12px;color:#6d7769;line-height:1.65}
+.journey-mission .button--primary{border-radius:30px;background:#274b35;border-color:#274b35;color:#fff;justify-content:center;min-height:46px;box-shadow:none;font-size:13px}
+.journey-care-note{display:flex;gap:8px;align-items:flex-start;font-size:11px;line-height:1.7;color:#6d7b69}.journey-care-note svg{flex-shrink:0}.journey-care-note small{display:block;font-size:10px;margin-top:6px;color:#89917e}
+.journey-page .roadmap-support-grid{margin-top:20px;display:flex;gap:20px}.journey-page .roadmap-support-grid>article{background:transparent;border:0;box-shadow:none;color:#455c4a;padding:12px;flex:1}.journey-page .roadmap-support-grid h3{color:#40573f;font-size:14px}.journey-page .roadmap-support-grid p{color:#7f8a78;font-size:11px}.journey-page .goal-ring{transform:scale(.75)}
+@keyframes journey-location{50%{box-shadow:0 0 0 11px #f2de9c20,0 5px 0 #263f2e,0 10px 20px #172e234d}}
+@media(max-width:900px){.journey-body{grid-template-columns:minmax(0,1fr) 245px}.journey-mission{padding:22px 18px}.journey-scroll{height:490px}.journey-node-grid{grid-auto-rows:112px}}
+@media(max-width:650px){.journey-page{padding-top:8px}.journey-welcome{padding-bottom:16px;gap:8px}.journey-welcome h1{font-size:29px}.journey-welcome>span{font-size:10px;max-width:110px}.journey-heading{padding:18px;gap:12px}.journey-heading h2{font-size:21px}.journey-heading p{font-size:11px}.journey-count{font-size:12px}.journey-count b{font-size:21px}.journey-count small{font-size:8px}.journey-body{display:flex;flex-direction:column}.journey-world{width:100%}.journey-scroll{height:365px}.journey-region{padding:6px 12px 12px}.journey-region>header{margin-bottom:10px}.journey-node-grid{grid-auto-rows:109px}.journey-mission{border-left:0;border-top:1px solid #e5dfcf;padding:22px;gap:20px}.journey-mission .next-session-card{gap:8px}.journey-mission .next-session-card h2{font-size:24px}.journey-care-note{display:none}.journey-map-controls{padding:12px 12px 8px}.journey-map-controls button{font-size:11px;padding:9px 11px}.journey-region-nav{padding:0 12px 8px}.journey-region-nav button{font-size:10px}.journey-page .roadmap-support-grid{display:none}}
+@media(prefers-reduced-motion:reduce){.journey-node.current .journey-node-core{animation:none}.journey-scroll{scroll-behavior:auto}.journey-node{transition:none}}
+body:has(.journey-page) .brand{color:#edf4e9}
+
+/* A focused game stage with a compact, separate movement reference. */
+.ruins-runner-lab .adventure-viewport{height:clamp(280px,36vw,470px);background:#a5b39b}
+.ruins-runner-lab .movement-game-heading h3{font-family:Georgia,serif;font-size:30px;color:#e6d6ab}
+.ruins-runner-lab .game-hud{grid-template-columns:repeat(3,minmax(0,1fr)) 1.5fr 1fr auto}
+.ruins-runner-lab .game-feedback{bottom:16px;top:auto;background:#203b31e6;font-size:12px;max-width:80%;pointer-events:none}
+.ruins-runner-lab .motion-stage{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));height:210px;min-height:0;position:relative}
+.ruins-runner-lab .camera-pane,.ruins-runner-lab .twin-pane,.buddy-pane{min-height:0;height:210px;position:relative;overflow:hidden;background:#142b25}
+.ruins-runner-lab .movement-twin{height:185px;width:100%;margin:0}
+.ruins-runner-lab .twin-pane .target-label{display:none}
+.ruins-runner-lab .camera-placeholder{padding:30px 12px 8px;gap:6px}
+.ruins-runner-lab .camera-placeholder small{font-size:10px}
+.ruins-runner-lab .camera-placeholder span{display:none}
+.buddy-pane canvas{display:block;width:100%;height:185px;object-fit:contain}
+.buddy-pane small{position:absolute;bottom:7px;left:0;width:100%;text-align:center;font-size:10px;color:#b5c9bc}
+.ruins-runner-lab .pane-label{top:8px;left:10px;font-size:9px;bottom:auto}
+.ruins-runner-lab .calibration-overlay{background:#18372edd;max-width:310px;left:50%;transform:translateX(-50%);padding:12px;bottom:12px;top:auto;height:auto;border-radius:12px;pointer-events:none}
+.ruins-runner-lab .live-metrics,.ruins-runner-lab .rep-timeline{display:none}
+.ruins-runner-lab .coach-card{margin-top:8px}
+.mission-intro{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px;background:#173429dd;color:#f3edd8}
+.mission-intro small{letter-spacing:.2em;color:#d5bd7c;font-size:10px}
+.mission-intro h3{font:28px Georgia,serif;margin:10px 0}
+.mission-intro p{max-width:430px;font-size:13px;line-height:1.7;margin-bottom:20px}
+.ruins-runner-lab .set-rest-overlay{position:absolute;inset:0;background:#17352bbd;border-radius:0;z-index:5;backdrop-filter:blur(2px)}
+.ruins-runner-lab .game-completion{background:#17352be0}
+.journey-simulator{padding:10px;background:#e8e9dc;color:#243b30;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px}
+.journey-simulator button{padding:8px;background:#fff;border:1px solid #bac9b5;border-radius:6px;color:#243b30}
+.journey-simulator input{width:140px}
+@media(max-width:650px){.ruins-runner-lab .game-hud{grid-template-columns:repeat(3,minmax(0,1fr))}.ruins-runner-lab .motion-stage{grid-template-columns:repeat(2,minmax(0,1fr))}.ruins-runner-lab .camera-pane{display:none}.ruins-runner-lab .game-feedback{font-size:10px;bottom:10px}.mission-intro h3{font-size:23px}.mission-intro p{font-size:11px}.ruins-runner-lab .calibration-overlay{max-width:90%}.ruins-runner-lab .game-story-bar{min-height:58px}}
+.ruins-runner-lab{padding-top:1rem}
+.ruins-runner-lab .lab-header{margin-bottom:.6rem;gap:.5rem}
+.ruins-runner-lab .lab-header h1{font-size:1.5rem;margin:.2rem 0}
+.ruins-runner-lab .back-link{margin-bottom:.4rem}
+.ruins-runner-lab .lab-exercise-guide{margin-bottom:.5rem}
+.ruins-runner-lab .capture-panel>.motion-stage{max-width:760px;height:210px;margin:.6rem auto}
+.ruins-runner-lab .twin-pane .movement-twin{inset:20px 0 0;width:100%;height:180px}
+.ruins-runner-lab .game-story-bar{padding:.65rem 1rem}
+.ruins-runner-lab .movement-game-heading{padding:.8rem 1rem}
+.ruins-runner-lab .movement-game-heading p{font-size:12px}
+.ruins-runner-lab .game-mission-progress{padding:.5rem 1rem}
+.ruins-runner-lab .tracking-chips{display:none}
+@media(max-width:650px){.ruins-runner-lab .session-steps{display:none}.ruins-runner-lab .adventure-card .game-hud{grid-template-columns:repeat(3,minmax(0,1fr))}.ruins-runner-lab .adventure-card .game-quality{grid-column:auto}.ruins-runner-lab .adventure-card .game-hud small{font-size:9px}.ruins-runner-lab .adventure-card .game-feedback{font-size:10px}.ruins-runner-lab .set-rest-overlay{inset:0}}
+.ruins-runner-lab .adventure-card .movement-game-stage>.adventure-viewport{height:clamp(280px,30vw,380px)}
+.ruins-runner-lab .adventure-card .movement-game-stage.paused .adventure-viewport:has(.set-rest-overlay:not(.hidden)):after{display:none}
+.ruins-runner-lab .panel-topline .tracking-chips{display:none}
+.ruins-runner-lab .set-rest-overlay{display:grid;place-content:center;text-align:center;padding:24px}
+.ruins-runner-lab .set-rest-overlay>span{display:none}
+.ruins-runner-lab .set-rest-overlay>div{display:flex;flex-direction:column;align-items:center;max-width:390px;gap:8px}
+.ruins-runner-lab .set-rest-overlay b{display:block;font-size:22px}
+.ruins-runner-lab .set-rest-overlay p{margin:0;font-size:13px;line-height:1.5}
+.ruins-runner-lab .set-rest-overlay strong{display:flex;align-items:baseline;gap:5px;line-height:1;font-size:20px;margin:8px 0 0}
+.ruins-runner-lab .set-rest-overlay strong i{display:inline;font-size:48px;line-height:1;font-style:normal}
+.ruins-runner-lab .adventure-viewport:has(.set-rest-overlay:not(.hidden)) #game-feedback{visibility:hidden}
+.ruins-runner-lab .panel-topline>div.tracking-chips{display:none}
+.ruins-runner-lab .game-hud>div{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;min-width:0;min-height:58px;padding:8px 10px}
+.ruins-runner-lab .game-hud small{grid-column:auto;white-space:nowrap;font-size:9px;letter-spacing:.04em}
+.ruins-runner-lab .game-hud b{font-size:15px;white-space:nowrap}
+.ruins-runner-lab .game-hud .game-quality b{font-size:12px;white-space:normal}
+.ruins-runner-lab .game-story-bar small{grid-column:auto}
+.ruins-runner-lab .set-rest-overlay strong i{width:auto;height:auto;background:none;transition:none}
+@media(max-width:650px){.ruins-runner-lab .game-hud>div{padding:8px}.ruins-runner-lab .game-hud small{font-size:8px}.ruins-runner-lab .game-hud>button{margin:5px;padding:6px;font-size:12px}.ruins-runner-lab .game-mission-progress small{font-size:10px}}

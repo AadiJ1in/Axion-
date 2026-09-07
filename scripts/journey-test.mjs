@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { sessionPathPresentation, journeyRegions, journeyMapMarkup } from '../src/journey-map.js';
+const assignment={id:'a',target_sets:2,target_repetitions:3};
+const workspace={plan:{title:'Patient plan'},profile:{},assignments:[assignment],roadmap:[{stage_number:1,title:'Prescribed baseline',unlock_after_sessions:0},{stage_number:2,title:'Prescribed control',unlock_after_sessions:2}],roadmapNodes:Array.from({length:5},(_,i)=>({id:`n${i}`,session_number:i+1,biome:1,unlock_override:i===4})),roadmapNodeAssignments:Array.from({length:5},(_,i)=>({roadmap_node_id:`n${i}`,assignment_id:'a',sequence:1})),roadmapCompletions:[{roadmap_node_id:'n0'}],sessions:[{roadmap_node_id:'n1',assignment_id:'a',repetitions:3}]};
+const path=sessionPathPresentation(workspace);
+assert.deepEqual(path.nodes.map(n=>n.state),['complete','current','locked','locked','override']);
+assert.equal(path.nodes[0].completedAssignmentIds.has('a'),true,'existing node completion survives session-history truncation');
+assert.equal(path.nodes[1].completedAssignmentIds.size,0,'partial dose cannot visually complete an assignment');
+const regions=journeyRegions(workspace,path.nodes);
+assert.deepEqual(regions.map(r=>[r.title,r.nodes.length]),[['Prescribed baseline',2],['Prescribed control',3]],'region names and boundaries follow stored plan thresholds');
+assert.deepEqual(regions.flatMap(r=>r.nodes.map(n=>n.id)),path.nodes.map(n=>n.id),'map views retain every session exactly once');
+const e=s=>String(s).replaceAll('<','&lt;').replaceAll('"','&quot;');
+const markup=journeyMapMarkup({...workspace,plan:{title:'<script>bad</script>'}},{escapeHtml:e,icon:()=>'',missionMarkup:''});
+assert.ok(!markup.includes('<script>'),'plan labels are escaped');
+assert.equal((markup.match(/data-roadmap-node=/g)||[]).length,5);
+assert.equal((markup.match(/aria-current="step"/g)||[]).length,1);
+assert.ok(markup.includes('data-current-region="1"'));
+console.log('Roadmap state, partial dose, stored phase mapping, overrides and markup checks passed.');
