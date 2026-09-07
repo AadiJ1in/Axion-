@@ -59,7 +59,7 @@ export function journeyMapMarkup(workspace, {escapeHtml:e,icon,missionMarkup}) {
         <svg class="journey-trail" data-session-path-trail aria-hidden="true"><path data-session-path-line fill="none" stroke="#dec58d" stroke-width="5" stroke-linecap="round"/></svg>
         ${regions.map((region,index)=>`<section class="journey-region terrain-${index%3}" data-map-region="${region.id}" ${region.id===focus?'':'hidden'}><header><small>PHASE ${String(index+1).padStart(2,'0')}</small><h3>${e(region.title)}</h3><span>${region.nodes.filter(n=>n.state==='complete').length} / ${region.nodes.length} sessions</span></header><div class="journey-node-grid">${region.nodes.map(nodeMarkup).join('')}</div></section>`).join('')}
       </div><div class="journey-legend"><span><i class="done"></i>Completed</span><span><i class="now"></i>Current</span><span><i></i>Upcoming</span></div>
-    </div><aside class="journey-mission">${missionMarkup}<div class="journey-care-note">${icon('shield',16)}<span>Prescribed by ${e(workspace.therapist?.display_name||'your physical therapist')}<small>Your therapist controls exercises, dosage and progression. The story changes presentation only.</small></span></div></aside></div>
+    </div><aside class="journey-mission">${missionMarkup}<div class="journey-care-note">${icon('shield',16)}<span>Prescribed by ${e(workspace.therapist?.display_name||'your physical therapist')}<small>Your therapist controls exercises, dosage and progression. The story changes presentation only. For questions, use your clinic’s approved contact method.</small></span></div></aside></div>
   </section>`;
 }
 
