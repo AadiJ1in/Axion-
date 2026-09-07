@@ -6,15 +6,20 @@ export const getMovementGameMapping = getAdventureDefinition;
 export function movementGameStory(completed, target, mapping) {
   const progress = target ? Math.min(1, completed / target) : 0;
   const chapter = progress >= 1 ? 'Passage restored' : mapping?.chapters[Math.min(2, Math.floor(progress * 3))] || 'Enter the ruins';
-  return { chapter, detail: progress >= 1 ? 'Your prescribed movement is complete. Rest and save your journey.' : completed === 0 ? 'Your first prescribed repetition teaches the controls. No extra practice reps.' : mapping?.instruction || 'Continue with your prescribed movement.', progress };
+  return { chapter, detail: progress >= 1 ? 'Your prescribed movement is complete. Rest and save your journey.' : completed === 0 ? 'Your first prescribed movement teaches the controls. No extra practice reps.' : mapping?.instruction || 'Continue with your prescribed movement.', progress };
 }
 export function createMovementGameController({ exerciseKey, targetReps=0, targetHoldSeconds=0, liveCamera=false, runnerMode=false, now=()=>performance.now(), onState=()=>{} }) {
   const mapping = getMovementGameMapping(exerciseKey);
-  const clinicalTarget = Math.max(0, Number(targetHoldSeconds || targetReps) || 0);
+  // Game completion follows validated clinical units. For rep exercises that is
+  // repetitions; for timed holds, Axion emits one validated completion per
+  // prescribed set. targetHoldSeconds is retained as display/context only and
+  // never lets elapsed arcade time satisfy the clinical dose.
+  const clinicalTarget = Math.max(0, Number(targetReps) || 0);
+  const holdTargetSeconds = Math.max(0, Number(targetHoldSeconds) || 0);
   let runner = runnerMode && exerciseKey === 'bodyweight_squat' ? createRuinsRunner() : null;
   const camera = !runner && liveCamera && exerciseKey === 'bodyweight_squat' ? createSquatCameraControl() : null;
   let state;
-  const initial = () => ({exerciseKey,mapping,mode:'standard',gameDifficulty:'standard',clinicalTarget,completed:0,remaining:clinicalTarget,movement:0,runnerY:25,obstacleX:108,obstaclePattern:0,attemptActive:false,attemptCollided:false,obstacleResolved:false,collisions:0,collectibles:0,score:0,combo:0,paused:false,safetyFlagged:false,lastOutcome:null,side:null,elapsed:0,stars:0});
+  const initial = () => ({exerciseKey,mapping,mode:'standard',gameDifficulty:'standard',clinicalTarget,holdTargetSeconds,completed:0,remaining:clinicalTarget,movement:0,runnerY:25,obstacleX:108,obstaclePattern:0,attemptActive:false,attemptCollided:false,obstacleResolved:false,collisions:0,collectibles:0,score:0,combo:0,paused:false,safetyFlagged:false,lastOutcome:null,side:null,elapsed:0,stars:0});
   state=initial();
   const snapshot=()=>Object.freeze({...state,runner:runner?.snapshot(now()) || null,camera:camera?.snapshot(now()) || null,progress:clinicalTarget ? state.completed/clinicalTarget : 0,story:movementGameStory(state.completed,clinicalTarget,mapping)});
   const publish=()=>{const s=snapshot();onState(s);return s;};
@@ -80,8 +85,18 @@ export function createMovementGameController({ exerciseKey, targetReps=0, target
           state.lastOutcome=state.remaining===0?'complete':state.attemptCollided?'collision_counted':'counted';
           state.attemptActive=false;state.obstacleResolved=false;state.attemptCollided=false;state.obstacleX=108;state.obstaclePattern++;
           state.stars=state.remaining===0?1+(state.score>=clinicalTarget*60?1:0)+(state.score>=clinicalTarget*100?1:0):0;
-        }else if(event.type===MOVEMENT_EVENT.HOLD_PROGRESS){state.completed=Math.min(clinicalTarget,Math.max(state.completed,Number(event.seconds)||0));state.remaining=clinicalTarget-state.completed;}
-        else if(event.type===MOVEMENT_EVENT.HOLD_COMPLETE){state.completed=clinicalTarget;state.remaining=0;state.lastOutcome='complete';}
+        }else if(event.type===MOVEMENT_EVENT.HOLD_PROGRESS){
+          // HOLD_PROGRESS is entertainment feedback only. It can illuminate a
+          // beacon but cannot advance the validated clinical completion count.
+          state.movement=clamp01(event.progress ?? (event.seconds && holdTargetSeconds ? event.seconds/holdTargetSeconds : 0));
+          state.runnerY=78-state.movement*55;
+        }else if(event.type===MOVEMENT_EVENT.HOLD_COMPLETE){
+          // Treat an explicit hold-complete event as one validated clinical set,
+          // never as "all seconds completed".
+          state.completed=Math.min(clinicalTarget,state.completed+1);
+          state.remaining=clinicalTarget-state.completed;
+          state.lastOutcome=state.remaining===0?'complete':'counted';
+        }
       }
       return publish();
     }
