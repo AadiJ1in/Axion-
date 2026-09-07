@@ -1,4 +1,5 @@
 import { exerciseCatalog } from './exercise-catalog.js';
+import { getActiveBeaconStory } from './beacon-story.js';
 
 // Registry contains entertainment configuration only. The tracker owns validation.
 export const adventureDefinitions = Object.freeze({
@@ -28,10 +29,10 @@ const GENERIC_HOLD_ADVENTURE = Object.freeze({
 });
 
 export function getAdventureDefinition(key) {
-  if (adventureDefinitions[key]) return adventureDefinitions[key];
-  const exercise = exerciseCatalog[key];
-  if (!exercise) return null;
-  return exercise.trackingMode === 'timed_hold' ? GENERIC_HOLD_ADVENTURE : GENERIC_REP_ADVENTURE;
+  const base = adventureDefinitions[key]
+    || (exerciseCatalog[key]?.trackingMode === 'timed_hold' ? GENERIC_HOLD_ADVENTURE : exerciseCatalog[key] ? GENERIC_REP_ADVENTURE : null);
+  if (!base) return null;
+  return Object.freeze({ ...base, world: 'beacon', story: getActiveBeaconStory() });
 }
 
 export const clamp01 = x => Math.min(1, Math.max(0, Number(x) || 0));

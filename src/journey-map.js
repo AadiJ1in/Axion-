@@ -1,15 +1,17 @@
 import { sessionCompletesDose } from './adventure-definitions.js';
+import { beaconStoryForSession, setBeaconStorySession } from './beacon-story.js';
 
 export function sessionPathPresentation(workspace) {
   const completedIds = new Set((workspace.roadmapCompletions || []).map(item => item.roadmap_node_id));
   const firstIncomplete = (workspace.roadmapNodes || []).findIndex(node => !completedIds.has(node.id));
+  const totalSessions = (workspace.roadmapNodes || []).length || 1;
   const nodes = (workspace.roadmapNodes || []).map((node, index) => {
     const assignmentIds = (workspace.roadmapNodeAssignments || []).filter(item => item.roadmap_node_id === node.id).sort((a,b) => a.sequence-b.sequence).map(item=>item.assignment_id);
     const completedAssignmentIds = new Set((workspace.sessions || []).filter(session => session.roadmap_node_id === node.id && sessionCompletesDose(session,(workspace.assignments || []).find(a=>a.id===session.assignment_id))).map(session=>session.assignment_id));
     const adventureStars = Math.max(0,...(workspace.sessions || []).filter(session=>session.roadmap_node_id===node.id && completedAssignmentIds.has(session.assignment_id)).map(session=>Math.min(3,Number(session.movement_summary?.adventure?.stars)||0)));
     const done = completedIds.has(node.id);
     if (done) assignmentIds.forEach(id=>completedAssignmentIds.add(id));
-    return {...node,assignmentIds,completedAssignmentIds,adventureStars,state:done?'complete':index===firstIncomplete?'current':node.unlock_override?'override':'locked'};
+    return {...node,assignmentIds,completedAssignmentIds,adventureStars,story:beaconStoryForSession(node.session_number,totalSessions),state:done?'complete':index===firstIncomplete?'current':node.unlock_override?'override':'locked'};
   });
   return {nodes,completed:nodes.filter(node=>node.state==='complete').length};
 }
@@ -34,18 +36,22 @@ export function journeyMapMarkup(workspace, {escapeHtml:e,icon,missionMarkup}) {
   const regions=journeyRegions(workspace,path.nodes);
   const current=path.nodes.find(n=>n.state==='current')||path.nodes.find(n=>n.state==='override');
   const focus=regions.find(region=>region.nodes.some(n=>n.id===current?.id))?.id || regions.at(-1).id;
+  const worldPercent=Math.round((path.completed/path.nodes.length)*100);
+  const currentStory=current?.story||beaconStoryForSession(Math.min(path.nodes.length,path.completed+1),path.nodes.length);
   const nodeMarkup=(node,index)=>{
     const active=['current','override'].includes(node.state);
     const label=node.state==='complete'?'Complete':active?'Current mission':'Upcoming';
-    return `<div class="journey-step" data-step-index="${index}"><button class="journey-node ${node.state}" data-roadmap-node="${e(node.id)}" aria-label="Session ${node.session_number}, ${label}" ${node.state==='current'?'aria-current="step"':''}>
+    return `<div class="journey-step" data-step-index="${index}"><button class="journey-node ${node.state}" data-roadmap-node="${e(node.id)}" data-story-session="${node.session_number}" data-story-total="${path.nodes.length}" aria-label="Session ${node.session_number}, ${label}: ${e(node.story.title)}" ${node.state==='current'?'aria-current="step"':''}>
       ${node.state==='current'?`<span class="journey-pawn" aria-hidden="true">${icon('users',18)}<small>You</small></span>`:''}
       <span class="journey-node-core">${node.state==='complete'?icon('check',21):node.state==='locked'?icon('lock',16):node.session_number}</span>
       <span class="journey-node-name">${e(node.title||`Session ${node.session_number}`)}</span>
+      <span class="journey-node-story">${e(node.story.title)}</span>
       ${node.adventureStars?`<span class="journey-stars" aria-label="${node.adventureStars} stars">${Array.from({length:node.adventureStars},()=>icon('star',10)).join('')}</span>`:''}
     </button></div>`;
   };
   return `<section class="journey-atlas" data-world-theme="natural" aria-label="Therapist-prescribed recovery journey">
-    <header class="journey-heading"><div><span class="section-kicker">YOUR TREATMENT JOURNEY</span><h2>${e(workspace.plan?.title||'Your recovery journey')}</h2><p>One prescribed session at a time.</p></div><span class="journey-count"><b>${path.completed}</b> of ${path.nodes.length}<small>sessions complete</small></span></header>
+    <div class="beacon-world-banner"><div><small>BEACON OF THE VALLEY · STORY JOURNEY</small><b>Your recovery rebuilds the world.</b><p>Every prescribed session unlocks a new mission. Your movement changes the game world, while Axion’s clinical tracker remains the only authority for valid reps, holds, sets, and completion.</p></div><div class="beacon-world-progress"><strong>${worldPercent}%</strong><span>valley restored</span></div></div>
+    <header class="journey-heading"><div><span class="section-kicker">YOUR TREATMENT JOURNEY</span><h2>${e(workspace.plan?.title||'Your recovery journey')}</h2><p>Next story mission: <b>${e(currentStory.title)}</b></p></div><span class="journey-count"><b>${path.completed}</b> of ${path.nodes.length}<small>sessions complete</small></span></header>
     <div class="journey-body"><div class="journey-world">
       <nav class="journey-map-controls" aria-label="Map view"><button type="button" data-journey-view="all" aria-pressed="false">${icon('map',16)} Whole journey</button><button type="button" data-journey-view="current" aria-pressed="true">${icon('activity',16)} My location</button></nav>
       <nav class="journey-region-nav" aria-label="Treatment phases">${regions.map((region,i)=>`<button type="button" data-journey-region="${region.id}" aria-pressed="${region.id===focus}"><small>${String(i+1).padStart(2,'0')}</small>${e(region.title)}</button>`).join('')}</nav>
@@ -53,7 +59,7 @@ export function journeyMapMarkup(workspace, {escapeHtml:e,icon,missionMarkup}) {
         <svg class="journey-trail" data-session-path-trail aria-hidden="true"><path data-session-path-line fill="none" stroke="#dec58d" stroke-width="5" stroke-linecap="round"/></svg>
         ${regions.map((region,index)=>`<section class="journey-region terrain-${index%3}" data-map-region="${region.id}" ${region.id===focus?'':'hidden'}><header><small>PHASE ${String(index+1).padStart(2,'0')}</small><h3>${e(region.title)}</h3><span>${region.nodes.filter(n=>n.state==='complete').length} / ${region.nodes.length} sessions</span></header><div class="journey-node-grid">${region.nodes.map(nodeMarkup).join('')}</div></section>`).join('')}
       </div><div class="journey-legend"><span><i class="done"></i>Completed</span><span><i class="now"></i>Current</span><span><i></i>Upcoming</span></div>
-    </div><aside class="journey-mission">${missionMarkup}<div class="journey-care-note">${icon('shield',16)}<span>Prescribed by ${e(workspace.therapist?.display_name||'your physical therapist')}<small>Your therapist controls exercises, dosage and progression. For questions, use your clinic’s approved contact method.</small></span></div></aside></div>
+    </div><aside class="journey-mission">${missionMarkup}<div class="journey-care-note">${icon('shield',16)}<span>Prescribed by ${e(workspace.therapist?.display_name||'your physical therapist')}<small>Your therapist controls exercises, dosage and progression. The story changes presentation only. For questions, use your clinic’s approved contact method.</small></span></div></aside></div>
   </section>`;
 }
 
@@ -67,6 +73,13 @@ export function layoutJourney(container) {
       step.style.gridColumn=String(row%2?columns-column:column+1);
       step.style.gridRow=String(row+1);
       step.style.transform=`translateY(${[20,-12,12,-18,8][column]}px)`;
+    });
+  });
+  container.querySelectorAll('[data-story-session]').forEach(button=>{
+    if(button.dataset.storyBound==='true')return;
+    button.dataset.storyBound='true';
+    button.addEventListener('click',()=>{
+      setBeaconStorySession(button.dataset.storySession,button.dataset.storyTotal);
     });
   });
 }

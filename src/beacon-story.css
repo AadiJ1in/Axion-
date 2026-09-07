@@ -1,0 +1,144 @@
+.beacon-world-banner {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  margin: 0 0 18px;
+  padding: 18px 20px;
+  border: 1px solid rgba(222, 197, 141, .28);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 78% 20%, rgba(244, 190, 92, .20), transparent 34%),
+    linear-gradient(135deg, rgba(9, 19, 29, .97), rgba(19, 31, 38, .93));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 18px 44px rgba(0,0,0,.16);
+}
+.beacon-world-banner::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(240, 194, 104, .72), transparent);
+}
+.beacon-world-banner small,
+.beacon-story-act,
+.journey-node-story {
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.beacon-world-banner small {
+  display: block;
+  color: #dec58d;
+  font-size: 10px;
+  font-weight: 800;
+}
+.beacon-world-banner b {
+  display: block;
+  margin-top: 3px;
+  color: #f8f1df;
+  font-size: clamp(18px, 2vw, 28px);
+}
+.beacon-world-banner p {
+  margin: 5px 0 0;
+  color: rgba(236, 241, 239, .72);
+  max-width: 60ch;
+}
+.beacon-world-progress {
+  min-width: 130px;
+  text-align: right;
+}
+.beacon-world-progress strong {
+  display: block;
+  color: #f0c873;
+  font-size: 22px;
+}
+.beacon-world-progress span {
+  color: rgba(236, 241, 239, .65);
+  font-size: 11px;
+}
+.journey-node-story {
+  display: block;
+  max-width: 120px;
+  margin-top: 4px;
+  color: rgba(222, 197, 141, .76);
+  font-size: 8px;
+  line-height: 1.25;
+}
+.journey-node.current .journey-node-story,
+.journey-node.override .journey-node-story {
+  color: #e7c875;
+}
+.beacon-story-briefing {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(220px, .65fr);
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 16px 18px;
+  border: 1px solid rgba(232, 195, 111, .24);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(255, 190, 78, .17), transparent 36%),
+    linear-gradient(135deg, rgba(10, 20, 31, .96), rgba(18, 32, 40, .93));
+}
+.beacon-story-act {
+  color: #d8bc78;
+  font-size: 10px;
+  font-weight: 800;
+}
+.beacon-story-briefing h4 {
+  margin: 5px 0 7px;
+  color: #fff7e7;
+  font-size: clamp(20px, 2.4vw, 30px);
+}
+.beacon-story-briefing p {
+  margin: 0;
+  color: rgba(240,244,241,.74);
+  line-height: 1.55;
+}
+.beacon-story-goal {
+  align-self: stretch;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(236, 193, 96, .09);
+  border: 1px solid rgba(236, 193, 96, .18);
+}
+.beacon-story-goal small {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(246, 222, 166, .66);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .14em;
+}
+.beacon-story-goal b {
+  color: #f5e5bd;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.adventure-card[data-world="beacon"] .movement-game-heading {
+  border-color: rgba(226, 193, 115, .2);
+}
+.adventure-card[data-world="beacon"] .game-kicker,
+.adventure-card[data-world="beacon"] .game-story-bar small {
+  color: #d9ba73;
+}
+.adventure-card[data-world="beacon"] .game-story-bar {
+  background:
+    linear-gradient(90deg, rgba(5, 15, 24, .94), rgba(28, 32, 29, .83));
+}
+.adventure-card[data-world="beacon"] .game-mission-progress > span i {
+  background: linear-gradient(90deg, #8bd8b1, #e3bd68);
+}
+@media (max-width: 760px) {
+  .beacon-world-banner,
+  .beacon-story-briefing {
+    grid-template-columns: 1fr;
+  }
+  .beacon-world-progress {
+    text-align: left;
+  }
+  .beacon-story-goal {
+    padding: 12px;
+  }
+}
