@@ -5,6 +5,16 @@ export const MOVEMENT_EVENT = Object.freeze({ MOVEMENT_PROGRESS:'movement_progre
 export const getMovementGameMapping = getAdventureDefinition;
 export function movementGameStory(completed, target, mapping) {
   const progress = target ? Math.min(1, completed / target) : 0;
+  const story = mapping?.story;
+  if (story) {
+    const beatIndex = progress >= 1 ? 3 : progress >= .67 ? 2 : progress >= .34 ? 1 : 0;
+    return {
+      chapter: progress >= 1 ? 'Mission restored' : story.act,
+      detail: progress >= 1 ? story.completion : story.beats?.[beatIndex] || story.goal,
+      progress,
+      mission: story.title,
+    };
+  }
   const chapter = progress >= 1 ? 'Passage restored' : mapping?.chapters[Math.min(2, Math.floor(progress * 3))] || 'Enter the ruins';
   return { chapter, detail: progress >= 1 ? 'Your prescribed movement is complete. Rest and save your journey.' : completed === 0 ? 'Your first prescribed movement teaches the controls. No extra practice reps.' : mapping?.instruction || 'Continue with your prescribed movement.', progress };
 }
