@@ -38,6 +38,13 @@ export function journeyMapMarkup(workspace, {escapeHtml:e,icon,missionMarkup}) {
   const focus=regions.find(region=>region.nodes.some(n=>n.id===current?.id))?.id || regions.at(-1).id;
   const worldPercent=Math.round((path.completed/path.nodes.length)*100);
   const currentStory=current?.story||beaconStoryForSession(Math.min(path.nodes.length,path.completed+1),path.nodes.length);
+
+  // Keep the active story context synchronized whenever the patient roadmap renders.
+  // This makes every entry path into Movement Lab (current mission, roadmap node, or
+  // prescription list) open the correct story session instead of silently falling
+  // back to session one.
+  setBeaconStorySession(currentStory.sessionNumber,path.nodes.length);
+
   const nodeMarkup=(node,index)=>{
     const active=['current','override'].includes(node.state);
     const label=node.state==='complete'?'Complete':active?'Current mission':'Upcoming';
@@ -49,6 +56,16 @@ export function journeyMapMarkup(workspace, {escapeHtml:e,icon,missionMarkup}) {
       ${node.adventureStars?`<span class="journey-stars" aria-label="${node.adventureStars} stars">${Array.from({length:node.adventureStars},()=>icon('star',10)).join('')}</span>`:''}
     </button></div>`;
   };
+
+  const storyPreview=currentStory.beats.slice(0,3).map((beat,index)=>`<span><i>${String(index+1).padStart(2,'0')}</i>${e(beat)}</span>`).join('');
+  const currentStoryMarkup=`<section class="beacon-current-mission" data-active-story-session="${currentStory.sessionNumber}">
+    <div class="beacon-current-mission-head"><div><small>${e(currentStory.act)}</small><span>SESSION ${currentStory.sessionNumber} OF ${path.nodes.length}</span></div><strong>STORY MISSION</strong></div>
+    <h3>${e(currentStory.title)}</h3>
+    <p>${e(currentStory.briefing)}</p>
+    <div class="beacon-current-objective"><small>YOUR OBJECTIVE</small><b>${e(currentStory.goal)}</b></div>
+    <div class="beacon-story-preview">${storyPreview}</div>
+  </section>`;
+
   return `<section class="journey-atlas" data-world-theme="natural" aria-label="Therapist-prescribed recovery journey">
     <div class="beacon-world-banner"><div><small>BEACON OF THE VALLEY · STORY JOURNEY</small><b>Your recovery rebuilds the world.</b><p>Every prescribed session unlocks a new mission. Your movement changes the game world, while Axion’s clinical tracker remains the only authority for valid reps, holds, sets, and completion.</p></div><div class="beacon-world-progress"><strong>${worldPercent}%</strong><span>valley restored</span></div></div>
     <header class="journey-heading"><div><span class="section-kicker">YOUR TREATMENT JOURNEY</span><h2>${e(workspace.plan?.title||'Your recovery journey')}</h2><p>Next story mission: <b>${e(currentStory.title)}</b></p></div><span class="journey-count"><b>${path.completed}</b> of ${path.nodes.length}<small>sessions complete</small></span></header>
@@ -59,7 +76,7 @@ export function journeyMapMarkup(workspace, {escapeHtml:e,icon,missionMarkup}) {
         <svg class="journey-trail" data-session-path-trail aria-hidden="true"><path data-session-path-line fill="none" stroke="#dec58d" stroke-width="5" stroke-linecap="round"/></svg>
         ${regions.map((region,index)=>`<section class="journey-region terrain-${index%3}" data-map-region="${region.id}" ${region.id===focus?'':'hidden'}><header><small>PHASE ${String(index+1).padStart(2,'0')}</small><h3>${e(region.title)}</h3><span>${region.nodes.filter(n=>n.state==='complete').length} / ${region.nodes.length} sessions</span></header><div class="journey-node-grid">${region.nodes.map(nodeMarkup).join('')}</div></section>`).join('')}
       </div><div class="journey-legend"><span><i class="done"></i>Completed</span><span><i class="now"></i>Current</span><span><i></i>Upcoming</span></div>
-    </div><aside class="journey-mission">${missionMarkup}<div class="journey-care-note">${icon('shield',16)}<span>Prescribed by ${e(workspace.therapist?.display_name||'your physical therapist')}<small>Your therapist controls exercises, dosage and progression. The story changes presentation only. For questions, use your clinic’s approved contact method.</small></span></div></aside></div>
+    </div><aside class="journey-mission">${currentStoryMarkup}<div class="beacon-prescription-launch" data-story-session="${currentStory.sessionNumber}" data-story-total="${path.nodes.length}">${missionMarkup}</div><div class="journey-care-note">${icon('shield',16)}<span>Prescribed by ${e(workspace.therapist?.display_name||'your physical therapist')}<small>Your therapist controls exercises, dosage and progression. The story changes presentation only. For questions, use your clinic’s approved contact method.</small></span></div></aside></div>
   </section>`;
 }
 
@@ -79,7 +96,24 @@ export function layoutJourney(container) {
     if(button.dataset.storyBound==='true')return;
     button.dataset.storyBound='true';
     button.addEventListener('click',()=>{
-      setBeaconStorySession(button.dataset.storySession,button.dataset.storyTotal);
+      const storySession=Number(button.dataset.storySession)||1;
+      const storyTotal=Number(button.dataset.storyTotal)||1;
+      setBeaconStorySession(storySession,storyTotal);
+
+      // The roadmap-node modal is created synchronously by main.js. Add the
+      // story briefing immediately after it opens so selecting a node feels
+      // like choosing a chapter, not merely opening a prescription list.
+      const modal=document.querySelector('.roadmap-node-modal');
+      if(!modal||modal.querySelector('.beacon-modal-story'))return;
+      const story=beaconStoryForSession(storySession,storyTotal);
+      const panel=document.createElement('section');
+      panel.className='beacon-modal-story';
+      panel.innerHTML='<small class="beacon-modal-act"></small><h3></h3><p></p><div class="beacon-modal-objective"><small>MISSION OBJECTIVE</small><b></b></div>';
+      panel.querySelector('.beacon-modal-act').textContent=story.act;
+      panel.querySelector('h3').textContent=story.title;
+      panel.querySelector('p').textContent=story.briefing;
+      panel.querySelector('.beacon-modal-objective b').textContent=story.goal;
+      modal.querySelector('.node-modal-head')?.insertAdjacentElement('afterend',panel);
     });
   });
 }
