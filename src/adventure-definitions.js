@@ -1,3 +1,5 @@
+import { exerciseCatalog } from './exercise-catalog.js';
+
 // Registry contains entertainment configuration only. The tracker owns validation.
 export const adventureDefinitions = Object.freeze({
   bodyweight_squat: { action: 'duck', scene: 'ruins', title: 'Escape Through the Ruins', instruction: 'Lower to duck under the beams. Stand to rise. Your first prescribed rep is the tutorial.', artifact: 'Sunstone', chapters: ['The fallen gate', 'The lantern gallery', 'The sunstone chamber'] },
@@ -6,10 +8,45 @@ export const adventureDefinitions = Object.freeze({
   forward_lunge: { action: 'crossing', scene: 'wilds', title: 'Crossing the Verdant Wilds', instruction: 'Lower on your prescribed side to guide the explorer toward a stone. Return to complete the crossing.', artifact: 'Riverstone', chapters: ['The river crossing', 'The waterfall trail', 'The living bridge'] },
   standing_shoulder_abduction: { action: 'light', scene: 'sky', title: 'Sky Guardian', instruction: 'Raise your prescribed arm to guide the lantern upward. Lower it to return. Restore the crystal beacons.', artifact: 'Sky prism', chapters: ['Light the first beacon', 'The cloud gardens', 'The waking citadel'] },
 });
-export const getAdventureDefinition = key => adventureDefinitions[key] || null;
+
+const GENERIC_REP_ADVENTURE = Object.freeze({
+  action: 'light',
+  scene: 'sky',
+  title: 'Pathfinder',
+  instruction: 'Move through your prescribed range to guide the light toward each waypoint. The game reacts to your motion, but only Axion’s validated movement tracker can count a rep.',
+  artifact: 'Trail light',
+  chapters: ['Find the first marker', 'Follow the lit path', 'Restore the final waypoint'],
+});
+
+const GENERIC_HOLD_ADVENTURE = Object.freeze({
+  action: 'light',
+  scene: 'sky',
+  title: 'Beacon Hold',
+  instruction: 'Move into your prescribed position and hold steady to keep the beacon lit. The game provides feedback, but only Axion’s validated tracker can complete the hold.',
+  artifact: 'Beacon crystal',
+  chapters: ['Wake the beacon', 'Hold the signal', 'Stabilize the light'],
+});
+
+export function getAdventureDefinition(key) {
+  if (adventureDefinitions[key]) return adventureDefinitions[key];
+  const exercise = exerciseCatalog[key];
+  if (!exercise) return null;
+  return exercise.trackingMode === 'timed_hold' ? GENERIC_HOLD_ADVENTURE : GENERIC_REP_ADVENTURE;
+}
+
 export const clamp01 = x => Math.min(1, Math.max(0, Number(x) || 0));
 export function motionInput(profile, sample) {
-  if (profile.mode !== 'reps' || !Number.isFinite(sample.movementRange) || ['calibrating','positioning'].includes(sample.stage)) return null;
+  if (!Number.isFinite(sample.movementRange) || ['calibrating'].includes(sample.stage)) return null;
+  if (profile.mode === 'hold') {
+    return {
+      type: 'movement_progress',
+      range: sample.movementRange,
+      progress: sample.stage === 'hold' ? 1 : 0,
+      stage: sample.stage,
+      side: sample.measurementSide || null,
+    };
+  }
+  if (profile.mode !== 'reps' || ['positioning'].includes(sample.stage)) return null;
   return { type: 'movement_progress', range: sample.movementRange, progress: clamp01(sample.movementRange / profile.startThreshold), stage: sample.stage, side: sample.measurementSide || null };
 }
 export function doseProgress(assignment = {}, count = 0) {

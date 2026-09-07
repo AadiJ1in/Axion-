@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "../src/movement-game.js";
+import { motionInput } from "../src/adventure-definitions.js";
 
 assert.equal(getMovementGameMapping("bodyweight_squat").action, "duck");
-assert.equal(getMovementGameMapping("half_squat"), null, "the first vertical slice must stay squat-only");
-assert.equal(getMovementGameMapping("unknown_exercise"), null);
+assert.equal(getMovementGameMapping("chin_tuck").title, "Pathfinder", "catalog rep exercises receive the simple fallback game");
+assert.equal(getMovementGameMapping("upper_trap_stretch").title, "Beacon Hold", "catalog timed holds receive the simple hold game");
+assert.equal(getMovementGameMapping("unknown_exercise"), null, "unknown exercise ids never silently become games");
 
 const controller = createMovementGameController({ exerciseKey: "bodyweight_squat", targetReps: 10 });
 controller.setMode("game");
@@ -44,6 +46,25 @@ const retry = invalidCycle.consume({ type: MOVEMENT_EVENT.MOVEMENT_PROGRESS, pro
 assert.equal(retry.completed, 0);
 assert.equal(retry.attemptActive, false);
 assert.equal(retry.lastOutcome, "form_retry", "an invalid cycle resets only the current attempt");
+
+const fallback = createMovementGameController({ exerciseKey: "chin_tuck", targetReps: 2 });
+fallback.setMode("game");
+fallback.consume({ type: MOVEMENT_EVENT.MOVEMENT_PROGRESS, progress: 0.8, stage: "down" });
+assert.equal(fallback.getState().completed, 0, "continuous fallback-game motion cannot create a clinical rep");
+fallback.consume({ type: MOVEMENT_EVENT.REP_COMPLETE });
+assert.equal(fallback.getState().completed, 1, "a validated rep advances the fallback game once");
+
+const hold = createMovementGameController({ exerciseKey: "upper_trap_stretch", targetReps: 2, targetHoldSeconds: 20 });
+hold.setMode("game");
+const holdMotion = motionInput({ mode: "hold", startThreshold: 4 }, { movementRange: 5, stage: "hold", measurementSide: "left" });
+assert.equal(holdMotion.progress, 1, "a correctly positioned hold can power the game continuously");
+hold.consume(holdMotion);
+assert.equal(hold.getState().completed, 0, "hold animation alone cannot complete a clinical hold");
+hold.consume({ type: MOVEMENT_EVENT.REP_COMPLETE });
+assert.equal(hold.getState().completed, 1, "one validated hold advances exactly one prescribed set");
+hold.consume({ type: MOVEMENT_EVENT.REP_COMPLETE });
+hold.consume({ type: MOVEMENT_EVENT.REP_COMPLETE });
+assert.equal(hold.getState().completed, 2, "hold game cannot exceed the prescribed clinical set target");
 
 const unsupported = createMovementGameController({ exerciseKey: "unknown_exercise", targetReps: 8 });
 unsupported.setMode("game");
