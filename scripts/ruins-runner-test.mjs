@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import { createRuinsRunner, runnerGeometry } from '../src/ruins-runner.js';
+import { createMovementGameController } from '../src/movement-game.js';
+let clock=0;
+const runner=createRuinsRunner();runner.ready(true);
+runner.motion({progress:0,range:0},clock);
+runner.motion({progress:.5,range:20},clock+=250);
+assert.ok(Math.abs(runner.snapshot(clock).movement-.5)<.01,'partial movement controls partial character depth');
+runner.motion({progress:1,range:40},clock+=250);
+runner.rep({movementRangeDegrees:40,tempo:3});
+runner.motion({progress:.5,range:20},clock+=250);
+assert.ok(Math.abs(runner.snapshot(clock).movement-.5)<.01,'calibrated range maps continuously');
+assert.equal(runnerGeometry(1).head>runnerGeometry(.5).head,true);
+assert.equal(runnerGeometry(3).head,runnerGeometry(1).head,'cannot reward excess depth');
+const before=runner.snapshot(clock).x;runner.tick(80,clock+1000);assert.equal(runner.snapshot(clock).x,before,'dropout freezes hazards');
+const game=createMovementGameController({exerciseKey:'bodyweight_squat',targetReps:2,runnerMode:true,now:()=>clock});game.setMode('game');game.setCameraReady(true);
+game.consume({type:'movement_progress',progress:.3,range:10,stage:'down'});
+assert.equal(game.getState().completed,0,'movement alone cannot count reps');
+game.consume({type:'rep_complete',rep:{valid:false}});assert.equal(game.getState().completed,0);
+game.consume({type:'rep_complete',rep:{valid:true,movementRangeDegrees:40,tempo:3}});
+for(let i=0;i<150;i++){clock+=80;game.consume({type:'movement_progress',progress:0,range:0,stage:'up'});game.tick(80);}
+assert.equal(game.getState().collisions,1,'standing collides once per obstacle');
+assert.equal(game.getState().completed,1,'collision preserves clinical progress');
+game.consume({type:'rep_complete',rep:{valid:true}});assert.equal(game.getState().completed,2);
+game.consume({type:'rep_complete',rep:{valid:true}});assert.equal(game.getState().completed,2,'prescribed dose caps game');
+game.consume({type:'pause'});const paused=game.getState().runner.x;game.tick(80);assert.equal(game.getState().runner.x,paused);
+console.log('Ruins Runner: continuous calibrated movement, dropout, collision isolation, invalid reps, pause and dose cap passed.');

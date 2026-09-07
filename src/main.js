@@ -3,6 +3,7 @@ import { createMovementTracker } from "./pose.js";
 import { getMovementProfile } from "./movement-profiles.js";
 import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "./movement-game.js";
 import { ownsActiveAssignment } from "./squat-camera.js";
+import { journeyMapMarkup, sessionPathPresentation, layoutJourney } from "./journey-map.js";
 import { adventureMarkup } from "./adventure-ui.js";
 import { motionInput, doseProgress, sessionCompletesDose } from "./adventure-definitions.js";
 import { matchesPrescriptionFilters } from "./prescription-filters.js";
@@ -466,6 +467,7 @@ function startPatientRealtime() {
 async function routePatientPortal() {
   currentView = "patient";
   app.innerHTML = layout(loadingMarkup("Loading your private workspace"));
+  if (import.meta.env.DEV && currentSession?.demo && new URLSearchParams(location.search).has('journey-playtest') && patientWorkspace) { patientView(); return; }
   if (currentSession?.demo) {
     patientWorkspace = demoPatientWorkspace();
     const demoFinished = localStorage.getItem("axion-demo-onboarding-v1") === "complete";
@@ -673,64 +675,18 @@ function roadmapCharacterMarkup(key = "pulse") {
   return `<span class="roadmap-character-sprite character-${characterKey}"></span>`;
 }
 
-function sessionPathPresentation(workspace) {
-  const completedIds = new Set((workspace.roadmapCompletions || []).map((item) => item.roadmap_node_id));
-  const firstIncomplete = (workspace.roadmapNodes || []).findIndex((node) => !completedIds.has(node.id));
-  const nodes = (workspace.roadmapNodes || []).map((node, index) => {
-    const assignmentIds = (workspace.roadmapNodeAssignments || []).filter((item) => item.roadmap_node_id === node.id).sort((a, b) => a.sequence - b.sequence).map((item) => item.assignment_id);
-    const completedAssignmentIds = new Set((workspace.sessions || []).filter((session) => session.roadmap_node_id === node.id && sessionCompletesDose(session, (workspace.assignments || []).find(a => a.id === session.assignment_id))).map((session) => session.assignment_id));
-    const adventureStars = Math.max(0, ...(workspace.sessions || []).filter(session => session.roadmap_node_id === node.id && completedAssignmentIds.has(session.assignment_id)).map(session => Math.min(3, Number(session.movement_summary?.adventure?.stars) || 0)));
-    const done = completedIds.has(node.id);
-    if (done) assignmentIds.forEach(id => completedAssignmentIds.add(id));
-    const current = !done && index === firstIncomplete;
-    const unlocked = !done && Boolean(node.unlock_override);
-    return { ...node, assignmentIds, completedAssignmentIds, adventureStars, state: done ? "complete" : current ? "current" : unlocked ? "override" : "locked" };
-  });
-  return { nodes, completed: nodes.filter((node) => node.state === "complete").length };
-}
-
 function sessionPathMarkup(workspace) {
-  const path = sessionPathPresentation(workspace);
-  if (!path.nodes.length) return "";
-  const total = path.nodes.length;
-  const progress = Math.round((path.completed / total) * 100);
-  const cadence = `${workspace.plan?.duration_weeks || Math.max(...path.nodes.map((node) => node.week_number))} weeks · ${workspace.plan?.sessions_per_week || 1} session${Number(workspace.plan?.sessions_per_week || 1) === 1 ? "" : "s"}/week`;
-  const themeKey = ROADMAP_WORLD_THEMES[workspace.plan?.world_theme] ? workspace.plan.world_theme : "kingdom";
-  const theme = ROADMAP_WORLD_THEMES[themeKey];
-  const avatarKey = workspace.profile?.avatar_key || currentProfile?.avatar_key || "pulse";
-  const nodeMarkup = (node, index) => {
-    const completeExercises = node.completedAssignmentIds.size;
-    const exerciseCount = node.assignmentIds.length;
-    const checkpoint = node.session_number % 7 === 0 ? `<div class="path-reward ${node.state === "complete" ? "earned" : ""}">${icon("trophy",16)}<span><b>Week ${node.week_number} checkpoint</b><small>${node.state === "complete" ? "+50 XP earned" : "Complete the week to reach this marker"}</small></span></div>` : "";
-    const status = node.state === "complete" ? "Complete" : node.state === "current" ? "Start here" : node.state === "override" ? "Unlocked" : "Locked";
-    const statusIcon = node.state === "complete" ? icon("check",14) : node.state === "locked" ? icon("lock",13) : icon("play",13);
-    const character = node.state === "current" ? `<span class="world-character" aria-hidden="true">${roadmapCharacterMarkup(avatarKey)}<b>You are here</b></span>` : "";
-    const action = node.state === "current" || node.state === "override" ? `<strong class="world-node-action">${icon("play",12)} Start session</strong>` : "";
-    return `<div class="path-step ${index % 2 ? "right" : "left"} biome-${node.biome}"><button class="path-node ${node.state}" data-roadmap-node="${node.id}" aria-label="Session ${node.session_number}, ${status}" ${node.state === "current" ? 'aria-current="step"' : ""}><span class="path-node-aura" aria-hidden="true"><i></i><i></i><i></i></span>${character}<span class="path-node-status">${statusIcon}${status}</span><span class="path-node-core">${node.state === "complete" ? icon("check",28) : node.state === "locked" ? icon("lock",22) : node.session_number}</span><span class="path-node-copy"><small>WEEK ${node.week_number} · SESSION ${node.session_in_week}</small><b>${escapeHtml(node.title || `Session ${node.session_number}`)}</b><em>${node.state === "complete" ? "Completed" : node.state === "current" ? "Your next prescribed session" : node.state === "override" ? "Ready by therapist approval" : "Finish the session before this one"}</em><i>${completeExercises}/${exerciseCount} exercises complete${node.adventureStars ? ` · ${node.adventureStars}/3 adventure stars` : ""}</i>${action}</span></button>${checkpoint}</div>`;
-  };
-  const biomeOrder = [...new Set(path.nodes.map((node) => Number(node.biome) || 1))];
-  const worldRegions = biomeOrder.map((biomeNumber) => {
-    const biome = ROADMAP_BIOMES[biomeNumber] || ROADMAP_BIOMES[1];
-    const region = theme.regions[biomeNumber] || theme.regions[1];
-    const regionNodes = path.nodes.map((node, index) => ({ node, index })).filter(({ node }) => Number(node.biome) === biomeNumber);
-    const completed = regionNodes.filter(({ node }) => node.state === "complete").length;
-    const hasCurrent = regionNodes.some(({ node }) => node.state === "current" || node.state === "override");
-    const regionState = completed === regionNodes.length ? "restored" : hasCurrent ? "active" : "future";
-    const story = regionState === "restored" ? region.restoredStory : regionState === "active" ? region.activeStory : region.futureStory;
-    const stateLabel = regionState === "restored" ? "Region restored" : regionState === "active" ? "Current chapter" : "Hidden in the mist";
-    return `<section class="roadmap-world-region biome-${biomeNumber} ${regionState}" data-world-region="${biomeNumber}"><div class="world-region-scene" aria-hidden="true"><i class="world-light"></i><i class="world-mist"></i><i class="world-fireflies"></i></div><header class="world-chapter-card"><span>${icon(biome.icon,24)}</span><div><small>CHAPTER ${biomeNumber} · ${escapeHtml(region.landmark)}</small><h3>${escapeHtml(biome.name)} — ${escapeHtml(biome.caption)}</h3><p>${escapeHtml(story)}</p></div><em>${stateLabel} · ${completed}/${regionNodes.length}</em></header><div class="world-region-path">${regionNodes.map(({ node, index }) => nodeMarkup(node, index)).join("")}</div></section>`;
-  }).join("");
-  const trailProgress = Math.max(2, Math.min(98, progress));
-  const completionMetrics = path.completed === total ? `<div class="journey-completion-metrics"><span><b>${path.completed}</b><small>Sessions</small></span><span><b>${Number(workspace.profile?.recovery_xp || 0).toLocaleString()}</b><small>Recovery XP</small></span><span><b>${Number(workspace.profile?.streak_days || 0)}</b><small>Day streak</small></span></div>` : "";
-  return `<section class="session-path-card session-path-card--duo roadmap-world" data-world-theme="${themeKey}" aria-label="Therapist-prescribed session roadmap through ${escapeHtml(theme.name)}"><div class="session-path-head"><div><span class="section-kicker">${escapeHtml(theme.name).toUpperCase()}</span><h2>${escapeHtml(workspace.plan?.title || "Your recovery journey")}</h2><p>Your prescribed rehabilitation sessions shape this world. Continue from your character’s position.</p></div><div class="session-path-progress"><strong>${path.completed}<span>/${total}</span></strong><small>SESSIONS COMPLETE</small></div></div><div class="session-path-overview"><div class="session-path-bar" aria-label="${progress}% roadmap complete"><span style="width:${progress}%"></span></div><div class="session-path-legend"><span><i class="complete"></i>Restored</span><span><i class="current"></i>Your location</span><span><i class="locked"></i>Unexplored</span><em>${escapeHtml(cadence)}</em></div></div><div class="session-path-scroll" data-session-path-scroll tabindex="0" aria-label="Scrollable recovery adventure world"><svg class="session-path-trail" data-session-path-trail aria-hidden="true"><defs><linearGradient id="roadmap-trail-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6fe9b2"/><stop offset="${trailProgress}%" stop-color="#f4d28a"/><stop offset="${trailProgress}%" stop-color="#c6d2cc"/><stop offset="100%" stop-color="#82908a"/></linearGradient></defs><path class="path-trail-flow" data-session-path-line fill="none" stroke="url(#roadmap-trail-gradient)" stroke-width="7" stroke-linecap="round" stroke-dasharray="5 14"/></svg>${worldRegions}<div class="path-summit ${path.completed === total ? "earned" : ""}">${icon("trophy",30)}<div><small>${path.completed === total ? "JOURNEY COMPLETE" : "THE CROWN SUMMIT"}</small><b>${path.completed === total ? "The kingdom road is restored" : `${total - path.completed} sessions remain before the gates open`}</b>${completionMetrics}</div></div></div><footer><span>${icon("shield",15)} The world advances only through sessions prescribed by ${escapeHtml(workspace.therapist?.display_name || "your physical therapist")}. Pain reports never reduce XP or progress.</span><span class="roadmap-contact-boundary">In-app messaging is disabled. For plan questions, use your clinic’s approved communication method.</span></footer></section>`;
+  return journeyMapMarkup(workspace, { escapeHtml, icon, missionMarkup: currentRoadmapSessionMarkup(workspace) });
 }
 
 function drawSessionPathTrail() {
   const container = document.querySelector("[data-session-path-scroll]");
+  layoutJourney(container);
   const svg = container?.querySelector("[data-session-path-trail]");
   const trail = svg?.querySelector("[data-session-path-line]");
-  const cores = Array.from(container?.querySelectorAll(".path-node-core") || []);
+  const cores = Array.from(container?.querySelectorAll(".journey-node-core") || []).filter(core => core.getClientRects().length);
   if (!container || !svg || !trail || cores.length < 2) return;
+  svg.style.height = "0px";
   const containerRect = container.getBoundingClientRect();
   const width = container.scrollWidth;
   const height = container.scrollHeight;
@@ -746,15 +702,18 @@ function drawSessionPathTrail() {
     const previous = points[index - 1];
     const current = points[index];
     const middleY = (previous.y + current.y) / 2;
-    d += ` C ${previous.x} ${middleY}, ${current.x} ${middleY}, ${current.x} ${current.y}`;
+    if (Math.abs(current.x - previous.x) > Math.abs(current.y - previous.y)) {
+      const middleX = (previous.x + current.x) / 2;
+      d += ` C ${middleX} ${previous.y}, ${middleX} ${current.y}, ${current.x} ${current.y}`;
+    } else d += ` C ${previous.x} ${middleY}, ${current.x} ${middleY}, ${current.x} ${current.y}`;
   }
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.style.width = `${width}px`;
   svg.style.height = `${height}px`;
   trail.setAttribute("d", d);
   if (!container.dataset.roadmapAutofocused) {
-    const currentStep = container.querySelector(".path-node.current, .path-node.override")?.closest(".path-step");
-    if (currentStep) container.scrollTop = Math.max(0, currentStep.offsetTop - (container.clientHeight * .15));
+    const currentStep = container.querySelector(".journey-node.current, .journey-node.override")?.closest(".journey-step");
+    if (currentStep) container.scrollTop = Math.max(0, currentStep.getBoundingClientRect().top - containerRect.top + container.scrollTop - (container.clientHeight * .3));
     container.dataset.roadmapAutofocused = "true";
   }
 }
@@ -772,9 +731,8 @@ function currentRoadmapSessionMarkup(workspace) {
   const targetDate = node.target_date
     ? new Date(`${node.target_date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
     : `Week ${node.week_number}`;
-  const preview = assignments.slice(0, 3).map((assignment) => `<span>${escapeHtml(assignment.display_name)}</span>`).join("");
-
-  return `<section class="next-session-card"><span class="next-session-orb">${node.session_number}</span><div class="next-session-copy"><small>NEXT PRESCRIBED SESSION · ${escapeHtml(targetDate)}</small><h2>Week ${node.week_number}, session ${node.session_in_week}</h2><p>${remaining ? `${remaining} exercise${remaining === 1 ? "" : "s"} remaining` : "All exercises recorded"} · ${completed}/${assignments.length} complete</p><div class="next-session-exercises">${preview}${assignments.length > 3 ? `<span>+${assignments.length - 3} more</span>` : ""}</div></div><button class="button button--primary" data-continue-roadmap-node="${node.id}">${completed ? "Resume session" : "Start session"} ${icon("arrow",16)}</button></section>`;
+  const preview = assignments.map(assignment => `<div class="mission-dose"><b>${escapeHtml(assignment.display_name)}</b><span>${escapeHtml(prescriptionTarget(assignment))}</span></div>`).join("");
+  return `<section class="next-session-card"><small>CURRENT MISSION</small><h2>${escapeHtml(node.title || `Session ${node.session_number}`)}</h2><p>Week ${node.week_number} · ${escapeHtml(targetDate)}</p>${preview}<button class="button button--primary" data-continue-roadmap-node="${node.id}">${completed ? "Resume session" : "Start session"} ${icon("arrow",16)}</button><small>${remaining} of ${assignments.length} movements remaining</small></section>`;
 }
 
 function showRoadmapNode(nodeId) {
@@ -792,7 +750,7 @@ function showRoadmapNode(nodeId) {
   const assignments = node.assignmentIds.map((id) => workspace.assignments.find((item) => item.id === id)).filter(Boolean);
   const modal = document.createElement("div");
   modal.className = "modal-layer";
-  modal.innerHTML = `<section class="roadmap-node-modal"><div class="node-modal-head"><div><span class="section-kicker">WEEK ${node.week_number} · SESSION ${node.session_number}</span><h2>${node.state === "complete" ? "Session complete" : "Your prescribed session"}</h2><p>Finish each movement below to complete this node and earn 50 recovery XP.</p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div><div class="node-exercise-list">${assignments.map((assignment, index) => { const complete = node.completedAssignmentIds.has(assignment.id); return `<article><span>${complete ? icon("check",18) : String(index + 1).padStart(2,"0")}</span><div><b>${escapeHtml(assignment.display_name)}</b><small>${escapeHtml(prescriptionTarget(assignment))}${assignment.exercise_mode === "movement_game" ? ` · ${escapeHtml(getMovementGameMapping(assignment.exercise_key)?.title || "Adventure")}` : ""}</small></div><button class="button ${complete ? "button--ghost" : "button--primary"}" data-start-node-assignment="${assignment.id}">${complete ? "Do again" : "Start"} ${icon("arrow",14)}</button></article>`; }).join("") || `<p>No active exercises are mapped to this session. Contact your physical therapist.</p>`}</div>${node.unlock_override ? `<div class="node-override-note">${icon("shield",14)} Unlocked by your therapist: ${escapeHtml(node.override_reason || "clinical override")}</div>` : ""}</section>`;
+  modal.innerHTML = `<section class="roadmap-node-modal"><div class="node-modal-head"><div><span class="section-kicker">WEEK ${node.week_number} · SESSION ${node.session_number}</span><h2>${node.state === "complete" ? "Session complete" : "Your prescribed session"}</h2><p>${node.state === "complete" ? `Completed ${escapeHtml((workspace.roadmapCompletions.find(item => item.roadmap_node_id === node.id)?.completed_at ? new Date(workspace.roadmapCompletions.find(item => item.roadmap_node_id === node.id).completed_at).toLocaleDateString() : "previously"))}. Your saved completion is preserved.` : "Complete each prescribed movement to continue your journey."}</p></div><button class="modal-close" data-close-modal aria-label="Close">×</button></div><div class="node-exercise-list">${assignments.map((assignment, index) => { const complete = node.completedAssignmentIds.has(assignment.id); return `<article><span>${complete ? icon("check",18) : String(index + 1).padStart(2,"0")}</span><div><b>${escapeHtml(assignment.display_name)}</b><small>${escapeHtml(prescriptionTarget(assignment))}${assignment.exercise_mode === "movement_game" ? ` · ${escapeHtml(getMovementGameMapping(assignment.exercise_key)?.title || "Adventure")}` : ""}</small></div><button class="button ${complete ? "button--ghost" : "button--primary"}" data-start-node-assignment="${assignment.id}">${complete ? "Do again" : "Start"} ${icon("arrow",14)}</button></article>`; }).join("") || `<p>No active exercises are mapped to this session. Contact your physical therapist.</p>`}</div>${node.unlock_override ? `<div class="node-override-note">${icon("shield",14)} Unlocked by your therapist: ${escapeHtml(node.override_reason || "clinical override")}</div>` : ""}</section>`;
   document.body.appendChild(modal);
   modal.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", () => modal.remove()));
   modal.querySelectorAll("[data-start-node-assignment]").forEach((button) => button.addEventListener("click", () => {
@@ -821,10 +779,8 @@ function patientView() {
   const weeklyProgress = Math.min(1, weeklySessions / weeklyGoal);
   const therapistName = workspace.therapist?.display_name || "Your physical therapist";
   app.innerHTML = layout(`
-    <main class="patient-portal container-wide">
-      <section class="patient-welcome"><div><span class="section-kicker">${escapeHtml(workspace.plan?.phase_label || "YOUR RECOVERY")} · ${escapeHtml(workspace.plan?.program_label || "PERSONAL PLAN")}</span><h1>Welcome back, ${escapeHtml(firstName)}.</h1><p>${escapeHtml(workspace.plan?.instructions || "Your therapist-built recovery session is ready when you are.")}</p></div><div class="patient-scoreboard" aria-label="Recovery statistics"><article><span>${icon("trophy", 18)}</span><div><small>RECOVERY XP</small><b>${Number(profile.recovery_xp || 0).toLocaleString()}</b></div></article><article><span>${icon("spark", 18)}</span><div><small>LEVEL</small><b>${profile.level || 1}</b></div></article><article><span>${icon("calendar", 18)}</span><div><small>STREAK</small><b>${profile.streak_days || 0} days</b></div></article></div></section>
-      <section class="care-team-pill">${icon("shield", 17)}<div><small>VERIFIED CARE TEAM</small><b>${escapeHtml(therapistName)}</b></div><span>Connected</span></section>
-      ${currentRoadmapSessionMarkup(workspace)}
+    <main class="patient-portal journey-page container-wide">
+      <header class="journey-welcome"><div><span class="section-kicker">${escapeHtml(firstName.toUpperCase())}’S RECOVERY</span><h1>Your next chapter.</h1></div><span>${icon("shield",16)} ${escapeHtml(therapistName)}</span></header>
       ${sessionPathMarkup(workspace)}
       <section class="roadmap-support-grid"><article class="daily-goal-card"><div class="goal-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="32"/><circle cx="40" cy="40" r="32" style="stroke-dashoffset:${Math.round(201 * (1 - weeklyProgress))}"/></svg><b>${Math.min(weeklySessions,weeklyGoal)}/${weeklyGoal}</b></div><div><span class="section-kicker">THIS WEEK</span><h3>${weeklySessions >= weeklyGoal ? "Weekly goal complete!" : `${weeklyGoal - weeklySessions} session${weeklyGoal - weeklySessions === 1 ? "" : "s"} to your weekly goal.`}</h3><p>Only fully completed roadmap nodes count as sessions.</p></div></article><article class="reward-card"><span>${icon("activity",24)}</span><div><small>YOUR MOVEMENT LAB</small><h3>Every node opens the right exercises</h3><p>Tap your highlighted roadmap node to see and start only that session’s prescribed movements.</p></div></article></section>
       <section id="patient-exercises" class="today-plan ${roadmapExpanded ? "expanded" : "collapsed"}"><div class="section-heading compact"><div><span class="section-kicker">YOUR PRESCRIPTION</span><h2>${assignments.length} exercise${assignments.length === 1 ? "" : "s"} from your therapist.</h2></div><p>Prescribed by ${escapeHtml(therapistName)}</p></div><div class="exercise-list">${assignments.length ? assignments.map((assignment, index) => patientExerciseCard(assignment, index, sessions)).join("") : `<div class="empty-state"><span>${icon("map",24)}</span><h3>Your prescription is being prepared</h3><p>${escapeHtml(therapistName)} has not added an active exercise yet.</p></div>`}</div></section>
@@ -872,7 +828,7 @@ function labView() {
   const assignmentCount = Math.max(1, patientWorkspace?.assignments?.length || 1);
   const backTarget = currentProfile?.role === "patient" || demoRole === "patient" ? "patient" : "home";
   app.innerHTML = layout(`
-    <main class="lab-page ${gameMapping ? "adventure-lab" : ""} ${gameMapping?.action === "duck" ? "camera-squat-lab" : ""}">
+    <main class="lab-page ${gameMapping ? "adventure-lab" : ""} ${gameMapping?.action === "duck" ? "ruins-runner-lab" : ""}">
       <div class="lab-header container-wide">
         <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to ${escapeHtml(patientName.split(" ")[0])}’s recovery</button><div class="eyebrow"><span></span> ${escapeHtml(patientName)}’s Movement Science Lab · ${currentRoadmapNode ? `Roadmap session ${currentRoadmapNode.session_number} · ` : ""}Exercise ${assignmentNumber} of ${assignmentCount}</div><h1>${escapeHtml(assignment.display_name)}</h1><p class="lab-prescriber">Prescribed by ${escapeHtml(therapistName)} · ${escapeHtml(dosageLabel)}</p></div>
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
@@ -894,7 +850,8 @@ function labView() {
           ${gameMapping ? movementGameMarkup(gameMapping, targetReps, assignment) : ""}
           <div class="motion-stage">
             <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera setup</b><small>${escapeHtml(movementProfile.cameraHint)}</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button>${currentSession?.demo ? `<button id="recovery-demo">View tracker simulation</button>` : ""}</div></div><span class="pane-label">YOU</span></div>
-            <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">MOVEMENT TWIN</span><div class="target-label"><i></i> <span id="twin-target-label">${movementProfile.overlayJoint && movementProfile.unit === "°" ? `${escapeHtml(movementProfile.overlayJoint)} angle` : "Movement path"}</span></div></div>
+            <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">${gameMapping?.action === "duck" ? "YOU · TRACKED BODY" : "MOVEMENT TWIN"}</span><div class="target-label"><i></i> <span id="twin-target-label">${movementProfile.overlayJoint && movementProfile.unit === "°" ? `${escapeHtml(movementProfile.overlayJoint)} angle` : "Movement path"}</span></div></div>
+            ${gameMapping?.action === "duck" ? `<div class="buddy-pane"><canvas id="exercise-buddy" width="320" height="210" aria-label="Buddy demonstrating a squat"></canvas><span class="pane-label">BUDDY · EXAMPLE</span><small>Use your prescribed range and pace.</small></div>` : ""}
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
           </div>
           <div class="live-metrics"><div><span>CURRENT SET</span><b><i id="live-set">1</i><small>/ ${assignment.target_sets || 1}</small></b></div><div><span>${timedExercise ? "HOLD" : "REPS THIS SET"}</span><b><i id="live-reps">0</i><small>/ ${timedExercise ? `${assignment.duration_seconds || 30}s` : repsPerSet}</small></b></div><div><span>TOTAL VALID</span><b id="live-total-reps">0 / ${targetReps}</b></div><div><span id="live-angle-label">${escapeHtml(jointLabel.toUpperCase())}</span><b id="live-depth">—</b></div></div>
@@ -2034,6 +1991,7 @@ async function initializeLab() {
     targetReps: demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10),
     targetHoldSeconds: currentAssignment?.tracking_mode === "timed_hold" ? (currentAssignment?.duration_seconds || 30) : 0,
     liveCamera: true,
+    runnerMode: true,
     onState: renderMovementGameState,
   });
   setText("#calibration-copy", activeProfile.cameraHint);
@@ -2072,6 +2030,7 @@ async function initializeLab() {
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
       gameTrackingReady = Number.isFinite(movementRange) && !["calibrating", "positioning"].includes(stage);
       movementGameController?.setCameraReady(gameTrackingReady);
+      setText("#game-quality", gameTrackingReady ? "Tracking steady" : "Adjust camera");
       const input = motionInput(activeProfile, { movementRange, stage, measurementSide });
       if (input) movementGameController?.consume(input);
       if (stage === "hold" && (elapsedSeconds || 0) >= Math.min(5, currentAssignment?.duration_seconds || 30)) document.querySelector("#finish-session")?.removeAttribute("disabled");
@@ -2133,8 +2092,24 @@ async function initializeLab() {
     });
     document.querySelector("#adventure-save")?.addEventListener("click", finishSession);
   }
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('journey-playtest') && currentSession?.demo) {
+    const { installJourneySimulator } = await import('./journey-simulator.js');
+    installJourneySimulator({ panel: document.querySelector('.capture-panel'), profile: activeProfile,
+      state: () => movementGameController.getState(),
+      pose: updateSyntheticTwin,
+      motion: event => { simulationSession=true;gameTrackingReady=true;updateCalibration(1,'Synthetic tracking');setText('#game-quality','Simulator active');movementGameController.setCameraReady(true);movementGameController.consume(event); },
+      rep: acceptValidatedRep,
+      passage: () => { for(let i=0;i<130;i++){movementGameController.setCameraReady(true);movementGameController.consume({type:MOVEMENT_EVENT.MOVEMENT_PROGRESS,progress:0,range:0,stage:'up'});movementGameController.tick(80);} },
+    });
+  }
+  const restOverlay=document.querySelector('#set-rest-overlay');
+  if(document.querySelector('.ruins-runner-lab'))document.querySelector('.adventure-viewport')?.append(restOverlay);
+  document.querySelector('#begin-mission')?.addEventListener('click', async event => {
+    event.currentTarget.closest('.mission-intro').remove();
+    if(!currentSession?.demo) {document.querySelector('.camera-pane')?.classList.add('camera-on');await tracker.start();}
+  });
   startMovementGameAnimation();
-  if (!currentSession?.demo) {
+  if (!currentSession?.demo && !document.querySelector('#begin-mission')) {
     document.querySelector(".camera-pane")?.classList.add("camera-on");
     setText("#capture-status", "STARTING CAMERA");
     await tracker.start();
@@ -2170,8 +2145,8 @@ function renderMovementGameState(state) {
   setText("#game-remaining", state.remaining);
   setText("#game-collectibles", state.collectibles);
   setText("#game-score", state.score.toLocaleString());
-  setText("#adventure-stars", state.stars ? `${state.stars} / 3 adventure stars` : "");
-  setText("#adventure-reward", state.stars ? `${state.mapping.artifact} discovered · save to keep your progress` : "");
+  setText("#adventure-stars", state.stars && !state.runner ? `${state.stars} / 3 adventure stars` : "");
+  setText("#adventure-reward", state.stars && !state.runner ? `${state.mapping.artifact} discovered · save to keep your progress` : "");
   setText("#game-feedback", !gameTrackingReady && !state.paused && state.remaining > 0 ? "Tracking paused · follow the camera guidance" : state.lastOutcome === "collision"
     ? "Gate touched · game combo reset · clinical reps preserved"
     : state.lastOutcome === "collision_counted" ? "Valid rep counted · game combo reset"
@@ -2179,7 +2154,7 @@ function renderMovementGameState(state) {
       ? "Movement not validated · reset your form and try again"
     : state.lastOutcome === "counted"
       ? "Valid rep · path cleared"
-      : state.paused ? "Mission paused · progress preserved" : state.camera && !state.camera.calibrated ? "First prescribed squat · learning your comfortable range" : state.camera ? "Squat at your own pace · the gate moves with you" : "Move when you are ready");
+      : state.paused ? "Mission paused · progress preserved" : state.runner ? (state.runner.tutorial ? "First prescribed squat · learn the controls at your own pace" : "Duck through the passage · keep your prescribed range and pace") : state.camera && !state.camera.calibrated ? "First prescribed squat · learning your comfortable range" : state.camera ? "Squat at your own pace · the gate moves with you" : "Move when you are ready");
   setText("#game-pause", state.paused ? "Resume mission" : "Pause");
   setText("#session-pause", state.paused ? "Resume session" : "Pause session");
   document.querySelector("#game-completion")?.classList.toggle("hidden", state.lastOutcome !== "complete");
@@ -2404,6 +2379,7 @@ function celebrateMilestone() {
 }
 
 function acceptValidatedRep(rep) {
+  if (rep?.valid === false) return;
   const dose = doseProgress(currentAssignment, sessionReps.length);
   if (dose.done || setRestEndsAt || movementGameController?.getState().paused) return;
   const consistency = Math.max(45, Math.round(100 - (rep.symmetryDelta ?? 4) * 2));
@@ -2423,6 +2399,7 @@ function clearSetRest() {
   if (setRestTimer) clearInterval(setRestTimer);
   setRestTimer = null;
   setRestEndsAt = null;
+  document.querySelectorAll("#game-pause, #session-pause").forEach(button => { button.disabled=false;button.textContent=movementGameController?.getState().paused ? (button.id === "game-pause" ? "Resume mission" : "Resume session") : (button.id === "game-pause" ? "Pause" : "Pause session"); });
   document.querySelector("#set-rest-overlay")?.classList.add("hidden");
 }
 
@@ -2432,6 +2409,8 @@ function startSetRest(seconds, completedSet) {
   tracker?.pause?.();
   movementGameController?.consume({ type: MOVEMENT_EVENT.PAUSE });
   setRestEndsAt = Date.now() + seconds * 1000;
+  document.querySelectorAll("#game-pause, #session-pause").forEach(button => {button.disabled=true;button.textContent="Resting";});
+  setText("#game-status", "Therapist-scheduled rest · your progress is preserved");
   const overlay = document.querySelector("#set-rest-overlay");
   overlay?.classList.remove("hidden");
   setText("#set-rest-kicker", `CHAMBER CLEARED · SET ${completedSet} COMPLETE`);
@@ -2616,6 +2595,10 @@ function showReflection() {
       button.disabled = false;
       button.textContent = "Could not save — try again";
       return;
+    }
+    if(import.meta.env.DEV && currentSession?.demo && new URLSearchParams(location.search).has('journey-playtest') && currentRoadmapNode && sessionCompletesDose({repetitions:reportReps.length},currentAssignment)){
+      // In-memory synthetic fixture only. No patient persistence or completion endpoint.
+      patientWorkspace.roadmapCompletions.push({roadmap_node_id:currentRoadmapNode.id,completed_at:new Date().toISOString()});
     }
     modal.remove();
     reportView();
@@ -3283,6 +3266,19 @@ function bindEvents() {
     requestAnimationFrame(() => document.querySelector(".exercise-library-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }));
   document.querySelectorAll("[data-approve-patient]").forEach((element) => element.addEventListener("click", approvePatient));
+  const focusJourney = (region) => {
+    const container = document.querySelector('[data-session-path-scroll]');
+    if (!container) return;
+    container.dataset.focusedRegion = region;
+    container.querySelectorAll('[data-map-region]').forEach(item => { item.hidden = region !== 'all' && item.dataset.mapRegion !== region; });
+    document.querySelectorAll('[data-journey-region]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.journeyRegion === region)));
+    document.querySelectorAll('[data-journey-view]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.journeyView === (region === 'all' ? 'all' : 'current'))));
+    delete container.dataset.roadmapAutofocused;
+    container.scrollTop = 0;
+    drawSessionPathTrail();
+  };
+  document.querySelectorAll('[data-journey-view]').forEach(button => button.addEventListener('click',()=>focusJourney(button.dataset.journeyView === 'all' ? 'all' : document.querySelector('[data-session-path-scroll]')?.dataset.currentRegion)));
+  document.querySelectorAll('[data-journey-region]').forEach(button => button.addEventListener('click',()=>focusJourney(button.dataset.journeyRegion)));
   document.querySelectorAll("[data-roadmap-node]").forEach((element) => element.addEventListener("click", () => showRoadmapNode(element.dataset.roadmapNode)));
   document.querySelectorAll("[data-continue-roadmap-node]").forEach((element) => element.addEventListener("click", () => showRoadmapNode(element.dataset.continueRoadmapNode)));
   document.querySelectorAll("[data-override-roadmap-node]").forEach((element) => element.addEventListener("click", () => showRoadmapOverrideModal(element.dataset.overrideRoadmapNode, element.dataset.overrideSessionNumber)));
@@ -3340,6 +3336,15 @@ window.addEventListener("pageshow", (event) => { if (event.persisted) window.loc
 window.addEventListener("resize", () => requestAnimationFrame(drawSessionPathTrail));
 
 async function bootstrap() {
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('journey-playtest')) {
+    currentSession = { demo: true, user: { id: 'demo-patient' } };
+    currentProfile = { id: 'demo-patient', role: 'patient', display_name: 'Preview Patient', avatar_key: 'trail' };
+    demoRole = 'patient';
+    patientWorkspace = demoPatientWorkspace();
+    Object.assign(patientWorkspace.assignments[0], {target_sets:2,target_repetitions:2,rest_seconds:15});
+    patientView();
+    return;
+  }
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('prescription-playtest')) {
     // Isolated UI fixture: no auth bootstrap and no publish requests.
     assignedPatients = [{id:'local-fixture-a',display_name:'Local patient A'},{id:'local-fixture-b',display_name:'Local patient B'}];

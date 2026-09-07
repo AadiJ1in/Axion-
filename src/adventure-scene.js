@@ -1,9 +1,12 @@
+import { drawRuinsRunner, drawExplorer } from './ruins-runner.js';
 import { drawSquatCameraScene } from './squat-camera-scene.js';
 import { gameTarget } from './adventure-definitions.js';
 // Canvas renders entertainment only; it cannot write clinical repetitions.
 export function createAdventureScene(canvas, definition, { video = null } = {}) {
   const ctx=canvas.getContext('2d');
   if(!ctx)return {draw(){},destroy(){},async toggleSound(){return false;}};
+  const landscape=new Image();landscape.src='/journey/landscape.webp';
+  const buddy=document.querySelector('#exercise-buddy');
   const backgrounds=new Image(), sprites=new Image();
   backgrounds.src='/adventure/environments.webp';sprites.src='/adventure/sprites.webp';
   let destroyed=false, time=0, last=performance.now(), mean=0, frames=0, sound=false, audio=null, outcome=null;
@@ -24,6 +27,13 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
       const now=performance.now(),delta=Math.min(80,now-last);last=now;
       if(!state.paused&&state.attemptActive)time+=delta;
       const start=performance.now(),w=canvas.width,h=canvas.height;
+      if(state.runner){
+        drawRuinsRunner(ctx,state,w,h,landscape,reduced);
+        canvas.dataset.movement=state.runner.movement.toFixed(3);
+        canvas.dataset.obstacle=state.runner.x.toFixed(3);
+        if(buddy){const b=buddy.getContext('2d');b.clearRect(0,0,320,210);const p=state.paused?0:(1-Math.cos(now/6000*Math.PI*2))/2;drawExplorer(b,160,185,140,p,'#88a997');}
+        mean=mean*.95+(performance.now()-start)*.05;frames++;canvas.dataset.renderMs=mean.toFixed(2);canvas.dataset.frames=String(frames);return;
+      }
       if(state.camera){
         drawSquatCameraScene(ctx,video,state,w,h);
         mean=mean*.95+(performance.now()-start)*.05;frames++;
