@@ -1,6 +1,126 @@
 import { drawRuinsRunner, drawExplorer } from './ruins-runner.js';
 import { drawSquatCameraScene } from './squat-camera-scene.js';
-import { gameTarget } from './adventure-definitions.js';
+import { clamp01, gameTarget } from './adventure-definitions.js';
+
+function drawMissionFeature(ctx, story, w, h, progress) {
+  if (!story) return;
+  const p = clamp01(progress);
+  const x = w * .79;
+  const y = h * .61;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (story.kind === 'bridge') {
+    ctx.strokeStyle = `rgba(236,202,128,${.22 + p * .58})`;
+    ctx.lineWidth = Math.max(3, w * .004);
+    for (let i = 0; i < 5; i += 1) {
+      if ((i + 1) / 5 > p + .18) continue;
+      const sx = w * (.58 + i * .07);
+      ctx.beginPath();
+      ctx.moveTo(sx, h * .69);
+      ctx.lineTo(sx + w * .055, h * .66);
+      ctx.stroke();
+    }
+  } else if (story.kind === 'mill') {
+    ctx.strokeStyle = `rgba(239,204,125,${.2 + p * .65})`;
+    ctx.lineWidth = Math.max(2, w * .003);
+    ctx.beginPath();
+    ctx.arc(x, y, Math.min(w,h) * .07, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 8; i += 1) {
+      const a = i * Math.PI / 4 + p * .9;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * Math.min(w,h) * .07, y + Math.sin(a) * Math.min(w,h) * .07);
+      ctx.stroke();
+    }
+  } else if (story.kind === 'gate') {
+    ctx.strokeStyle = `rgba(196,238,213,${.18 + p * .7})`;
+    ctx.lineWidth = Math.max(3, w * .004);
+    ctx.beginPath();
+    ctx.moveTo(x - w * .05, y + h * .1);
+    ctx.lineTo(x - w * .05, y);
+    ctx.arc(x, y, w * .05, Math.PI, 0);
+    ctx.lineTo(x + w * .05, y + h * .1);
+    ctx.stroke();
+  } else if (story.kind === 'garden') {
+    const count = Math.max(2, Math.floor(2 + p * 10));
+    for (let i = 0; i < count; i += 1) {
+      const gx = w * (.56 + (i % 6) * .065);
+      const gy = h * (.72 + Math.floor(i / 6) * .05);
+      ctx.fillStyle = `rgba(142,220,164,${.22 + p * .55})`;
+      ctx.beginPath();
+      ctx.arc(gx, gy, Math.max(2, w * .004), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (story.kind === 'path' || story.kind === 'climb') {
+    const count = Math.max(1, Math.floor(1 + p * 8));
+    for (let i = 0; i < count; i += 1) {
+      const lx = w * (.52 + i * .04);
+      const ly = h * (.78 - i * .035);
+      ctx.fillStyle = `rgba(247,205,116,${.35 + p * .55})`;
+      ctx.beginPath();
+      ctx.arc(lx, ly, Math.max(2, w * .0035), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawBeaconRestoration(ctx, story, w, h, sessionProgress, reduced) {
+  if (!story) return;
+  const local = clamp01(sessionProgress);
+  const baseline = clamp01(story.worldProgress || 0);
+  const restoration = clamp01(baseline * .82 + local * .18);
+  ctx.save();
+
+  const glow = ctx.createRadialGradient(w * .83, h * .28, 0, w * .83, h * .28, w * .52);
+  glow.addColorStop(0, `rgba(244,190,84,${.05 + restoration * .12 + local * .08})`);
+  glow.addColorStop(1, 'rgba(244,190,84,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+
+  const villageLights = Math.min(16, Math.floor(2 + restoration * 12 + local * 3));
+  for (let i = 0; i < villageLights; i += 1) {
+    const px = w * (.47 + ((i * 37) % 47) / 100);
+    const py = h * (.67 + ((i * 19) % 18) / 100);
+    ctx.fillStyle = `rgba(255,210,118,${.28 + restoration * .55})`;
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(1.5, w * .0025), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const bx = w * .88;
+  const baseY = h * .58;
+  const towerH = h * .23;
+  ctx.fillStyle = 'rgba(11,18,26,.76)';
+  ctx.fillRect(bx - w * .025, baseY - towerH, w * .05, towerH);
+  ctx.fillRect(bx - w * .04, baseY - towerH * .88, w * .08, h * .022);
+  ctx.strokeStyle = `rgba(246,196,93,${.18 + local * .72 + restoration * .12})`;
+  ctx.lineWidth = Math.max(2, w * .003);
+  ctx.beginPath();
+  ctx.moveTo(bx, baseY - towerH);
+  ctx.lineTo(bx, h * (.08 - local * .03));
+  ctx.stroke();
+
+  if (!reduced && local > .05) {
+    ctx.strokeStyle = `rgba(255,222,139,${.12 + local * .48})`;
+    ctx.lineWidth = Math.max(1, w * .002);
+    ctx.beginPath();
+    for (let i = 0; i <= 18; i += 1) {
+      const t = i / 18;
+      const yy = baseY - towerH * (.05 + t * .93);
+      const xx = bx + Math.sin(t * Math.PI * 6) * w * (.012 + local * .006);
+      if (i === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+    }
+    ctx.stroke();
+  }
+
+  drawMissionFeature(ctx, story, w, h, local);
+  ctx.restore();
+}
+
 // Canvas renders entertainment only; it cannot write clinical repetitions.
 export function createAdventureScene(canvas, definition, { video = null } = {}) {
   const ctx=canvas.getContext('2d');
@@ -29,6 +149,7 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
       const start=performance.now(),w=canvas.width,h=canvas.height;
       if(state.runner){
         drawRuinsRunner(ctx,state,w,h,landscape,reduced);
+        drawBeaconRestoration(ctx,definition.story,w,h,state.progress,reduced);
         canvas.dataset.movement=state.runner.movement.toFixed(3);
         canvas.dataset.obstacle=state.runner.x.toFixed(3);
         if(buddy){const b=buddy.getContext('2d');b.clearRect(0,0,320,210);const p=state.paused?0:(1-Math.cos(now/6000*Math.PI*2))/2;drawExplorer(b,160,185,140,p,'#88a997');}
@@ -36,6 +157,7 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
       }
       if(state.camera){
         drawSquatCameraScene(ctx,video,state,w,h);
+        drawBeaconRestoration(ctx,definition.story,w,h,state.progress,reduced);
         mean=mean*.95+(performance.now()-start)*.05;frames++;
         canvas.dataset.renderMs=mean.toFixed(2);canvas.dataset.frames=String(frames);
         if(state.lastOutcome!==outcome){outcome=state.lastOutcome;if(['counted','complete'].includes(outcome))tone();}
@@ -69,6 +191,7 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
         sprite(7,w*.78,ty-size*.3,size*.65,size*.65);
         ctx.strokeStyle='#c6f9ff';ctx.lineWidth=Math.max(3,w*.005);ctx.shadowColor='#50cfff';ctx.shadowBlur=mean>12?0:20;ctx.beginPath();ctx.moveTo(x+size*.25,h*.62);ctx.lineTo(w*.8,y);ctx.stroke();ctx.shadowBlur=0;
       }
+      drawBeaconRestoration(ctx,definition.story,w,h,state.progress,reduced);
       // Bounded ambient particles drop away if rendering consumes too much time.
       if(!reduced&&mean<12){for(let i=0;i<18;i++){const px=((i*97+time*.012)%w),py=(i*73)%h;ctx.fillStyle=i%2?'#b5f6ff88':'#fff0a388';ctx.beginPath();ctx.arc(px,py,1+(i%3),0,7);ctx.fill();}}
       if(state.lastOutcome!==outcome){outcome=state.lastOutcome;if(['counted','complete'].includes(outcome))tone();}
