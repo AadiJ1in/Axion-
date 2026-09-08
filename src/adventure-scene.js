@@ -127,24 +127,56 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
   if(!ctx)return {draw(){},destroy(){},async toggleSound(){return false;}};
   const landscape=new Image();landscape.src='/journey/landscape.webp';
   const buddy=document.querySelector('#exercise-buddy');
+  const buddyCtx=buddy?.getContext('2d') || null;
   const backgrounds=new Image(), sprites=new Image();
   backgrounds.src='/adventure/environments.webp';sprites.src='/adventure/sprites.webp';
   let destroyed=false, time=0, last=performance.now(), mean=0, frames=0, sound=false, audio=null, outcome=null;
+  let lastDraw=0, lastBuddyDraw=0, lastDiagnostics=0, slowFrames=0;
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const tile={ruins:[0,0],gravity:[1,0],wilds:[0,1],sky:[1,1]}[definition.scene];
+  const defaultFrameInterval=reduced ? 50 : 1000/30;
+  let frameInterval=defaultFrameInterval;
+  const tile=({ruins:[0,0],gravity:[1,0],wilds:[0,1],sky:[1,1]}[definition.scene] || [0,0]);
   const sprite=(i,x,y,w,h)=>{
     if(!sprites.complete||!sprites.naturalWidth)return;
     const sw=sprites.naturalWidth/4,sh=sprites.naturalHeight/2;
     ctx.drawImage(sprites,(i%4)*sw,Math.floor(i/4)*sh,sw,sh,x,y,w,h);
   };
-  const resize=()=>{const rect=canvas.getBoundingClientRect();const dpr=Math.min(1.5,devicePixelRatio||1);canvas.width=Math.max(1,Math.round(rect.width*dpr));canvas.height=Math.max(1,Math.round(rect.height*dpr));};
-  const observer=new ResizeObserver(resize);observer.observe(canvas);resize();
+  const resize=()=>{
+    const rect=canvas.getBoundingClientRect();
+    const coarse=window.matchMedia('(pointer: coarse)').matches;
+    const dpr=Math.min(coarse ? 1 : 1.25,window.devicePixelRatio||1);
+    const width=Math.max(1,Math.round(rect.width*dpr));
+    const height=Math.max(1,Math.round(rect.height*dpr));
+    if(canvas.width!==width)canvas.width=width;
+    if(canvas.height!==height)canvas.height=height;
+  };
+  const observer=typeof ResizeObserver==='function' ? new ResizeObserver(resize) : null;
+  observer?.observe(canvas);resize();
+  const AudioCtor=window.AudioContext || window.webkitAudioContext;
   const tone=()=>{if(!sound||!audio)return;const osc=audio.createOscillator(),g=audio.createGain();osc.connect(g);g.connect(audio.destination);osc.frequency.setValueAtTime(440,audio.currentTime);osc.frequency.exponentialRampToValueAtTime(660,audio.currentTime+.12);g.gain.setValueAtTime(.035,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.25);osc.start();osc.stop(audio.currentTime+.26);};
+  const finishFrame=(start,now)=>{
+    const renderMs=performance.now()-start;
+    mean=mean*.95+renderMs*.05;
+    frames++;
+    if(mean>14){slowFrames=Math.min(60,slowFrames+1);}else if(mean<9){slowFrames=Math.max(0,slowFrames-2);}
+    frameInterval=slowFrames>=18 ? 50 : defaultFrameInterval;
+    if(now-lastDiagnostics>=500){canvas.dataset.renderMs=mean.toFixed(2);canvas.dataset.frames=String(frames);canvas.dataset.renderFps=String(Math.round(1000/frameInterval));lastDiagnostics=now;}
+  };
   return {
-    async toggleSound(){sound=!sound;if(sound){audio ||= new AudioContext();await audio.resume();}return sound;},
+    async toggleSound(){
+      if(!AudioCtor)return false;
+      sound=!sound;
+      if(sound){
+        try{audio ||= new AudioCtor();await audio.resume();}
+        catch{sound=false;return false;}
+      }
+      return sound;
+    },
     draw(state){
-      if(destroyed)return;
-      const now=performance.now(),delta=Math.min(80,now-last);last=now;
+      if(destroyed||document.hidden)return;
+      const now=performance.now();
+      if(now-lastDraw<frameInterval)return;
+      const delta=Math.min(80,now-last);last=now;lastDraw=now;
       if(!state.paused&&state.attemptActive)time+=delta;
       const start=performance.now(),w=canvas.width,h=canvas.height;
       if(state.runner){
@@ -152,16 +184,14 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
         drawBeaconRestoration(ctx,definition.story,w,h,state.progress,reduced);
         canvas.dataset.movement=state.runner.movement.toFixed(3);
         canvas.dataset.obstacle=state.runner.x.toFixed(3);
-        if(buddy){const b=buddy.getContext('2d');b.clearRect(0,0,320,210);const p=state.paused?0:(1-Math.cos(now/6000*Math.PI*2))/2;drawExplorer(b,160,185,140,p,'#88a997');}
-        mean=mean*.95+(performance.now()-start)*.05;frames++;canvas.dataset.renderMs=mean.toFixed(2);canvas.dataset.frames=String(frames);return;
+        if(buddyCtx && now-lastBuddyDraw>=66){buddyCtx.clearRect(0,0,320,210);const p=state.paused?0:(1-Math.cos(now/6000*Math.PI*2))/2;drawExplorer(buddyCtx,160,185,140,p,'#88a997');lastBuddyDraw=now;}
+        finishFrame(start,now);return;
       }
       if(state.camera){
         drawSquatCameraScene(ctx,video,state,w,h);
         drawBeaconRestoration(ctx,definition.story,w,h,state.progress,reduced);
-        mean=mean*.95+(performance.now()-start)*.05;frames++;
-        canvas.dataset.renderMs=mean.toFixed(2);canvas.dataset.frames=String(frames);
         if(state.lastOutcome!==outcome){outcome=state.lastOutcome;if(['counted','complete'].includes(outcome))tone();}
-        return;
+        finishFrame(start,now);return;
       }
       ctx.fillStyle='#101b30';ctx.fillRect(0,0,w,h);
       if(backgrounds.complete&&backgrounds.naturalWidth){
@@ -195,9 +225,8 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
       // Bounded ambient particles drop away if rendering consumes too much time.
       if(!reduced&&mean<12){for(let i=0;i<18;i++){const px=((i*97+time*.012)%w),py=(i*73)%h;ctx.fillStyle=i%2?'#b5f6ff88':'#fff0a388';ctx.beginPath();ctx.arc(px,py,1+(i%3),0,7);ctx.fill();}}
       if(state.lastOutcome!==outcome){outcome=state.lastOutcome;if(['counted','complete'].includes(outcome))tone();}
-      mean=mean*.95+(performance.now()-start)*.05;frames++;
-      canvas.dataset.renderMs=mean.toFixed(2);canvas.dataset.frames=String(frames);
+      finishFrame(start,now);
     },
-    destroy(){destroyed=true;observer.disconnect();if(audio)void audio.close();}
+    destroy(){destroyed=true;observer?.disconnect();if(audio)void audio.close().catch(()=>{});}
   };
 }
