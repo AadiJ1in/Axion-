@@ -18,7 +18,7 @@ requireText(css, '#26352b', 'dark readable journey text');
 
 requireText(js, "text(label, 'Game Mode')", 'patient navigation game mode label');
 requireText(js, 'ACTIVE STORY GAME MODE', 'profile game mode explanation');
-requireText(js, GAME_MODE_NAME = 'GAME_MODE.name', 'shared game mode metadata');
+requireText(js, 'GAME_MODE.name', 'shared game mode metadata');
 requireText(js, "page.dataset.gameMode = GAME_MODE.key", 'game mode page metadata');
 requireText(js, 'Movement Lab', 'clinical Movement Lab context retained in aria/title');
 
