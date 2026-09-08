@@ -1,0 +1,158 @@
+/* Environmental restoration is presentation only. The completion classes that
+   drive it come from the existing clinical roadmap state. */
+.campaign-region{--region-restored:0}
+.region-restoration-world{
+  position:absolute;
+  inset:0;
+  z-index:5;
+  overflow:hidden;
+  pointer-events:none;
+  opacity:calc(.22 + (var(--region-restored) * .78));
+  transition:opacity .8s ease,filter .8s ease;
+  filter:saturate(calc(.55 + (var(--region-restored) * .6))) brightness(calc(.74 + (var(--region-restored) * .3)));
+}
+.campaign-region[data-restoration="dormant"] .region-restoration-world{opacity:.13;filter:saturate(.35) brightness(.62)}
+.campaign-region[data-restoration="restored"] .region-restoration-world{filter:saturate(1.16) brightness(1.04)}
+
+.region-restoration-status{
+  grid-column:1/-1;
+  width:max-content;
+  margin-top:3px;
+  padding:3px 6px;
+  border:1px solid rgba(225,235,218,.2);
+  border-radius:999px;
+  background:rgba(4,18,11,.35);
+  color:#dfe8da;
+  font:700 7px "DM Mono",monospace;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+
+.restoration-beacon{
+  position:absolute;
+  right:8%;
+  top:16%;
+  width:44px;
+  height:70px;
+  opacity:calc(.18 + var(--region-restored) * .82);
+  filter:drop-shadow(0 7px 10px rgba(1,10,5,.32));
+}
+.restoration-beacon::before{
+  content:"";
+  position:absolute;
+  left:50%;bottom:0;
+  width:25px;height:54px;
+  transform:translateX(-50%);
+  clip-path:polygon(23% 100%,23% 28%,36% 28%,42% 6%,50% 0,58% 6%,64% 28%,77% 28%,77% 100%);
+  background:linear-gradient(90deg,#273d31,#6c806b 48%,#263d30);
+}
+.restoration-beacon i{
+  position:absolute;left:50%;top:10px;
+  width:24px;height:8px;
+  transform:translateX(-50%);
+  border:1px solid rgba(242,225,167,.75);
+  border-radius:50%;
+  box-shadow:0 0 calc(4px + 16px * var(--region-restored)) rgba(239,210,124,calc(.1 + .7 * var(--region-restored)));
+}
+.restoration-beacon b{
+  position:absolute;
+  left:50%;bottom:47px;
+  width:3px;
+  height:calc(8px + 46px * var(--region-restored));
+  transform:translateX(-50%);
+  transform-origin:50% 100%;
+  background:linear-gradient(180deg,rgba(242,220,153,0),rgba(242,220,153,.9));
+  opacity:var(--region-restored);
+  filter:blur(.5px);
+}
+
+.restoration-settlement{
+  position:absolute;
+  display:flex;
+  align-items:flex-end;
+  gap:3px;
+  opacity:calc(.08 + var(--region-restored) * .9);
+}
+.settlement-a{left:7%;bottom:14%}
+.settlement-b{right:18%;bottom:8%;transform:scale(.78)}
+.restoration-settlement i{
+  position:relative;
+  display:block;
+  width:19px;height:24px;
+  border:1px solid rgba(218,219,190,.36);
+  border-radius:2px 2px 1px 1px;
+  background:linear-gradient(135deg,#465c48,#2b4233);
+  box-shadow:0 6px 10px rgba(2,12,7,.2);
+}
+.restoration-settlement i::before{
+  content:"";
+  position:absolute;
+  left:-3px;right:-3px;top:-8px;
+  height:12px;
+  clip-path:polygon(50% 0,100% 100%,0 100%);
+  background:#786e50;
+}
+.restoration-settlement i::after{
+  content:"";
+  position:absolute;
+  left:6px;top:9px;
+  width:5px;height:5px;
+  border-radius:1px;
+  background:rgba(247,218,139,calc(.12 + .88 * var(--region-restored)));
+  box-shadow:0 0 calc(2px + 8px * var(--region-restored)) rgba(247,210,120,.72);
+}
+
+.restoration-grove{
+  position:absolute;
+  display:flex;
+  align-items:flex-end;
+  gap:1px;
+  opacity:calc(.08 + var(--region-restored) * .78);
+}
+.grove-a{left:29%;bottom:5%}
+.grove-b{right:3%;bottom:31%;transform:scale(.74)}
+.restoration-grove i{
+  display:block;
+  width:17px;height:32px;
+  clip-path:polygon(50% 0,74% 42%,64% 42%,88% 74%,59% 74%,59% 100%,41% 100%,41% 74%,12% 74%,36% 42%,26% 42%);
+  background:linear-gradient(180deg,#668267,#334e3a 74%);
+  transform:scaleY(calc(.62 + .38 * var(--region-restored)));
+  transform-origin:50% 100%;
+}
+
+.restoration-stream{
+  position:absolute;
+  left:19%;bottom:2%;
+  width:47%;height:43px;
+  opacity:calc(.05 + var(--region-restored) * .45);
+  border-top:3px solid rgba(155,199,188,.65);
+  border-radius:50%;
+  transform:rotate(-5deg);
+  filter:drop-shadow(0 0 calc(1px + 5px * var(--region-restored)) rgba(137,200,181,.3));
+}
+
+.restoration-fireflies{position:absolute;inset:0;opacity:calc(var(--region-restored) * .72)}
+.restoration-fireflies i{
+  position:absolute;
+  width:4px;height:4px;
+  border-radius:50%;
+  background:#f4dfa0;
+  box-shadow:0 0 8px #efd586;
+  animation:region-firefly 3.8s ease-in-out infinite alternate;
+}
+.restoration-fireflies i:nth-child(1){left:18%;top:35%}
+.restoration-fireflies i:nth-child(2){left:42%;top:22%;animation-delay:.8s}
+.restoration-fireflies i:nth-child(3){left:66%;top:44%;animation-delay:1.6s}
+.restoration-fireflies i:nth-child(4){left:76%;top:26%;animation-delay:2.1s}
+.restoration-fireflies i:nth-child(5){left:34%;top:59%;animation-delay:2.7s}
+@keyframes region-firefly{from{transform:translate(0,0);opacity:.25}to{transform:translate(8px,-7px);opacity:1}}
+
+.campaign-region[data-restoration="awakening"] .restoration-stream,
+.campaign-region[data-restoration="dormant"] .restoration-stream{opacity:.05}
+.campaign-region[data-restoration="dormant"] .restoration-fireflies{display:none}
+.campaign-region[data-restoration="restored"] .restoration-beacon b{animation:region-beacon-breathe 2.8s ease-in-out infinite}
+@keyframes region-beacon-breathe{50%{opacity:.62;transform:translateX(-50%) scaleY(.9)}}
+
+@media(prefers-reduced-motion:reduce){
+  .region-restoration-world,.restoration-beacon b,.restoration-fireflies i{animation:none!important;transition:none!important}
+}
