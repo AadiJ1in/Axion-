@@ -46,10 +46,18 @@ collect('src');
 collect('public');
 for (const rootFile of ['index.html', 'playtest.html', 'qa.html']) runtimeFiles.push(rootFile);
 
+// W3C XML namespace identifiers are URI identifiers embedded in SVG markup; they
+// are not fetched over the network. Ignore only these exact standards-defined
+// namespace strings, then reject every remaining plaintext transport endpoint.
+const stripNonNetworkNamespaces = (content) => content
+  .replaceAll('http://www.w3.org/2000/svg', 'urn:axion:w3c-svg-namespace')
+  .replaceAll('http://www.w3.org/1999/xlink', 'urn:axion:w3c-xlink-namespace');
+
 for (const path of runtimeFiles) {
   const content = read(path);
-  assert.ok(!/\bhttp:\/\//i.test(content), `${path} contains a plaintext HTTP endpoint`);
-  assert.ok(!/\bws:\/\//i.test(content), `${path} contains a plaintext WebSocket endpoint`);
+  const networkRelevant = stripNonNetworkNamespaces(content);
+  assert.ok(!/\bhttp:\/\//i.test(networkRelevant), `${path} contains a plaintext HTTP endpoint`);
+  assert.ok(!/\bws:\/\//i.test(networkRelevant), `${path} contains a plaintext WebSocket endpoint`);
   assert.ok(!/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(content), `${path} contains private key material`);
   assert.ok(!/sb_secret_[A-Za-z0-9_-]+/.test(content), `${path} contains a Supabase secret key`);
   assert.ok(!/postgres(?:ql)?:\/\/[^\s"']+:[^\s"']+@/i.test(content), `${path} contains database credentials`);
