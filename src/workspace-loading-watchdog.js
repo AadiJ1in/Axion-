@@ -1,5 +1,5 @@
 const PRIVATE_WORKSPACE_LABEL = "LOADING YOUR PRIVATE WORKSPACE";
-const WATCHDOG_MS = 8000;
+const WATCHDOG_MS = 10000;
 let watchdogTimer = null;
 let armedForLoadingState = false;
 
