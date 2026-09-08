@@ -10,15 +10,27 @@ const mediapipeRuntimeFiles = [
 ];
 
 export default defineConfig({
-  plugins: [{
-    name: "bundle-mediapipe-runtime",
-    closeBundle() {
-      const outputDir = resolve("dist/mediapipe");
-      const sourceDir = resolve("node_modules/@mediapipe/tasks-vision/wasm");
-      mkdirSync(outputDir, { recursive: true });
-      mediapipeRuntimeFiles.forEach((file) => copyFileSync(resolve(sourceDir, file), resolve(outputDir, file)));
+  plugins: [
+    {
+      name: "optimized-patient-workspace-loader",
+      enforce: "pre",
+      resolveId(source, importer) {
+        if (source === "./portal.js" && importer?.replaceAll("\\", "/").endsWith("/src/main.js")) {
+          return resolve("src/portal-fast.js");
+        }
+        return null;
+      },
     },
-  }],
+    {
+      name: "bundle-mediapipe-runtime",
+      closeBundle() {
+        const outputDir = resolve("dist/mediapipe");
+        const sourceDir = resolve("node_modules/@mediapipe/tasks-vision/wasm");
+        mkdirSync(outputDir, { recursive: true });
+        mediapipeRuntimeFiles.forEach((file) => copyFileSync(resolve(sourceDir, file), resolve(outputDir, file)));
+      },
+    },
+  ],
   server: {
     host: "0.0.0.0",
     allowedHosts: ["terminal.local"],
