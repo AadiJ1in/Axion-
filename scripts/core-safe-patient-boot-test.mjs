@@ -5,10 +5,12 @@ import { journeyMapMarkup, sessionPathPresentation } from '../src/journey-map-v2
 
 const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const vite = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+const patientPolish = readFileSync(new URL('../src/patient-game-polish.js', import.meta.url), 'utf8');
 
 assert.ok(index.includes('data-axion-boot="core-safe"'), 'core-safe boot marker must be present');
 const moduleScripts = [...index.matchAll(/<script type="module" src="([^"]+)"><\/script>/g)].map((match) => match[1]);
-assert.deepEqual(moduleScripts, ['./src/main.js'], 'only the core application entry may run during authenticated boot');
+assert.deepEqual(moduleScripts, ['./src/main.js', './src/patient-game-polish.js'], 'authenticated boot may run only the core app plus the observer-free patient usability helper');
+assert.ok(!patientPolish.includes('MutationObserver'), 'patient usability helper must stay observer-free');
 for (const blocked of ['onboarding-guide.js', 'journey-visual-system-v2.js', 'beacon-game-mode-hub.js', 'region-restoration.js']) {
   assert.ok(!moduleScripts.some((src) => src.includes(blocked)), `${blocked} must not run globally during login`);
 }

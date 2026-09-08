@@ -19,14 +19,21 @@ export function adventureMarkup(mapping, targetReps, assignment, escapeHtml) {
     <div><small>YOUR MOVEMENT</small><b>${e(movementRole)}</b></div>
     <div><small>WORLD EFFECT</small><b>${e(worldEffect)}</b></div>
   </div>
+  <div class="game-how-to" aria-label="How to play this movement game">
+    <strong>HOW TO PLAY</strong>
+    <span><i>1</i><b>Move slowly through your prescribed range.</b> The glowing guide follows you; do not chase it.</span>
+    <span><i>2</i><b>Control the world with steady movement.</b> Small camera noise is smoothed so the game stays calm.</span>
+    <span><i>3</i><b>Only a valid Axion rep advances therapy.</b> Game score and tokens are optional.</span>
+    <span><i>4</i><b>Between sets, rest.</b> A countdown tells you exactly when the next set begins.</span>
+  </div>
   <div id="movement-game-stage" class="movement-game-stage active">
    <div class="game-story-bar"><div><small id="game-chapter">${e(missionAct)}</small><b id="game-story">${e(story.beats?.[0]||'Restore the world, one prescribed movement at a time.')}</b></div><button id="adventure-sound" type="button" aria-pressed="false">Sound off</button></div>
    <div class="adventure-viewport"><canvas id="adventure-canvas" aria-label="${e(gameTitle)} movement-controlled story game for ${e(missionTitle)}"></canvas>
     <div class="game-mode-badge"><small>PLAYING</small><b>${e(gameTitle)}</b></div>
-    <div id="game-feedback" class="game-feedback" role="status">${squat ? "Starting camera and movement calibration…" : "Set up your camera to enter the mission"}</div>
+    <div id="game-feedback" class="game-feedback" role="status">${squat ? "Starting camera and movement calibration…" : "Move slowly when tracking says ready"}</div>
     <div id="game-completion" class="game-completion hidden"><div><small>MISSION RESTORED</small><b>${e(missionTitle)} complete</b><p>${e(completion)}</p><p>${assignment.target_sets || 1} sets · ${targetReps} valid clinical completions</p><strong id="adventure-stars"></strong><p id="adventure-reward"></p><button type="button" class="button button--primary" id="adventure-save">Save journey</button></div></div>
    </div>
    <div class="game-hud"><div><small>SET</small><b><span id="game-set">1</span> / ${assignment.target_sets||1}</b></div><div><small>REPS THIS SET</small><b><span id="game-set-reps">0</span> / ${assignment.target_repetitions||10}</b></div><div><small>REMAINING</small><b id="game-remaining">${targetReps}</b></div><div class="game-quality"><small>TRACKING</small><b id="game-quality">Waiting for camera</b></div><div><small>GAME SCORE</small><b id="game-score">0</b></div>${squat ? "" : `<div><small>RESTORATION TOKENS</small><b id="game-collectibles">0</b></div>`}<button id="game-pause" type="button">Pause</button></div>
-   <div class="game-mission-progress"><span><i id="game-progress"></i></span><small id="game-status">Story progress follows validated exercise reps or holds. Game events never change your clinical count.</small></div>
+   <div class="game-mission-progress"><span><i id="game-progress"></i></span><small id="game-status">Move steadily. Valid clinical reps advance the mission; game score never changes your therapy count.</small></div>
   </div></section>`;
 }

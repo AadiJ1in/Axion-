@@ -1,0 +1,142 @@
+/* Movement Lab clarity + roadmap tail cleanup. Loaded last. */
+
+.game-how-to{
+  display:grid;
+  grid-template-columns:auto repeat(4,minmax(0,1fr));
+  gap:10px;
+  align-items:stretch;
+  padding:12px 14px;
+  border-top:1px solid rgba(227,238,230,.11);
+  border-bottom:1px solid rgba(227,238,230,.11);
+  background:linear-gradient(100deg,rgba(239,210,145,.09),rgba(89,150,125,.06));
+}
+.game-how-to>strong{
+  align-self:center;
+  color:#f1d89d;
+  font:700 10px "DM Mono",monospace;
+  letter-spacing:.12em;
+}
+.game-how-to>span{
+  display:grid;
+  grid-template-columns:24px 1fr;
+  gap:2px 8px;
+  align-content:center;
+  min-width:0;
+  padding:8px 9px;
+  border:1px solid rgba(235,242,231,.10);
+  border-radius:10px;
+  color:#9fb1aa;
+  font-size:11px;
+  line-height:1.42;
+  background:rgba(4,12,10,.24);
+}
+.game-how-to>span i{
+  grid-row:1/3;
+  width:24px;height:24px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  background:rgba(241,216,157,.12);
+  color:#f1d89d;
+  font:700 10px "DM Mono",monospace;
+  font-style:normal;
+}
+.game-how-to>span b{color:#edf5ef;font-size:11px;font-weight:700}
+
+/* The timer belongs inside the game, for every exercise family, not only squat. */
+.adventure-card .adventure-viewport>.set-rest-overlay:not(.hidden){
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  min-height:100%!important;
+  z-index:80!important;
+  margin:0!important;
+  display:grid!important;
+  place-content:center!important;
+  justify-items:center!important;
+  text-align:center!important;
+  border:0!important;
+  border-radius:0!important;
+  background:
+    linear-gradient(180deg,rgba(7,17,29,.80),rgba(9,25,22,.92)),
+    url('/journey/landscape.webp') center/cover!important;
+  backdrop-filter:blur(3px)!important;
+  box-shadow:none!important;
+}
+.adventure-card .adventure-viewport>.set-rest-overlay>span{display:none!important}
+.adventure-card .adventure-viewport>.set-rest-overlay>div{
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  max-width:520px!important;
+  padding:26px 30px!important;
+  border:1px solid rgba(241,216,157,.26)!important;
+  border-radius:18px!important;
+  background:rgba(7,19,18,.74)!important;
+  box-shadow:0 22px 60px rgba(0,0,0,.28)!important;
+}
+.adventure-card .set-rest-overlay small{color:#f1d89d!important;font-size:11px!important;letter-spacing:.12em!important}
+.adventure-card .set-rest-overlay b{margin-top:7px!important;color:#fff8e8!important;font-size:25px!important}
+.adventure-card .set-rest-overlay p{max-width:440px!important;margin:8px 0 15px!important;color:#d8e3dc!important;font-size:14px!important;line-height:1.55!important}
+.adventure-card .set-rest-overlay strong{
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  gap:4px!important;
+  margin-top:4px!important;
+  color:#8cf0ba!important;
+  font-size:0!important;
+}
+.adventure-card .set-rest-overlay strong::before{
+  content:'REST TIME LEFT';
+  color:#aabbb4;
+  font:700 10px "DM Mono",monospace;
+  letter-spacing:.12em;
+}
+.adventure-card .set-rest-overlay strong i{font-size:54px!important;line-height:1!important;color:#8cf0ba!important}
+.adventure-card .set-rest-overlay strong i::after{content:'s';font-size:20px;margin-left:4px;color:#a7d7bb}
+.adventure-card .movement-game-stage.paused .adventure-viewport:has(>.set-rest-overlay:not(.hidden))::after{display:none!important}
+body.axion-rest-active .adventure-card #game-pause:disabled{opacity:1!important;color:#f5e8c7!important;border-color:rgba(241,216,157,.28)!important;background:rgba(241,216,157,.08)!important}
+
+/* Never show a browser's empty/broken media surface before the camera stream exists. */
+.adventure-lab .camera-pane video{opacity:0!important;background:#0b1714!important}
+.adventure-lab .camera-pane.camera-on video{opacity:1!important}
+
+/* Make the unused lower viewport part of the world rather than a black void. */
+body:has(.journey-page),
+.app-shell:has(.journey-page){
+  background:linear-gradient(180deg,#eee8d8 0%,#ddd1b7 100%)!important;
+}
+.journey-page{min-height:0!important;padding-bottom:16px!important}
+.campaign-scroll{
+  background:
+    linear-gradient(180deg,rgba(13,31,22,.18),rgba(13,31,22,.34)),
+    url('/axion-kingdom-world.webp') center bottom/cover no-repeat!important;
+}
+.campaign-final-goal{margin-bottom:18px!important}
+body:has(.journey-page) .footer{
+  background:#d9cdb3!important;
+  border-top:1px solid #c9bc9f!important;
+  color:#506052!important;
+}
+
+/* Movement Lab also gets a finished world surface below its content. */
+body:has(.adventure-lab),
+.app-shell:has(.adventure-lab){
+  background:
+    linear-gradient(180deg,rgba(7,16,15,.91),rgba(7,16,15,.78)),
+    url('/journey/landscape.webp') center bottom/cover fixed!important;
+}
+.adventure-lab{min-height:calc(100vh - 145px);padding-bottom:22px!important}
+
+@media(max-width:1000px){
+  .game-how-to{grid-template-columns:1fr 1fr}
+  .game-how-to>strong{grid-column:1/-1}
+}
+@media(max-width:620px){
+  .game-how-to{grid-template-columns:1fr}
+  .game-how-to>strong{grid-column:auto}
+  .adventure-card .adventure-viewport>.set-rest-overlay>div{margin:14px!important;padding:22px 18px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .game-how-to *{transition:none!important}
+}
