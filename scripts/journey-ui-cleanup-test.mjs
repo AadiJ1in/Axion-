@@ -33,6 +33,6 @@ for (const marker of requiredMode) {
 }
 
 if (!index.includes('./src/journey-ui-cleanup.css')) throw new Error('Journey UI stylesheet is not loaded.');
-if (!index.includes('./src/journey-mode.js')) throw new Error('Journey game mode module is not loaded.');
+if (index.includes('<script type="module" src="./src/journey-mode.js"></script>')) throw new Error('Journey game mode observer must not run during core-safe authenticated boot.');
 
-console.log('Journey UI cleanup regression passed.');
+console.log('Journey UI cleanup is preserved while its observer is excluded from core-safe boot.');
