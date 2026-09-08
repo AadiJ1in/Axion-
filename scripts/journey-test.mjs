@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { sessionPathPresentation, journeyRegions, journeyMapMarkup } from '../src/journey-map.js';
-const assignment={id:'a',target_sets:2,target_repetitions:3};
+const assignment={id:'a',exercise_key:'bodyweight_squat',target_sets:2,target_repetitions:3};
 const workspace={plan:{title:'Patient plan'},profile:{},assignments:[assignment],roadmap:[{stage_number:1,title:'Prescribed baseline',unlock_after_sessions:0},{stage_number:2,title:'Prescribed control',unlock_after_sessions:2}],roadmapNodes:Array.from({length:5},(_,i)=>({id:`n${i}`,session_number:i+1,biome:1,unlock_override:i===4})),roadmapNodeAssignments:Array.from({length:5},(_,i)=>({roadmap_node_id:`n${i}`,assignment_id:'a',sequence:1})),roadmapCompletions:[{roadmap_node_id:'n0'}],sessions:[{roadmap_node_id:'n1',assignment_id:'a',repetitions:3}]};
 const path=sessionPathPresentation(workspace);
 assert.deepEqual(path.nodes.map(n=>n.state),['complete','current','locked','locked','override']);
@@ -20,4 +20,11 @@ assert.ok(markup.includes('Clear the Broken Path'),'the active incomplete sessio
 assert.ok(markup.includes('YOUR OBJECTIVE'),'the roadmap exposes the exercise-linked story objective before launch');
 assert.ok(markup.includes('data-story-session="2"'),'the active mission launch carries the current story session into Movement Lab');
 assert.ok(markup.includes('beacon-prescription-launch'),'the existing clinical launch remains embedded inside the story mission');
-console.log('Roadmap state, story visibility, story handoff, partial dose, stored phase mapping, overrides and markup checks passed.');
+assert.ok(markup.includes('campaign-scroll'),'the patient roadmap is rendered as one continuous campaign scroller');
+assert.equal((markup.match(/data-map-region=/g)||[]).length,2,'every treatment region remains in the continuous map');
+assert.ok(!/data-map-region="[^"]+" hidden/.test(markup),'future regions are not removed from scrolling');
+assert.ok(markup.includes('data-session-path-progress'),'the completed route gets its own animated path layer');
+assert.ok(markup.includes('data-journey-view="goal"'),'patients can jump directly to the eventual destination');
+assert.ok(markup.includes('campaign-final-goal'),'the eventual Beacon destination is visible at the end of the map');
+assert.ok(markup.includes('journey-node-stars'),'mission nodes expose the Clash-style three-star presentation');
+console.log('Roadmap state, continuous campaign scrolling, animated destination, story handoff, partial dose, stored phase mapping, overrides and markup checks passed.');
