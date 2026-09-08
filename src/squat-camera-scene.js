@@ -1,4 +1,14 @@
 import { containedFrame } from './squat-camera.js';
+const tintCache = new WeakMap();
+function sideTint(ctx,w){
+  const cached=tintCache.get(ctx);
+  if(cached?.width===w)return cached.gradient;
+  const gradient=ctx.createLinearGradient(0,0,w,0);
+  gradient.addColorStop(0,'#111c43dc');gradient.addColorStop(.2,'#111c4300');
+  gradient.addColorStop(.8,'#111c4300');gradient.addColorStop(1,'#111c43dc');
+  tintCache.set(ctx,{width:w,gradient});
+  return gradient;
+}
 // The patient's own camera image is the player. No synthetic body or avatar.
 export function drawSquatCameraScene(ctx, video, state, width, height) {
   const camera = state.camera;
@@ -12,10 +22,7 @@ export function drawSquatCameraScene(ctx, video, state, width, height) {
   ctx.save(); ctx.translate(frame.x, frame.y);
   const w = frame.width, h = frame.height;
   // Peripheral architecture preserves a clear, unobscured central camera view.
-  const tint = ctx.createLinearGradient(0, 0, w, 0);
-  tint.addColorStop(0, '#111c43dc'); tint.addColorStop(.2, '#111c4300');
-  tint.addColorStop(.8, '#111c4300'); tint.addColorStop(1, '#111c43dc');
-  ctx.fillStyle = tint; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = sideTint(ctx,w); ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = '#88e9ed55'; ctx.lineWidth = Math.max(1, w / 700);
   for (const side of [0, 1]) {
     for (const y of [.1, .5, 1]) {
