@@ -1,5 +1,5 @@
 import { exerciseCatalog } from './exercise-catalog.js';
-import { getActiveBeaconStory } from './beacon-story.js';
+import { getActiveCampaignStory } from './beacon-campaign.js';
 import { exerciseGameFamily } from './exercise-game-families.js';
 
 // Registry contains entertainment configuration only. The tracker owns validation.
@@ -21,7 +21,7 @@ export function getAdventureDefinition(key) {
   return Object.freeze({
     ...base,
     world: 'beacon',
-    story: getActiveBeaconStory(key),
+    story: getActiveCampaignStory(key),
   });
 }
 
