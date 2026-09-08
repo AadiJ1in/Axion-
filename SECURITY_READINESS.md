@@ -2,6 +2,17 @@
 
 Axion is currently a nonclinical proof of concept for synthetic data.
 
+## Encryption posture
+
+- All browser-to-Supabase API traffic uses HTTPS; Supabase Auth, PostgREST, Storage, and Realtime HTTP endpoints enforce SSL on incoming connections.
+- Vercel and Netlify both send a two-year HSTS policy and a CSP with `upgrade-insecure-requests`; plaintext `http://` and `ws://` runtime endpoints are rejected by CI.
+- Supabase states that hosted project data is encrypted at rest and in transit. Axion does not create any public Storage buckets.
+- Camera frames remain local to the browser and are not uploaded or stored. Only derived movement summaries are eligible for authenticated upload.
+- The browser contains only the public `sb_publishable_` Supabase key. Service-role keys, secret keys, private keys, environment files, and database DSNs are prohibited from runtime source and protected by `.gitignore` plus CI checks.
+- Authentication uses PKCE. Session tokens are kept in `sessionStorage`, not persistent `localStorage`, and authenticated sessions automatically sign out after inactivity.
+- Axion intentionally does not claim end-to-end encryption. In a static browser application, encrypting a session token with another key available to the same JavaScript origin does not meaningfully protect against XSS. A future requirement for HttpOnly-cookie or true end-to-end key isolation would require a server-side/BFF or envelope-encryption architecture, respectively.
+- Direct Postgres administrative connections are outside the browser application boundary. Database SSL enforcement should be enabled in the Supabase project settings before real patient information is collected.
+
 ## Current technical boundaries
 
 - Camera frames are processed in the browser.
@@ -26,9 +37,9 @@ Axion is currently a nonclinical proof of concept for synthetic data.
 - The deployed Content Security Policy blocks framing, plugins, inline scripts, and unapproved network destinations.
 - Runtime JavaScript and WebAssembly are bundled from exact lockfile versions; the external pose-model binary must match its pinned SHA-256 digest before use.
 - Patient exercise cards do not navigate to third-party education sites; a deploying clinic must review and configure any approved patient-facing materials.
-- Row Level Security restricts patient access to their own profile and sessions.
+- Row Level Security is enabled on every public application table and restricts data to authorized patient/therapist relationships.
 - Current browser grants are least-privilege, and database default privileges keep future tables, sequences, and functions inaccessible until explicitly granted.
-- GitHub runs locked dependency checks, application regressions, production builds, and extended CodeQL analysis on pull requests, `main`, and a weekly schedule; Dependabot proposes reviewed dependency updates weekly.
+- GitHub runs locked dependency checks, application regressions, production builds, extended CodeQL analysis, and encryption-boundary regression checks on pull requests, `main`, and a weekly schedule.
 - Free-text patient/therapist messaging is removed from the application, revoked from browser roles, protected by an explicit deny-all RLS policy, and excluded from Realtime publication.
 - The synthetic demo is explicitly labeled and does not require an account.
 
@@ -40,7 +51,7 @@ No person should interpret Axion's current movement metrics, heatmap, coaching t
 
 ## Required operator settings before collecting real patient information
 
-- Enable leaked-password protection in Supabase Auth (Pro plan or higher).
+- Enable leaked-password protection in Supabase Auth (currently reported disabled by Supabase Security Advisor).
 - Require email confirmation and configure a trusted custom SMTP sender on the Axion domain.
 - Enable CAPTCHA/bot protection and review Auth rate limits before public signup is announced.
 - Require MFA for therapist accounts and MFA for every Supabase/GitHub/Vercel administrator.
