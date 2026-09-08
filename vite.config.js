@@ -9,16 +9,26 @@ const mediapipeRuntimeFiles = [
   "vision_wasm_nosimd_internal.wasm",
 ];
 
+const sourceReplacements = [
+  ['from "./portal.js";', 'from "./portal-v2.js";'],
+  ['from "./journey-map.js";', 'from "./journey-map-v2.js";'],
+];
+
 export default defineConfig({
   plugins: [
     {
-      name: "axion-patient-workspace-bootstrap-v2",
+      name: "axion-production-patient-entry",
       transform(code, id) {
         if (!id.endsWith("/src/main.js")) return null;
-        return {
-          code: code.replaceAll('from "./portal.js";', 'from "./portal-v2.js";'),
-          map: null,
-        };
+        let transformed = code;
+        for (const [source, replacement] of sourceReplacements) {
+          if (!transformed.includes(source)) {
+            throw new Error(`Axion production entry replacement missing: ${source}`);
+          }
+          transformed = transformed.replace(source, replacement);
+        }
+        transformed = `window.__AXION_PATIENT_ENTRY__ = "workspace-v2-progressive-map";\n${transformed}`;
+        return { code: transformed, map: null };
       },
     },
     {
@@ -32,7 +42,7 @@ export default defineConfig({
     },
   ],
   server: {
-    host: "0.0.0.0",
-    allowedHosts: ["terminal.local"],
+    host: "127.0.0.1",
+    strictPort: true,
   },
 });

@@ -13,7 +13,10 @@ const required = [
   [loader.includes("workspace.plan.patient_id !== userId"), "active plan must be bound to the signed-in patient"],
   [!loader.includes('.from("roadmap_node_assignments")'), "browser must not scan roadmap_node_assignments directly"],
   [wrapper.includes('export { loadPatientWorkspace } from "./patient-workspace-loader-v2.js"'), "portal v2 must explicitly export the new loader"],
-  [vite.includes('axion-patient-workspace-bootstrap-v2'), "production bundle must route main.js through portal v2"],
+  [vite.includes('from \"./portal-v2.js\";'), "production bundle must route main.js through portal v2"],
+  [vite.includes('from \"./journey-map-v2.js\";'), "production bundle must route patient maps through the progressive renderer"],
+  [vite.includes("throw new Error(`Axion production entry replacement missing"), "production build must fail closed if an entry substitution stops matching"],
+  [vite.includes('window.__AXION_PATIENT_ENTRY__ = \"workspace-v2-progressive-map\"'), "production patient entry must expose an auditable build marker"],
   [watchdog.includes("if (armedForLoadingState) return"), "watchdog must not reset on unrelated DOM mutations"],
 ];
 
