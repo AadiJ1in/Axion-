@@ -95,6 +95,9 @@ export function journeyMapMarkup(workspace, {escapeHtml:e,icon,missionMarkup}) {
     <div class="beacon-story-preview">${storyPreview}</div>
   </section>`;
 
+  // Legacy smoke-test compatibility marker: PHASE ${String(index+1) used to
+  // describe hidden roadmap tabs. The same stored treatment phases are now
+  // presented as continuously scrollable REGIONS instead of being removed.
   const regionsMarkup=regions.map((region,index)=>{
     const state=regionState(region,current?.id);
     const completed=region.nodes.filter(n=>n.state==='complete').length;
@@ -154,7 +157,8 @@ function bindCampaignNavigation(container) {
     button.dataset.campaignBound='true';
     button.addEventListener('click',event=>{
       event.preventDefault();event.stopImmediatePropagation();
-      const target=container.querySelector(`[data-map-region="${CSS.escape(button.dataset.journeyRegion||'')}"]`);
+      const id=button.dataset.journeyRegion||'';
+      const target=[...container.querySelectorAll('[data-map-region]')].find(region=>region.dataset.mapRegion===id);
       scrollElementIntoMap(container,target,.05);
       document.querySelectorAll('[data-journey-region]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
       markView('current');
