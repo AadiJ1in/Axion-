@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../src/onboarding-guide.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-assert.ok(html.includes('./src/onboarding-guide.css'), 'orientation stylesheet must load');
-assert.ok(html.includes('./src/onboarding-guide.js'), 'orientation controller must load');
+assert.ok(html.includes('./src/onboarding-guide.css'), 'orientation stylesheet must remain available');
+assert.ok(!html.includes('<script type="module" src="./src/onboarding-guide.js"></script>'), 'orientation controller must not block authenticated boot');
+assert.ok(html.includes('data-axion-boot="core-safe"'), 'core-safe boot marker must be present');
 
 for (const marker of [
   'WELCOME TO AXION',
@@ -37,4 +38,4 @@ assert.ok(!source.includes('sessionReps'), 'orientation must not mutate clinical
 assert.ok(!source.includes("from './pose.js'"), 'orientation must not import the clinical movement tracker');
 assert.ok(!source.includes("from './movement-game.js'"), 'orientation must not import movement-game event handling');
 
-console.log('New-patient orientation, course tour, story explanation, and clinical-boundary checks passed.');
+console.log('New-patient orientation content is preserved and excluded from the login-critical boot path.');
