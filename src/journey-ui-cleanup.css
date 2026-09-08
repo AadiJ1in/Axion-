@@ -1,0 +1,208 @@
+/* Journey UI cleanup: keep the campaign readable, cohesive, and visually separate
+   from the clinical tracker. This file intentionally loads last so it resolves
+   legacy style conflicts without touching clinical or roadmap state logic. */
+
+/* The user asked to remove connector lines from the roadmap for now. */
+.campaign-atlas .campaign-trail,
+.campaign-atlas .journey-trail {
+  display: none !important;
+}
+
+/* Remove the large dark/black page field around the patient journey. */
+body:has(.journey-page),
+.app-shell:has(.journey-page) {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 250, 232, .78), transparent 26rem),
+    linear-gradient(180deg, #eee8d8 0%, #e4dbc5 58%, #d8cbb0 100%) !important;
+}
+.journey-page {
+  color: #1c2a21;
+}
+
+/* The campaign stylesheet made this surface white while the older Beacon file
+   still supplied white text. Keep the white card, but make the copy readable. */
+.campaign-atlas .beacon-world-banner {
+  background: #fff !important;
+  border: 1px solid #d8cfb9 !important;
+  box-shadow: 0 12px 30px rgba(51, 43, 28, .08) !important;
+}
+.campaign-atlas .beacon-world-banner small {
+  color: #7d6737 !important;
+}
+.campaign-atlas .beacon-world-banner b {
+  color: #151d18 !important;
+}
+.campaign-atlas .beacon-world-banner p {
+  color: #465148 !important;
+}
+.campaign-atlas .beacon-world-progress strong {
+  color: #765f31 !important;
+}
+.campaign-atlas .beacon-world-progress span {
+  color: #657068 !important;
+}
+
+/* Make the support area feel like two parts of the fantasy campaign instead of
+   two generic white/green dashboard cards. */
+.journey-page .roadmap-support-grid {
+  gap: 14px !important;
+  margin-top: 18px !important;
+}
+.journey-page .roadmap-support-grid > article {
+  min-height: 150px !important;
+  padding: 20px 22px !important;
+  border-radius: 18px !important;
+  box-shadow: 0 12px 26px rgba(50, 42, 27, .10) !important;
+}
+.journey-page .daily-goal-card {
+  color: #26352b !important;
+  border: 1px solid #c9b98f !important;
+  background:
+    radial-gradient(circle at 11% 18%, rgba(255,255,255,.52), transparent 25%),
+    linear-gradient(135deg, #eee6d2, #ddcfaa) !important;
+}
+.journey-page .daily-goal-card .section-kicker {
+  color: #7c6333 !important;
+}
+.journey-page .daily-goal-card h3 {
+  color: #26352b !important;
+}
+.journey-page .daily-goal-card p {
+  color: #5d695f !important;
+}
+.journey-page .daily-goal-card .goal-ring circle:first-child {
+  stroke: rgba(67, 89, 69, .14) !important;
+}
+.journey-page .daily-goal-card .goal-ring circle:last-child {
+  stroke: #607b5f !important;
+}
+.journey-page .daily-goal-card .goal-ring b {
+  color: #314637 !important;
+}
+
+.journey-page .reward-card,
+.journey-page .journey-game-mode-card {
+  position: relative;
+  overflow: hidden;
+  color: #f7f1df !important;
+  border: 1px solid rgba(228, 213, 164, .34) !important;
+  background:
+    linear-gradient(110deg, rgba(13, 35, 25, .95), rgba(37, 57, 38, .86)),
+    url('/axion-kingdom-world.webp') center 58% / cover !important;
+}
+.journey-page .reward-card::after,
+.journey-page .journey-game-mode-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(255,255,255,.06), transparent 34%, rgba(226,202,140,.06));
+}
+.journey-page .reward-card > *,
+.journey-page .journey-game-mode-card > * {
+  position: relative;
+  z-index: 1;
+}
+.journey-page .reward-card > span,
+.journey-page .journey-game-mode-card > span {
+  color: #ead69e !important;
+  background: rgba(238, 221, 169, .10) !important;
+  border: 1px solid rgba(238, 221, 169, .18);
+}
+.journey-page .reward-card small,
+.journey-page .journey-game-mode-card small {
+  color: #e2c982 !important;
+}
+.journey-page .reward-card h3,
+.journey-page .journey-game-mode-card h3 {
+  color: #fff8e7 !important;
+  font-family: Georgia, serif;
+  font-size: 20px !important;
+}
+.journey-page .reward-card p,
+.journey-page .journey-game-mode-card p {
+  color: #d9e2d7 !important;
+  font-size: 11px !important;
+  line-height: 1.55;
+}
+
+/* Make the avatar/profile section feel like the same journey world rather than
+   another neon-green dashboard. */
+body:has(.patient-profile-page),
+.app-shell:has(.patient-profile-page) {
+  background:
+    radial-gradient(circle at 12% 7%, rgba(255, 248, 224, .72), transparent 26rem),
+    linear-gradient(180deg, #ede6d4, #ddd0b5) !important;
+}
+.patient-profile-page .avatar-picker-card {
+  color: #243128 !important;
+  border: 1px solid #b9aa82 !important;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(255,255,255,.48), transparent 24%),
+    linear-gradient(145deg, #e9dfc5, #d7c79f) !important;
+  box-shadow: 0 16px 34px rgba(49, 40, 24, .12);
+}
+.patient-profile-page .avatar-picker-card .section-kicker {
+  color: #756035 !important;
+}
+.patient-profile-page .avatar-picker-card h2 {
+  color: #1f2b23 !important;
+}
+.patient-profile-page .avatar-picker-card .profile-section-head > span {
+  color: #6b746b !important;
+}
+.patient-profile-page .avatar-choice-grid button {
+  border: 1px solid #b9ac8a !important;
+  background: linear-gradient(145deg, #e5dcc6, #d4c7aa) !important;
+  color: #26342a !important;
+  box-shadow: 0 7px 16px rgba(58, 46, 26, .08);
+}
+.patient-profile-page .avatar-choice-grid button:hover {
+  border-color: #7f8f70 !important;
+  background: linear-gradient(145deg, #eae3d2, #d8ceb5) !important;
+}
+.patient-profile-page .avatar-choice-grid button.selected {
+  border-color: #b7a56f !important;
+  background:
+    linear-gradient(135deg, rgba(46, 73, 52, .98), rgba(28, 51, 37, .98)) !important;
+  color: #fff8e8 !important;
+  box-shadow: 0 10px 24px rgba(30, 49, 34, .18);
+}
+.patient-profile-page .avatar-choice-grid small {
+  color: #657066 !important;
+}
+.patient-profile-page .avatar-choice-grid button.selected small {
+  color: #cbd7ca !important;
+}
+.patient-profile-page .avatar-choice-grid button > svg {
+  color: #6e7d62 !important;
+}
+.patient-profile-page .avatar-choice-grid button.selected > svg {
+  color: #ead69a !important;
+}
+
+.journey-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 6px 9px;
+  border: 1px solid #aa9562;
+  border-radius: 999px;
+  background: rgba(255, 249, 227, .58);
+  color: #5d4b27 !important;
+  font: 700 9px "DM Mono", monospace !important;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .journey-mode-chip {
+    width: 100%;
+    margin: 8px 0 0;
+    justify-content: center;
+  }
+  .patient-profile-page .profile-section-head {
+    flex-wrap: wrap;
+  }
+}
