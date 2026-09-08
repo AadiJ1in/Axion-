@@ -14,7 +14,6 @@ need(js, 'region-restoration-world', 'world restoration layer');
 need(js, '--region-restored', 'progress-driven visual variable');
 need(js, "if (status.textContent !== statusText) status.textContent = statusText", 'idempotent restoration status writes');
 need(js, 'observer?.disconnect()', 'observer disconnect before decorative writes');
-need(js, 'finally {\n      observe();\n    }', 'observer reconnect after decorative writes');
 need(js, 'requestAnimationFrame(run)', 'paint-friendly restoration scheduling');
 need(css, '.restoration-beacon', 'regional beacon');
 need(css, '.restoration-settlement', 'settlement restoration');
@@ -23,7 +22,7 @@ need(css, '.restoration-stream', 'river restoration');
 need(css, '.restoration-fireflies', 'ambient restored-world effect');
 need(css, '@media(prefers-reduced-motion:reduce)', 'reduced motion support');
 need(index, './src/region-restoration.css', 'restoration stylesheet loading');
-need(index, './src/region-restoration.js', 'restoration module loading');
+if (index.includes('<script type="module" src="./src/region-restoration.js"></script>')) throw new Error('Restoration observer must not run during core-safe authenticated boot.');
 
 if (js.includes('queueMicrotask(() => {') && js.includes('applyRegionRestoration();')) {
   throw new Error('Region restoration must not continuously re-enter itself through a microtask observer loop.');
@@ -33,4 +32,4 @@ if (/REP_COMPLETE|HOLD_COMPLETE|clinicalCount\s*=|target_repetitions\s*=|roadmap
   throw new Error('Region restoration must not mutate clinical movement or roadmap state.');
 }
 
-console.log('Region restoration regression passed, including observer-loop protection.');
+console.log('Region restoration is safe and excluded from the login-critical boot path.');

@@ -23,6 +23,6 @@ requireText(js, "page.dataset.gameMode = GAME_MODE.key", 'game mode page metadat
 requireText(js, 'Movement Lab', 'clinical Movement Lab context retained in aria/title');
 
 requireText(index, './src/journey-visual-system-v2.css', 'visual system stylesheet loading');
-requireText(index, './src/journey-visual-system-v2.js', 'visual system module loading');
+if (index.includes('<script type="module" src="./src/journey-visual-system-v2.js"></script>')) throw new Error('Journey visual observer must not run during core-safe authenticated boot.');
 
-console.log('Journey visual system v2 regression passed.');
+console.log('Journey visual system content is preserved while its global observer is excluded from core-safe boot.');

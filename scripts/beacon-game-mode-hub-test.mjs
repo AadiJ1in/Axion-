@@ -17,6 +17,6 @@ need(css, '.beacon-session-hub', 'session hub styling');
 need(css, "url('/axion-kingdom-world.webp')", 'kingdom artwork');
 need(css, '#f8f2df', 'game-card readable text');
 need(index, './src/beacon-game-mode-hub.css', 'hub stylesheet loading');
-need(index, './src/beacon-game-mode-hub.js', 'hub module loading');
+if (index.includes('<script type="module" src="./src/beacon-game-mode-hub.js"></script>')) throw new Error('Beacon hub observer must not run during core-safe authenticated boot.');
 
-console.log('Beacon game mode hub regression passed.');
+console.log('Beacon game mode hub content is preserved while its global observer is excluded from core-safe boot.');
