@@ -1,38 +1,28 @@
 import { exerciseCatalog } from './exercise-catalog.js';
-import { getActiveBeaconStory } from './beacon-story.js';
+import { getActiveCampaignStory } from './beacon-campaign.js';
+import { exerciseGameFamily } from './exercise-game-families.js';
 
 // Registry contains entertainment configuration only. The tracker owns validation.
+// Kept as an exported compatibility surface for code/tests that inspect the named
+// hand-crafted adventures. All other catalog exercises are now assigned through
+// exercise-game-families.js instead of collapsing into one generic game.
 export const adventureDefinitions = Object.freeze({
-  bodyweight_squat: { action: 'duck', scene: 'ruins', title: 'Escape Through the Ruins', instruction: 'Lower to duck under the beams. Stand to rise. Your first prescribed rep is the tutorial.', artifact: 'Sunstone', chapters: ['The fallen gate', 'The lantern gallery', 'The sunstone chamber'] },
-  push_up: { action: 'gravity', scene: 'gravity', title: 'Gravity Runner', instruction: 'Lower your push-up to descend. Press up to rise through the gravity gates.', artifact: 'Gravity core', chapters: ['Wake the engine', 'The star conduit', 'The citadel approach'] },
-  wall_push_up: { action: 'gravity', scene: 'gravity', title: 'Gravity Runner', instruction: 'Bend toward the wall to descend. Press away to rise. Keep your prescribed wall setup.', artifact: 'Gravity core', chapters: ['Wake the engine', 'The star conduit', 'The citadel approach'] },
-  forward_lunge: { action: 'crossing', scene: 'wilds', title: 'Crossing the Verdant Wilds', instruction: 'Lower on your prescribed side to guide the explorer toward a stone. Return to complete the crossing.', artifact: 'Riverstone', chapters: ['The river crossing', 'The waterfall trail', 'The living bridge'] },
-  standing_shoulder_abduction: { action: 'light', scene: 'sky', title: 'Sky Guardian', instruction: 'Raise your prescribed arm to guide the lantern upward. Lower it to return. Restore the crystal beacons.', artifact: 'Sky prism', chapters: ['Light the first beacon', 'The cloud gardens', 'The waking citadel'] },
-});
-
-const GENERIC_REP_ADVENTURE = Object.freeze({
-  action: 'light',
-  scene: 'sky',
-  title: 'Pathfinder',
-  instruction: 'Move through your prescribed range to guide the light toward each waypoint. The game reacts to your motion, but only Axion’s validated movement tracker can count a rep.',
-  artifact: 'Trail light',
-  chapters: ['Find the first marker', 'Follow the lit path', 'Restore the final waypoint'],
-});
-
-const GENERIC_HOLD_ADVENTURE = Object.freeze({
-  action: 'light',
-  scene: 'sky',
-  title: 'Beacon Hold',
-  instruction: 'Move into your prescribed position and hold steady to keep the beacon lit. The game provides feedback, but only Axion’s validated tracker can complete the hold.',
-  artifact: 'Beacon crystal',
-  chapters: ['Wake the beacon', 'Hold the signal', 'Stabilize the light'],
+  bodyweight_squat: exerciseGameFamily('bodyweight_squat'),
+  push_up: exerciseGameFamily('push_up'),
+  wall_push_up: exerciseGameFamily('wall_push_up'),
+  forward_lunge: exerciseGameFamily('forward_lunge'),
+  standing_shoulder_abduction: exerciseGameFamily('standing_shoulder_abduction'),
 });
 
 export function getAdventureDefinition(key) {
-  const base = adventureDefinitions[key]
-    || (exerciseCatalog[key]?.trackingMode === 'timed_hold' ? GENERIC_HOLD_ADVENTURE : exerciseCatalog[key] ? GENERIC_REP_ADVENTURE : null);
+  if (!exerciseCatalog[key]) return null;
+  const base = exerciseGameFamily(key);
   if (!base) return null;
-  return Object.freeze({ ...base, world: 'beacon', story: getActiveBeaconStory() });
+  return Object.freeze({
+    ...base,
+    world: 'beacon',
+    story: getActiveCampaignStory(key),
+  });
 }
 
 export const clamp01 = x => Math.min(1, Math.max(0, Number(x) || 0));

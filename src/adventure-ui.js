@@ -5,15 +5,24 @@ export function adventureMarkup(mapping, targetReps, assignment, escapeHtml) {
  const briefing=story.briefing||mapping.instruction;
  const goal=story.goal||mapping.instruction;
  const completion=story.completion||'Your prescribed movement is complete.';
- return `<section class="movement-game-card adventure-card" data-scene="${mapping.scene}" data-world="${e(mapping.world||'beacon')}">
+ const gameTitle=mapping.title||story.gameTitle||'Beacon Mission';
+ const movementRole=mapping.movementRole||story.movementRole||'guide the mission';
+ const worldEffect=mapping.worldEffect||story.worldEffect||'restore the next part of the world';
+ return `<section class="movement-game-card adventure-card" data-scene="${mapping.scene}" data-world="${e(mapping.world||'beacon')}" data-gameplay="${e(mapping.gameplay||mapping.family||'beacon')}">
   <div class="movement-game-heading"><div><span class="game-kicker">AXION · BEACON OF THE VALLEY</span><h3>${e(missionTitle)}</h3><p>${e(mapping.instruction)}</p></div><div class="mode-switch"><button data-movement-mode="standard">Standard view</button><button class="active" data-movement-mode="game">Adventure</button></div></div>
   <div class="beacon-story-briefing">
     <div><span class="beacon-story-act">${e(missionAct)}</span><h4>Session ${Number(story.sessionNumber)||1}: ${e(missionTitle)}</h4><p>${e(briefing)}</p></div>
     <div class="beacon-story-goal"><small>STORY OBJECTIVE</small><b>${e(goal)}</b></div>
   </div>
+  <div class="exercise-game-identity">
+    <div><small>MOVEMENT GAME</small><strong>${e(gameTitle)}</strong><span>${e(mapping.exerciseName||'Prescribed exercise')}</span></div>
+    <div><small>YOUR MOVEMENT</small><b>${e(movementRole)}</b></div>
+    <div><small>WORLD EFFECT</small><b>${e(worldEffect)}</b></div>
+  </div>
   <div id="movement-game-stage" class="movement-game-stage active">
    <div class="game-story-bar"><div><small id="game-chapter">${e(missionAct)}</small><b id="game-story">${e(story.beats?.[0]||'Restore the world, one prescribed movement at a time.')}</b></div><button id="adventure-sound" type="button" aria-pressed="false">Sound off</button></div>
-   <div class="adventure-viewport"><canvas id="adventure-canvas" aria-label="${e(missionTitle)} movement-controlled story game"></canvas>
+   <div class="adventure-viewport"><canvas id="adventure-canvas" aria-label="${e(gameTitle)} movement-controlled story game for ${e(missionTitle)}"></canvas>
+    <div class="game-mode-badge"><small>PLAYING</small><b>${e(gameTitle)}</b></div>
     <div id="game-feedback" class="game-feedback" role="status">${squat ? "Starting camera and movement calibration…" : "Set up your camera to enter the mission"}</div>
     <div id="game-completion" class="game-completion hidden"><div><small>MISSION RESTORED</small><b>${e(missionTitle)} complete</b><p>${e(completion)}</p><p>${assignment.target_sets || 1} sets · ${targetReps} valid clinical completions</p><strong id="adventure-stars"></strong><p id="adventure-reward"></p><button type="button" class="button button--primary" id="adventure-save">Save journey</button></div></div>
    </div>
