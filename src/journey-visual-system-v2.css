@@ -1,0 +1,349 @@
+/* Beacon of the Valley visual system v2.
+   This layer intentionally affects patient journey/profile surfaces only.
+   Clinical movement, dosage, safety, and roadmap state remain untouched. */
+
+/* ---------- Named game mode ---------- */
+.journey-mode-title,
+.beacon-profile-mode,
+.beacon-lab-mode {
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  width:max-content;
+  max-width:100%;
+  padding:6px 10px;
+  border:1px solid #aa9662;
+  border-radius:999px;
+  background:rgba(250,243,221,.82);
+  color:#5a4928;
+  font:800 9px "DM Mono",monospace;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+  box-shadow:0 5px 14px rgba(62,49,25,.07);
+}
+.journey-mode-title::before,
+.beacon-profile-mode::before,
+.beacon-lab-mode::before {
+  content:"";
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#688062;
+  box-shadow:0 0 0 3px rgba(104,128,98,.12);
+}
+.journey-heading .journey-mode-title{margin-bottom:8px}
+
+/* ---------- Roadmap / mission sidebar ---------- */
+.campaign-atlas {
+  border:1px solid #c8bea6;
+  border-radius:24px;
+  box-shadow:0 22px 55px rgba(57,47,31,.12);
+}
+.campaign-atlas .journey-heading {
+  background:linear-gradient(180deg,#f2ead7,#e7dcc3)!important;
+  border-top:1px solid #d7c9a8;
+  border-bottom:1px solid #cbbd9f;
+  color:#233027!important;
+}
+.campaign-atlas .journey-heading h2,
+.campaign-atlas .journey-heading p,
+.campaign-atlas .journey-heading b,
+.campaign-atlas .journey-count b {color:#26352b!important}
+.campaign-atlas .journey-heading p,
+.campaign-atlas .journey-count small {color:#647066!important}
+.campaign-atlas .journey-heading .section-kicker {color:#765f31!important}
+
+/* The mission column should feel like a map journal, not a black dashboard. */
+.campaign-atlas .journey-mission {
+  background:
+    radial-gradient(circle at 84% 6%,rgba(255,255,255,.6),transparent 24%),
+    linear-gradient(165deg,#efe5ca 0%,#e1d2ae 55%,#d3c29c 100%)!important;
+  border-left:1px solid #b9aa83!important;
+  color:#253329!important;
+  box-shadow:inset 12px 0 28px rgba(74,59,30,.05);
+}
+.campaign-atlas .beacon-current-mission {
+  margin:0 0 14px!important;
+  padding:17px!important;
+  border:1px solid #bba773!important;
+  border-radius:17px!important;
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.52),transparent 32%),
+    linear-gradient(145deg,#f3ead5,#dfd0ab)!important;
+  box-shadow:0 11px 24px rgba(64,50,23,.09)!important;
+}
+.campaign-atlas .beacon-current-mission::after {
+  border-color:rgba(113,92,49,.12)!important;
+  box-shadow:none!important;
+}
+.campaign-atlas .beacon-current-mission-head small {color:#705a2d!important}
+.campaign-atlas .beacon-current-mission-head span {color:#687167!important}
+.campaign-atlas .beacon-current-mission-head strong {
+  color:#526a52!important;
+  border-color:#a99a74!important;
+  background:rgba(251,246,229,.58)!important;
+}
+.campaign-atlas .beacon-current-mission h3 {
+  color:#1f2d24!important;
+  font-family:Georgia,serif;
+  letter-spacing:-.025em;
+}
+.campaign-atlas .beacon-current-mission>p {color:#525e54!important}
+.campaign-atlas .beacon-current-objective {
+  border-color:#bba970!important;
+  background:rgba(198,177,113,.18)!important;
+}
+.campaign-atlas .beacon-current-objective small {color:#786332!important}
+.campaign-atlas .beacon-current-objective b {color:#2e3d31!important}
+.campaign-atlas .beacon-story-preview span {color:#59645a!important}
+.campaign-atlas .beacon-story-preview i {
+  border-color:#b5a16e!important;
+  background:rgba(252,247,231,.55);
+  color:#6b5a31!important;
+}
+.campaign-atlas .beacon-game-callout {
+  margin-top:13px;
+  padding:11px 12px;
+  border:1px solid #8ba080!important;
+  border-radius:13px;
+  background:linear-gradient(135deg,rgba(92,119,88,.14),rgba(255,255,255,.2))!important;
+}
+.campaign-atlas .beacon-game-callout small {color:#63745d!important}
+.campaign-atlas .beacon-game-callout b {color:#263c2d!important}
+.campaign-atlas .beacon-game-callout span {color:#667066!important}
+.campaign-atlas .beacon-prescription-launch .next-session-card {
+  border:1px solid #b9aa83!important;
+  border-radius:15px!important;
+  padding:14px!important;
+  background:rgba(249,244,229,.82)!important;
+  box-shadow:0 8px 18px rgba(61,49,28,.06)!important;
+}
+.campaign-atlas .journey-care-note {
+  padding:12px;
+  border:1px solid rgba(103,124,99,.35);
+  border-radius:12px;
+  background:rgba(247,241,222,.62);
+  color:#556159!important;
+}
+.campaign-atlas .journey-care-note small{color:#727b72!important}
+
+/* ---------- Roadmap support cards ---------- */
+.journey-page .roadmap-support-grid>article {
+  position:relative;
+  isolation:isolate;
+}
+.journey-page .daily-goal-card::before {
+  content:"WEEKLY QUEST";
+  position:absolute;
+  top:12px;
+  right:14px;
+  color:rgba(103,83,45,.46);
+  font:700 8px "DM Mono",monospace;
+  letter-spacing:.12em;
+}
+.journey-page .journey-game-mode-card::before {
+  content:"STORY CAMPAIGN";
+  position:absolute;
+  top:12px;
+  right:14px;
+  color:rgba(242,222,166,.5);
+  font:700 8px "DM Mono",monospace;
+  letter-spacing:.12em;
+  z-index:2;
+}
+
+/* Prescription cards belong to the same world, but remain clinically legible. */
+.journey-page .today-plan {
+  margin-top:22px;
+  padding:26px 0 0!important;
+  border-top:1px solid rgba(102,82,45,.22);
+}
+.journey-page .today-plan .section-kicker {color:#725b31!important}
+.journey-page .today-plan h2 {color:#233128!important}
+.journey-page .today-plan .section-heading>p {color:#69736a!important}
+.journey-page .exercise-card {
+  border:1px solid #c7b995!important;
+  background:linear-gradient(145deg,#f1ead9,#e3d6ba)!important;
+  color:#26352b!important;
+  box-shadow:0 9px 20px rgba(56,45,26,.07);
+}
+.journey-page .exercise-card--primary {
+  border-color:#87977b!important;
+  background:
+    linear-gradient(90deg,rgba(80,108,80,.14),transparent 35%),
+    linear-gradient(145deg,#f3ecdd,#dfd2b5)!important;
+}
+.journey-page .exercise-copy h3 {color:#243228!important}
+.journey-page .exercise-copy p,
+.journey-page .exercise-copy small {color:#667168!important}
+.journey-page .exercise-copy>div span {
+  border-color:#b8ad91!important;
+  background:rgba(255,251,238,.46);
+  color:#59665b!important;
+}
+.journey-page .exercise-icon {
+  color:#e9dfbd!important;
+  background:linear-gradient(145deg,#536d55,#344b3b)!important;
+  box-shadow:0 6px 14px rgba(36,57,40,.14);
+}
+.journey-page .exercise-order {color:#7d6840!important}
+
+/* ---------- Profile: one continuous campaign identity ---------- */
+.patient-profile-page .profile-hero-card {
+  color:#223129!important;
+  border:1px solid #b9a879!important;
+  background:
+    linear-gradient(105deg,rgba(246,239,218,.94),rgba(230,216,181,.88)),
+    url('/axion-kingdom-world.webp') center 18%/cover!important;
+  box-shadow:0 18px 42px rgba(55,44,25,.12)!important;
+}
+.patient-profile-page .profile-hero-copy h1 {color:#213027!important}
+.patient-profile-page .profile-hero-copy p {color:#5e6961!important}
+.patient-profile-page .profile-hero-copy>small {color:#6e756c!important}
+.patient-profile-page .profile-level-bar {background:rgba(82,103,83,.14)!important}
+.patient-profile-page .profile-level-bar span {background:linear-gradient(90deg,#71846b,#b79b57)!important}
+.patient-profile-page .profile-hero-stats article {
+  border-color:#b8aa89!important;
+  background:rgba(251,247,234,.58)!important;
+}
+.patient-profile-page .profile-hero-stats b {color:#25342a!important}
+.patient-profile-page .profile-hero-stats small {color:#687269!important}
+
+.patient-profile-page .profile-progress-card {
+  color:#f7f1df!important;
+  border:1px solid #6f846c!important;
+  background:
+    linear-gradient(130deg,rgba(24,49,34,.95),rgba(58,76,49,.9)),
+    url('/axion-kingdom-world.webp') center 66%/cover!important;
+  box-shadow:0 16px 34px rgba(38,50,35,.15)!important;
+}
+.patient-profile-page .profile-progress-card .section-kicker {color:#dec987!important}
+.patient-profile-page .profile-progress-card h2 {color:#fff9e8!important}
+.patient-profile-page .profile-progress-card p {color:#d2dbd0!important}
+.patient-profile-page .profile-completion-ring {
+  background:radial-gradient(circle,#2b4433 57%,transparent 59%),conic-gradient(#dbc57c var(--percent),rgba(234,241,224,.16) 0)!important;
+}
+.patient-profile-page .profile-completion-ring b {color:#fff9e8!important}
+.patient-profile-page .profile-progress-card .button--ghost {
+  border-color:rgba(239,227,181,.35)!important;
+  background:rgba(249,241,212,.08)!important;
+  color:#f5ebca!important;
+}
+
+.patient-profile-page .achievement-card {
+  color:#26352b!important;
+  border:1px solid #c1b28d!important;
+  background:linear-gradient(145deg,#ede3cb,#d9caa6)!important;
+  box-shadow:0 14px 30px rgba(55,44,26,.09)!important;
+}
+.patient-profile-page .achievement-card .section-kicker {color:#715c30!important}
+.patient-profile-page .achievement-card h2 {color:#253229!important}
+.patient-profile-page .profile-section-head>span {color:#6d766d!important}
+.patient-profile-page .achievement-grid article {
+  border-color:#bdae89!important;
+  background:rgba(249,243,226,.62)!important;
+}
+.patient-profile-page .achievement-grid article.earned {
+  border-color:#839679!important;
+  background:linear-gradient(135deg,rgba(92,120,88,.17),rgba(252,246,228,.72))!important;
+}
+.patient-profile-page .achievement-grid article>span {
+  background:#d4cab0!important;
+  color:#59655b!important;
+}
+.patient-profile-page .achievement-grid article.earned>span {
+  background:#536d55!important;
+  color:#f0dfaa!important;
+}
+.patient-profile-page .achievement-grid b {color:#27352c!important}
+.patient-profile-page .achievement-grid p {color:#606b62!important}
+.patient-profile-page .achievement-grid em {color:#746f5e!important}
+.patient-profile-page .achievement-grid .earned em {color:#5d724f!important}
+
+.patient-profile-page .profile-settings-link {
+  color:#27352c!important;
+  border:1px solid #a8a388!important;
+  background:linear-gradient(135deg,#d9d8c8,#c6c8b7)!important;
+  box-shadow:0 10px 24px rgba(44,48,37,.08)!important;
+}
+.patient-profile-page .profile-settings-link>span {color:#536c55!important}
+.patient-profile-page .profile-settings-link b {color:#27352c!important}
+.patient-profile-page .profile-settings-link p {color:#626d63!important}
+.patient-profile-page .profile-settings-link .button--ghost {
+  border-color:#949a81!important;
+  color:#34483a!important;
+  background:rgba(255,255,255,.28)!important;
+}
+
+/* Dedicated mode explanation added to the profile by journey-visual-system-v2.js. */
+.journey-mode-overview {
+  position:relative;
+  overflow:hidden;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:16px;
+  margin-top:14px;
+  padding:17px 19px;
+  border:1px solid #9b8960;
+  border-radius:17px;
+  background:
+    linear-gradient(110deg,rgba(37,61,43,.94),rgba(65,77,48,.88)),
+    url('/axion-kingdom-world.webp') center 42%/cover;
+  color:#f8f2df;
+  box-shadow:0 14px 30px rgba(41,51,36,.14);
+}
+.journey-mode-overview::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(115deg,rgba(255,255,255,.06),transparent 36%,rgba(220,195,125,.07));
+}
+.journey-mode-overview>*{position:relative;z-index:1}
+.journey-mode-overview-icon {
+  width:48px;
+  height:48px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(242,226,177,.32);
+  border-radius:14px;
+  background:rgba(245,230,183,.09);
+  color:#ead49a;
+}
+.journey-mode-overview small {
+  display:block;
+  color:#ddc780;
+  font:800 8px "DM Mono",monospace;
+  letter-spacing:.12em;
+}
+.journey-mode-overview h3 {
+  margin:4px 0 3px;
+  color:#fff9e8;
+  font:600 21px Georgia,serif;
+}
+.journey-mode-overview p {margin:0;color:#d9e1d5;font-size:11px}
+.journey-mode-overview strong {
+  padding:7px 10px;
+  border:1px solid rgba(241,225,172,.28);
+  border-radius:999px;
+  color:#f0dfad;
+  background:rgba(250,239,199,.07);
+  font:700 9px "DM Mono",monospace;
+  letter-spacing:.08em;
+  white-space:nowrap;
+}
+
+/* ---------- Movement Lab mode label ---------- */
+.lab-page .beacon-lab-mode {margin-bottom:12px}
+
+@media(max-width:820px){
+  .journey-mode-overview{grid-template-columns:auto 1fr}
+  .journey-mode-overview strong{grid-column:1/-1;justify-self:start}
+}
+@media(max-width:680px){
+  .campaign-atlas .journey-mission{border-left:0!important;border-top:1px solid #b9aa83!important}
+  .journey-mode-overview{grid-template-columns:1fr;text-align:left}
+  .journey-mode-overview-icon{width:42px;height:42px}
+  .journey-mode-title,.beacon-profile-mode,.beacon-lab-mode{white-space:normal}
+}
