@@ -1,0 +1,18 @@
+.exercise-game-identity{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;margin:14px 0;padding:12px;border:1px solid rgba(222,197,141,.28);border-radius:18px;background:linear-gradient(135deg,rgba(9,25,24,.92),rgba(18,36,46,.86));box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.exercise-game-identity>div{display:flex;flex-direction:column;gap:4px;min-width:0;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.035)}
+.exercise-game-identity small,.game-mode-badge small,.beacon-game-callout small,.beacon-modal-game small{font:500 10px/1.2 "DM Mono",monospace;letter-spacing:.12em;color:#b8cfbd}
+.exercise-game-identity strong{font-size:18px;line-height:1.15;color:#f2ddb0}
+.exercise-game-identity b{font-size:13px;line-height:1.35;color:#edf6ed}
+.exercise-game-identity span{font-size:12px;color:#9db4aa}
+.game-mode-badge{position:absolute;top:14px;right:14px;z-index:4;display:flex;flex-direction:column;gap:2px;max-width:min(42%,240px);padding:8px 11px;border:1px solid rgba(255,255,255,.16);border-radius:12px;background:rgba(5,17,22,.76);backdrop-filter:blur(7px);pointer-events:none}
+.game-mode-badge b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f8e5b9;font-size:12px}
+.beacon-game-callout,.beacon-modal-game{display:flex;flex-direction:column;gap:4px;margin:12px 0;padding:11px 12px;border-left:3px solid #d8b86f;border-radius:0 12px 12px 0;background:rgba(216,184,111,.08)}
+.beacon-game-callout b,.beacon-modal-game b{color:#f0d69a;font-size:15px}
+.beacon-game-callout span{font-size:12px;color:#aebeb7}
+.journey-node-game{display:block;margin-top:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 9px/1.2 "DM Mono",monospace;letter-spacing:.05em;color:#cdb574}
+.adventure-card[data-gameplay="signal_alignment"] .exercise-game-identity,.adventure-card[data-gameplay="sky_lantern"] .exercise-game-identity,.adventure-card[data-gameplay="sky_guardian"] .exercise-game-identity{background:linear-gradient(135deg,rgba(13,31,47,.94),rgba(24,52,67,.84))}
+.adventure-card[data-gameplay="gateforge"] .exercise-game-identity,.adventure-card[data-gameplay="motion_forge"] .exercise-game-identity,.adventure-card[data-gameplay="gravity_runner"] .exercise-game-identity{background:linear-gradient(135deg,rgba(35,24,25,.94),rgba(55,39,32,.86))}
+.adventure-card[data-gameplay="trailbreaker"] .exercise-game-identity,.adventure-card[data-gameplay="living_bridge"] .exercise-game-identity,.adventure-card[data-gameplay="riverworks"] .exercise-game-identity,.adventure-card[data-gameplay="stepping_stone_relay"] .exercise-game-identity,.adventure-card[data-gameplay="verdant_crossing"] .exercise-game-identity{background:linear-gradient(135deg,rgba(12,37,29,.94),rgba(31,58,38,.85))}
+.adventure-card[data-gameplay="guardian_shield"] .exercise-game-identity,.adventure-card[data-gameplay="pass_ward"] .exercise-game-identity,.adventure-card[data-gameplay="ruins_runner"] .exercise-game-identity,.adventure-card[data-gameplay="mountain_ascent"] .exercise-game-identity{background:linear-gradient(135deg,rgba(31,30,24,.94),rgba(54,45,31,.84))}
+@media(max-width:760px){.exercise-game-identity{grid-template-columns:1fr}.game-mode-badge{top:10px;right:10px;max-width:55%}.journey-node-game{display:none}}
+@media(prefers-reduced-motion:reduce){.game-mode-badge{backdrop-filter:none}}
