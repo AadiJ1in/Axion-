@@ -68,8 +68,8 @@ export function createMovementGameController({
     const delta = next - state.movement;
     const magnitude = Math.abs(delta);
     if (magnitude < 0.018) return state.movement;
-    const alpha = magnitude > 0.34 ? 0.30 : magnitude > 0.14 ? 0.24 : 0.18;
-    const maxStep = magnitude > 0.34 ? 0.085 : 0.055;
+    const alpha = magnitude > 0.34 ? 0.26 : magnitude > 0.14 ? 0.21 : 0.16;
+    const maxStep = magnitude > 0.34 ? 0.060 : 0.042;
     const step = Math.max(-maxStep, Math.min(maxStep, delta * alpha));
     return clamp01(state.movement + step);
   };
