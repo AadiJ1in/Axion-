@@ -10,15 +10,27 @@ const mediapipeRuntimeFiles = [
 ];
 
 export default defineConfig({
-  plugins: [{
-    name: "bundle-mediapipe-runtime",
-    closeBundle() {
-      const outputDir = resolve("dist/mediapipe");
-      const sourceDir = resolve("node_modules/@mediapipe/tasks-vision/wasm");
-      mkdirSync(outputDir, { recursive: true });
-      mediapipeRuntimeFiles.forEach((file) => copyFileSync(resolve(sourceDir, file), resolve(outputDir, file)));
+  plugins: [
+    {
+      name: "axion-patient-workspace-bootstrap-v2",
+      transform(code, id) {
+        if (!id.endsWith("/src/main.js")) return null;
+        return {
+          code: code.replaceAll('from "./portal.js";', 'from "./portal-v2.js";'),
+          map: null,
+        };
+      },
     },
-  }],
+    {
+      name: "bundle-mediapipe-runtime",
+      closeBundle() {
+        const outputDir = resolve("dist/mediapipe");
+        const sourceDir = resolve("node_modules/@mediapipe/tasks-vision/wasm");
+        mkdirSync(outputDir, { recursive: true });
+        mediapipeRuntimeFiles.forEach((file) => copyFileSync(resolve(sourceDir, file), resolve(outputDir, file)));
+      },
+    },
+  ],
   server: {
     host: "0.0.0.0",
     allowedHosts: ["terminal.local"],
