@@ -1,3 +1,14 @@
 node_modules/
 dist/
+.vercel/
+.netlify/
+
+# Never commit runtime secrets or local environment files.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
 
