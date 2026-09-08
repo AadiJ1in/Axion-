@@ -36,25 +36,31 @@ function createWorldLayer() {
 function decorateRegion(region, index) {
   const percent = restorationPercent(region);
   const tier = restorationTier(percent);
-  region.dataset.restoration = tier.key;
-  region.style.setProperty('--region-restored', String(percent / 100));
-  region.style.setProperty('--region-index', String(index));
+  const restoredValue = String(percent / 100);
+  const regionIndex = String(index);
+
+  if (region.dataset.restoration !== tier.key) region.dataset.restoration = tier.key;
+  if (region.style.getPropertyValue('--region-restored') !== restoredValue) region.style.setProperty('--region-restored', restoredValue);
+  if (region.style.getPropertyValue('--region-index') !== regionIndex) region.style.setProperty('--region-index', regionIndex);
 
   if (!region.querySelector('.region-restoration-world')) {
     region.append(createWorldLayer());
   }
 
   const header = region.querySelector(':scope > header');
-  if (header) {
-    let status = header.querySelector('.region-restoration-status');
-    if (!status) {
-      status = document.createElement('strong');
-      status.className = 'region-restoration-status';
-      header.append(status);
-    }
-    status.textContent = `${percent}% restored · ${tier.label}`;
-    status.setAttribute('aria-label', `Region ${percent} percent restored, ${tier.label}`);
+  if (!header) return;
+
+  let status = header.querySelector('.region-restoration-status');
+  if (!status) {
+    status = document.createElement('strong');
+    status.className = 'region-restoration-status';
+    header.append(status);
   }
+
+  const statusText = `${percent}% restored · ${tier.label}`;
+  const ariaLabel = `Region ${percent} percent restored, ${tier.label}`;
+  if (status.textContent !== statusText) status.textContent = statusText;
+  if (status.getAttribute('aria-label') !== ariaLabel) status.setAttribute('aria-label', ariaLabel);
 }
 
 function applyRegionRestoration() {
@@ -63,17 +69,42 @@ function applyRegionRestoration() {
 
 const app = document.querySelector('#app');
 if (app) {
-  let queued = false;
-  const schedule = () => {
-    if (queued) return;
-    queued = true;
-    queueMicrotask(() => {
-      queued = false;
+  let scheduled = false;
+  let scheduledHandle = null;
+  let observer = null;
+
+  const observe = () => observer?.observe(app, { childList: true, subtree: true });
+  const run = () => {
+    scheduled = false;
+    scheduledHandle = null;
+    // Do not observe our own decorative writes. They must never schedule another pass.
+    observer?.disconnect();
+    try {
       applyRegionRestoration();
-    });
+    } finally {
+      observe();
+    }
   };
-  new MutationObserver(schedule).observe(app, { childList: true, subtree: true });
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    if (typeof requestAnimationFrame === 'function') scheduledHandle = requestAnimationFrame(run);
+    else scheduledHandle = setTimeout(run, 0);
+  };
+
+  observer = new MutationObserver(schedule);
+  observe();
   schedule();
+
+  window.addEventListener('pagehide', () => {
+    observer?.disconnect();
+    if (scheduledHandle !== null) {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(scheduledHandle);
+      else clearTimeout(scheduledHandle);
+    }
+    scheduled = false;
+    scheduledHandle = null;
+  });
 }
 
 export { restorationTier, restorationPercent, applyRegionRestoration };
