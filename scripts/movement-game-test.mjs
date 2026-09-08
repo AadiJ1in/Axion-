@@ -3,8 +3,8 @@ import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } 
 import { motionInput } from "../src/adventure-definitions.js";
 
 assert.equal(getMovementGameMapping("bodyweight_squat").action, "duck");
-assert.equal(getMovementGameMapping("chin_tuck").title, "Pathfinder", "catalog rep exercises receive the simple fallback game");
-assert.equal(getMovementGameMapping("upper_trap_stretch").title, "Beacon Hold", "catalog timed holds receive the simple hold game");
+assert.equal(getMovementGameMapping("chin_tuck").title, "Signal Alignment", "neck reps receive the signal-alignment game family");
+assert.equal(getMovementGameMapping("upper_trap_stretch").title, "Hold the Signal", "neck holds receive the matching hold game");
 assert.equal(getMovementGameMapping("unknown_exercise"), null, "unknown exercise ids never silently become games");
 
 const controller = createMovementGameController({ exerciseKey: "bodyweight_squat", targetReps: 10 });
@@ -50,9 +50,9 @@ assert.equal(retry.lastOutcome, "form_retry", "an invalid cycle resets only the 
 const fallback = createMovementGameController({ exerciseKey: "chin_tuck", targetReps: 2 });
 fallback.setMode("game");
 fallback.consume({ type: MOVEMENT_EVENT.MOVEMENT_PROGRESS, progress: 0.8, stage: "down" });
-assert.equal(fallback.getState().completed, 0, "continuous fallback-game motion cannot create a clinical rep");
+assert.equal(fallback.getState().completed, 0, "continuous exercise-game motion cannot create a clinical rep");
 fallback.consume({ type: MOVEMENT_EVENT.REP_COMPLETE });
-assert.equal(fallback.getState().completed, 1, "a validated rep advances the fallback game once");
+assert.equal(fallback.getState().completed, 1, "a validated rep advances the exercise game once");
 
 const hold = createMovementGameController({ exerciseKey: "upper_trap_stretch", targetReps: 2, targetHoldSeconds: 20 });
 hold.setMode("game");
