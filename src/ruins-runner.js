@@ -1,5 +1,6 @@
 // Entertainment state only. This module cannot validate or persist clinical reps.
 const clamp = value => Math.max(0, Math.min(1, value));
+const runnerShadeCache = new WeakMap();
 export const runnerGeometry = movement => ({ x: .26, feet: .84, head: .84 - .45 * (1 - clamp(movement) * .51) - .00675, radius: .035, beamBottom: .53, beamWidth: .12 });
 export function createRuinsRunner() {
   let ready=false, lastMotion=-Infinity, range=null, movement=0, x=1.25, resolved=false, time=0, reps=0, period=9000;
@@ -51,11 +52,19 @@ export function drawExplorer(ctx,x,feet,scale,movement,color='#d9b567'){
   ctx.fillStyle='#344238';ctx.beginPath();ctx.arc(x+scale*(.03-p*.05),head+scale*.065,scale*.012,0,7);ctx.fill();
   line([[x-scale*.06,head+scale*.17],[x+scale*.06,head+scale*.17]],scale*.035,'#915d44');
 }
+function runnerShade(ctx,h){
+  const cached=runnerShadeCache.get(ctx);
+  if(cached?.height===h)return cached.gradient;
+  const gradient=ctx.createLinearGradient(0,0,0,h);
+  gradient.addColorStop(0,'#132f2955');gradient.addColorStop(.65,'#132f2900');gradient.addColorStop(1,'#14281fde');
+  runnerShadeCache.set(ctx,{height:h,gradient});
+  return gradient;
+}
 export function drawRuinsRunner(ctx,state,w,h,background,reduced){
   const r=state.runner,g=r.geometry;
   ctx.fillStyle='#a9b9a5';ctx.fillRect(0,0,w,h);
   if(background.complete&&background.naturalWidth)ctx.drawImage(background,0,0,w,h);
-  const shade=ctx.createLinearGradient(0,0,0,h);shade.addColorStop(0,'#132f2955');shade.addColorStop(.65,'#132f2900');shade.addColorStop(1,'#14281fde');ctx.fillStyle=shade;ctx.fillRect(0,0,w,h);
+  ctx.fillStyle=runnerShade(ctx,h);ctx.fillRect(0,0,w,h);
   // Foreground causeway anchors the character and makes travel legible.
   ctx.fillStyle='#657369';ctx.fillRect(0,h*.85,w,h*.15);
   const drift=reduced?0:(r.time*.018)%(w*.17);

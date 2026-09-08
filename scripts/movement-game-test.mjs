@@ -70,11 +70,23 @@ const unsupported = createMovementGameController({ exerciseKey: "unknown_exercis
 unsupported.setMode("game");
 assert.equal(unsupported.getState().mode, "standard");
 
-console.log("Movement/game boundary tests passed.");
-
 const paused = createMovementGameController({exerciseKey:'push_up', targetReps:4});
 paused.setMode('game'); paused.consume({type:MOVEMENT_EVENT.PAUSE});
 paused.setMode('standard');paused.consume({type:MOVEMENT_EVENT.REP_COMPLETE});
 assert.equal(paused.getState().completed,0,'switching mode cannot bypass a pause');
 paused.consume({type:MOVEMENT_EVENT.RESUME});paused.consume({type:MOVEMENT_EVENT.REP_COMPLETE,rep:{valid:false}});
 assert.equal(paused.getState().completed,0,'invalid form cannot count');
+
+let renderPublishes=0;
+const efficient = createMovementGameController({
+  exerciseKey:'chin_tuck',
+  targetReps:3,
+  onState:()=>{renderPublishes+=1;},
+});
+efficient.setMode('game');
+for(let i=0;i<120;i++)efficient.consume({type:MOVEMENT_EVENT.MOVEMENT_PROGRESS,progress:.45,stage:'down'});
+assert.equal(renderPublishes,1,'continuous movement should not rerender the DOM HUD on every pose frame');
+efficient.consume({type:MOVEMENT_EVENT.REP_COMPLETE,rep:{valid:true}});
+assert.equal(renderPublishes,2,'a validated clinical event still publishes immediately');
+
+console.log("Movement/game boundary and render-efficiency tests passed.");

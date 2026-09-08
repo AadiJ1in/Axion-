@@ -32,6 +32,9 @@ export function createMovementGameController({ exerciseKey, targetReps=0, target
   const initial = () => ({exerciseKey,mapping,mode:'standard',gameDifficulty:'standard',clinicalTarget,holdTargetSeconds,completed:0,remaining:clinicalTarget,movement:0,runnerY:25,obstacleX:108,obstaclePattern:0,attemptActive:false,attemptCollided:false,obstacleResolved:false,collisions:0,collectibles:0,score:0,combo:0,paused:false,safetyFlagged:false,lastOutcome:null,side:null,elapsed:0,stars:0});
   state=initial();
   const snapshot=()=>Object.freeze({...state,runner:runner?.snapshot(now()) || null,camera:camera?.snapshot(now()) || null,progress:clinicalTarget ? state.completed/clinicalTarget : 0,story:movementGameStory(state.completed,clinicalTarget,mapping)});
+  // Continuous body motion is rendered from getState() by the canvas loop. It
+  // should not also force React-like DOM work on every camera/animation frame.
+  // Publish only discrete UI changes (rep, collision, pause, completion, etc.).
   const publish=()=>{const s=snapshot();onState(s);return s;};
   return {
     getState:snapshot,
@@ -44,12 +47,12 @@ export function createMovementGameController({ exerciseKey, targetReps=0, target
       if(state.mode!=='game'||state.paused||state.completed>=clinicalTarget)return snapshot();
       if(runner){
         const outcome=runner.tick(deltaMs,now());
-        if(outcome==='collision'){state.attemptCollided=true;state.collisions++;state.combo=0;state.score=Math.max(0,state.score-25);state.lastOutcome='collision';}
-        if(outcome==='clear'){state.score+=25;state.lastOutcome='clear';}
-        return publish();
+        if(outcome==='collision'){state.attemptCollided=true;state.collisions++;state.combo=0;state.score=Math.max(0,state.score-25);state.lastOutcome='collision';return publish();}
+        if(outcome==='clear'){state.score+=25;state.lastOutcome='clear';return publish();}
+        return snapshot();
       }
       if(!state.attemptActive)return snapshot();
-      if(camera)return publish();
+      if(camera)return snapshot();
       const dt=Math.min(80,Math.max(0,Number(deltaMs)||0));
       state.elapsed+=dt;
       state.obstacleX-=({gentle:6,standard:9,lively:11}[state.gameDifficulty])*dt/1000;
@@ -61,54 +64,62 @@ export function createMovementGameController({ exerciseKey, targetReps=0, target
         const success=mapping.action==='crossing' ? Boolean(state.side) : Math.abs(state.movement-center)<=tolerance;
         state.attemptCollided=!success;
         if(success){state.collectibles++;state.score+=25;}else{state.collisions++;state.combo=0;state.score=Math.max(0,state.score-25);state.lastOutcome='collision';if(state.collisions>=2)state.gameDifficulty='gentle';}
+        return publish();
       }
-      return publish();
+      return snapshot();
     },
     consume(event){
       if(!event?.type)return snapshot();
-      if(event.type===MOVEMENT_EVENT.RESET){const mode=state.mode;state=initial();state.mode=mode;camera?.reset();if(runner)runner=createRuinsRunner();}
-      else if(event.type===MOVEMENT_EVENT.SAFETY_FLAG){camera?.setReady(false);runner?.ready(false);state.paused=true;state.safetyFlagged=true;state.lastOutcome='safety_pause';}
-      else if(event.type===MOVEMENT_EVENT.PAUSE){camera?.setReady(false);runner?.ready(false);state.paused=true;}
-      else if(event.type===MOVEMENT_EVENT.RESUME){state.paused=false;state.safetyFlagged=false;}
-      else if(!state.paused && state.completed<clinicalTarget){
-        if(event.type===MOVEMENT_EVENT.MOVEMENT_PROGRESS){
-          runner?.motion(event,now());
-          const movement=runner?.snapshot(now()).movement ?? clamp01(event.progress);
-          if(runner){state.movement=movement;state.runnerY=25+movement*50;return publish();}
-          const starting=movement>=.15&&!state.attemptActive;
-          const rejected=event.stage==='up'&&movement<.1&&state.attemptActive;
-          state.movement=movement;state.side=event.side||state.side;
-          state.runnerY=mapping?.action==='light'?78-movement*55:25+movement*50;
-          if(starting){state.attemptActive=true;state.attemptCollided=false;state.obstacleResolved=false;state.obstacleX=62;state.lastOutcome=null;}
-          const gate = camera?.motion(movement,event.stage,now(),event.range);
-          if(gate==='clear'){state.collectibles++;state.score+=25;}
-          if(gate==='touch'){state.attemptCollided=true;state.collisions++;state.combo=0;state.lastOutcome='collision';}
-          if(rejected){state.attemptActive=false;state.lastOutcome='form_retry';state.combo=0;state.obstacleX=108;}
-        }else if(event.type===MOVEMENT_EVENT.REP_COMPLETE){
-          // Only the validated detector emits this event. Arcade collisions never
-          // modify this count and an explicitly invalid event cannot add a rep.
-          if(event.rep?.valid===false)return snapshot();
-          camera?.validRep(event.rep);runner?.rep(event.rep);
-          state.completed=Math.min(clinicalTarget,state.completed+1);
-          state.remaining=clinicalTarget-state.completed;
-          if(!state.attemptCollided){state.combo++;state.score+=100;}
-          state.lastOutcome=state.remaining===0?'complete':state.attemptCollided?'collision_counted':'counted';
-          state.attemptActive=false;state.obstacleResolved=false;state.attemptCollided=false;state.obstacleX=108;state.obstaclePattern++;
-          state.stars=state.remaining===0?1+(state.score>=clinicalTarget*60?1:0)+(state.score>=clinicalTarget*100?1:0):0;
-        }else if(event.type===MOVEMENT_EVENT.HOLD_PROGRESS){
-          // HOLD_PROGRESS is entertainment feedback only. It can illuminate a
-          // beacon but cannot advance the validated clinical completion count.
-          state.movement=clamp01(event.progress ?? (event.seconds && holdTargetSeconds ? event.seconds/holdTargetSeconds : 0));
-          state.runnerY=78-state.movement*55;
-        }else if(event.type===MOVEMENT_EVENT.HOLD_COMPLETE){
-          // Treat an explicit hold-complete event as one validated clinical set,
-          // never as "all seconds completed".
-          state.completed=Math.min(clinicalTarget,state.completed+1);
-          state.remaining=clinicalTarget-state.completed;
-          state.lastOutcome=state.remaining===0?'complete':'counted';
-        }
+      if(event.type===MOVEMENT_EVENT.RESET){const mode=state.mode;state=initial();state.mode=mode;camera?.reset();if(runner)runner=createRuinsRunner();return publish();}
+      if(event.type===MOVEMENT_EVENT.SAFETY_FLAG){camera?.setReady(false);runner?.ready(false);state.paused=true;state.safetyFlagged=true;state.lastOutcome='safety_pause';return publish();}
+      if(event.type===MOVEMENT_EVENT.PAUSE){camera?.setReady(false);runner?.ready(false);state.paused=true;return publish();}
+      if(event.type===MOVEMENT_EVENT.RESUME){state.paused=false;state.safetyFlagged=false;return publish();}
+      if(state.paused||state.completed>=clinicalTarget)return snapshot();
+
+      if(event.type===MOVEMENT_EVENT.MOVEMENT_PROGRESS){
+        runner?.motion(event,now());
+        const movement=runner?.snapshot(now()).movement ?? clamp01(event.progress);
+        if(runner){state.movement=movement;state.runnerY=25+movement*50;return snapshot();}
+        const starting=movement>=.15&&!state.attemptActive;
+        const rejected=event.stage==='up'&&movement<.1&&state.attemptActive;
+        state.movement=movement;state.side=event.side||state.side;
+        state.runnerY=mapping?.action==='light'?78-movement*55:25+movement*50;
+        if(starting){state.attemptActive=true;state.attemptCollided=false;state.obstacleResolved=false;state.obstacleX=62;state.lastOutcome=null;}
+        const gate = camera?.motion(movement,event.stage,now(),event.range);
+        if(gate==='clear'){state.collectibles++;state.score+=25;return publish();}
+        if(gate==='touch'){state.attemptCollided=true;state.collisions++;state.combo=0;state.lastOutcome='collision';return publish();}
+        if(rejected){state.attemptActive=false;state.lastOutcome='form_retry';state.combo=0;state.obstacleX=108;return publish();}
+        return snapshot();
       }
-      return publish();
+      if(event.type===MOVEMENT_EVENT.REP_COMPLETE){
+        // Only the validated detector emits this event. Arcade collisions never
+        // modify this count and an explicitly invalid event cannot add a rep.
+        if(event.rep?.valid===false)return snapshot();
+        camera?.validRep(event.rep);runner?.rep(event.rep);
+        state.completed=Math.min(clinicalTarget,state.completed+1);
+        state.remaining=clinicalTarget-state.completed;
+        if(!state.attemptCollided){state.combo++;state.score+=100;}
+        state.lastOutcome=state.remaining===0?'complete':state.attemptCollided?'collision_counted':'counted';
+        state.attemptActive=false;state.obstacleResolved=false;state.attemptCollided=false;state.obstacleX=108;state.obstaclePattern++;
+        state.stars=state.remaining===0?1+(state.score>=clinicalTarget*60?1:0)+(state.score>=clinicalTarget*100?1:0):0;
+        return publish();
+      }
+      if(event.type===MOVEMENT_EVENT.HOLD_PROGRESS){
+        // HOLD_PROGRESS is entertainment feedback only. It can illuminate a
+        // beacon but cannot advance the validated clinical completion count.
+        state.movement=clamp01(event.progress ?? (event.seconds && holdTargetSeconds ? event.seconds/holdTargetSeconds : 0));
+        state.runnerY=78-state.movement*55;
+        return snapshot();
+      }
+      if(event.type===MOVEMENT_EVENT.HOLD_COMPLETE){
+        // Treat an explicit hold-complete event as one validated clinical set,
+        // never as "all seconds completed".
+        state.completed=Math.min(clinicalTarget,state.completed+1);
+        state.remaining=clinicalTarget-state.completed;
+        state.lastOutcome=state.remaining===0?'complete':'counted';
+        return publish();
+      }
+      return snapshot();
     }
   };
 }
