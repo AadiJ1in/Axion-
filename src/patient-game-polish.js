@@ -1,6 +1,6 @@
 // Patient-facing usability repairs for Movement Lab.
-// Deliberately observer-free so it cannot reintroduce the authenticated boot
-// MutationObserver loops that were removed by the core-safe build.
+// Deliberately observer-free so it cannot reintroduce the recursive DOM loops
+// that were removed by the core-safe build.
 
 function gameController() {
   return typeof window !== 'undefined' ? window.__axionMovementGameController : null;
@@ -62,7 +62,7 @@ document.addEventListener('click', (event) => {
 }, true);
 
 // Four lightweight selector checks per second only while the page is open. No
-// DOM observer, no recursive rendering, and no clinical-state writes.
+// recursive DOM watching and no clinical-state writes.
 const polishTimer = window.setInterval(syncRestExperience, 250);
 window.addEventListener('pagehide', () => window.clearInterval(polishTimer), { once:true });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncRestExperience(); });
