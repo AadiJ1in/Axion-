@@ -26,8 +26,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
-      - name: Reject known production vulnerabilities
-        run: npm audit --omit=dev --audit-level=high
+      - name: Reject known dependency vulnerabilities
+        run: npm audit --audit-level=high
       - name: Run authorization and product regressions
         run: npm run check
       - name: Build production assets
