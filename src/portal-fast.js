@@ -89,7 +89,8 @@ async function fetchPatientWorkspace(client, userId) {
         .eq("plan_id", plan.id)
         .order("session_number"),
       client.from("roadmap_node_assignments")
-        .select("roadmap_node_id, assignment_id, sequence")
+        .select("roadmap_node_id, assignment_id, sequence, roadmap_nodes!inner(plan_id)")
+        .eq("roadmap_nodes.plan_id", plan.id)
         .order("sequence"),
       client.from("roadmap_node_completions")
         .select("id, roadmap_node_id, patient_id, xp_awarded, completed_at")
@@ -100,9 +101,8 @@ async function fetchPatientWorkspace(client, userId) {
     assignments = (await requireData(assignmentResult, "Could not load prescribed exercises") || []).map(assignmentDetails);
     roadmap = await requireData(roadmapResult, "Could not load your roadmap") || [];
     roadmapNodes = await requireData(nodeResult, "Could not load your session path") || [];
-    const nodeIds = new Set(roadmapNodes.map((node) => node.id));
     roadmapNodeAssignments = (await requireData(nodeAssignmentResult, "Could not load session exercises") || [])
-      .filter((item) => nodeIds.has(item.roadmap_node_id));
+      .map(({ roadmap_nodes: _roadmapNode, ...item }) => item);
     roadmapCompletions = await requireData(completionResult, "Could not load session progress") || [];
   }
 
