@@ -2,6 +2,7 @@ import "./clinical-session-capture.js";
 import "./clinic-readiness.js";
 import "./clinical-targets.js";
 import "./therapist-review-audit.js";
+import "./plan-version-history.js";
 
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
