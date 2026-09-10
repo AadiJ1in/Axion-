@@ -137,7 +137,7 @@ export function createRepCycleDetector(profile) {
 }
 
 export async function createMovementTracker(options) {
-  if (import.meta.env.MODE === "e2e" && typeof window !== "undefined" && typeof window.__AXION_E2E_MOVEMENT_TRACKER_FACTORY__ === "function") {
+  if (import.meta.env?.MODE === "e2e" && typeof window !== "undefined" && typeof window.__AXION_E2E_MOVEMENT_TRACKER_FACTORY__ === "function") {
     return window.__AXION_E2E_MOVEMENT_TRACKER_FACTORY__(options);
   }
   const {
