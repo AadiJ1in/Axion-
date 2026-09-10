@@ -20,6 +20,9 @@ async function boot(page) {
   await page.addInitScript({ path: fakeSupabase });
   await page.addInitScript({ path: fakeTracker });
   await page.goto("/");
+  const signInEntry = page.locator('[data-nav="auth"]').first();
+  await expect(signInEntry).toBeVisible();
+  await signInEntry.click();
   await expect(page.locator("#auth-form")).toBeVisible();
 }
 
