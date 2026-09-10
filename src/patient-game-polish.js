@@ -1,3 +1,5 @@
+import "./clinic-readiness.js";
+
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
 // that were removed by the core-safe build.
