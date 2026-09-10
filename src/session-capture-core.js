@@ -1,4 +1,8 @@
-const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function numericText(value) {
@@ -22,6 +26,7 @@ export function validRepPercent(attempted, rejected) {
 
 export function sessionContextPayload(input = {}) {
   const integerOrNull = (value, min, max) => {
+    if (value === null || value === undefined || value === "") return null;
     const number = Number(value);
     if (!Number.isInteger(number)) return null;
     return Math.max(min, Math.min(max, number));
