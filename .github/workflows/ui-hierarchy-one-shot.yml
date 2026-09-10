@@ -1,0 +1,78 @@
+name: UI hierarchy one-shot correction
+
+on:
+  push:
+    branches:
+      - feature/ui-hierarchy-sprint-final
+    paths:
+      - .github/workflows/ui-hierarchy-one-shot.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'Remove one-shot UI hierarchy workflow') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/ui-hierarchy-sprint-final
+          fetch-depth: 0
+      - name: Make Journey placement one-time per render
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/ui-hierarchy.js')
+          s = p.read_text()
+          old = '''function ensureJourneyIntro(atlas) {
+  if (!atlas || atlas.previousElementSibling?.matches("[data-ui-journey-intro]")) return;
+  const intro = document.createElement("div");
+  intro.dataset.uiJourneyIntro = "true";
+  intro.className = "ui-journey-intro";
+  intro.innerHTML = `<div><span>JOURNEY</span><h2>Your recovery journey</h2><p>See where you are and what unlocks next.</p></div>`;
+  atlas.before(intro);
+}'''
+          new = '''function ensureJourneyIntro(atlas) {
+  if (!atlas) return;
+  const existing = atlas.parentElement?.querySelector("[data-ui-journey-intro]");
+  if (existing) {
+    if (existing.nextElementSibling !== atlas) atlas.before(existing);
+    return;
+  }
+  const intro = document.createElement("div");
+  intro.dataset.uiJourneyIntro = "true";
+  intro.className = "ui-journey-intro";
+  intro.innerHTML = `<div><span>JOURNEY</span><h2>Your recovery journey</h2><p>See where you are and what unlocks next.</p></div>`;
+  atlas.before(intro);
+}'''
+          if old not in s:
+              raise SystemExit('Journey intro block not found')
+          s = s.replace(old, new, 1)
+          old2 = '''  if (atlas) {
+    atlas.id = "patient-journey";
+    atlas.dataset.uiJourneyHero = "true";
+    support?.after(atlas);
+    ensureJourneyIntro(atlas);
+    if (phases) atlas.after(phases);
+  }'''
+          new2 = '''  if (atlas && atlas.dataset.uiPlaced !== "true") {
+    atlas.dataset.uiPlaced = "true";
+    atlas.id = "patient-journey";
+    atlas.dataset.uiJourneyHero = "true";
+    support?.after(atlas);
+    ensureJourneyIntro(atlas);
+    if (phases) atlas.after(phases);
+  }'''
+          if old2 not in s:
+              raise SystemExit('Journey placement block not found')
+          p.write_text(s.replace(old2, new2, 1))
+          PY
+          node --check src/ui-hierarchy.js
+      - name: Commit correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui-hierarchy.js
+          git commit -m "Make Journey placement idempotent [ui-hierarchy-layout-fixed]"
+          git push origin HEAD:feature/ui-hierarchy-sprint-final
