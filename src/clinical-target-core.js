@@ -1,4 +1,8 @@
-const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
 
 function bounded(value, min, max) {
   const number = finite(value);
@@ -40,15 +44,17 @@ export function evaluateReviewTarget(target = {}, observation = {}) {
   const normalized = normalizeReviewTarget(target, observation.rangeUnit);
   const range = rangeStatus(observation.movementRange, normalized.target_range_min, normalized.target_range_max);
   const tempo = rangeStatus(observation.tempoSeconds, normalized.target_tempo_min_seconds, normalized.target_tempo_max_seconds);
-  const difficulty = normalized.target_difficulty_max === null || finite(observation.difficulty) === null ? null : {
-    observed: finite(observation.difficulty),
-    within: finite(observation.difficulty) <= normalized.target_difficulty_max,
-    above: finite(observation.difficulty) > normalized.target_difficulty_max,
+  const difficultyValue = finite(observation.difficulty);
+  const painValue = finite(observation.painAfter);
+  const difficulty = normalized.target_difficulty_max === null || difficultyValue === null ? null : {
+    observed: difficultyValue,
+    within: difficultyValue <= normalized.target_difficulty_max,
+    above: difficultyValue > normalized.target_difficulty_max,
   };
-  const pain = normalized.pain_review_threshold === null || finite(observation.painAfter) === null ? null : {
-    observed: finite(observation.painAfter),
-    within: finite(observation.painAfter) < normalized.pain_review_threshold,
-    atOrAbove: finite(observation.painAfter) >= normalized.pain_review_threshold,
+  const pain = normalized.pain_review_threshold === null || painValue === null ? null : {
+    observed: painValue,
+    within: painValue < normalized.pain_review_threshold,
+    atOrAbove: painValue >= normalized.pain_review_threshold,
   };
   const checks = [range, tempo, difficulty, pain].filter(Boolean);
   return {
