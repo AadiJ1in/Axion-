@@ -24,9 +24,14 @@ function cleanText(input) {
   return String(input ?? "").trim().replace(/\s+/g, " ");
 }
 
+function normalizeComparable(input) {
+  return input === null || input === undefined || input === "" ? null : input;
+}
+
 function same(left, right) {
-  if (left === null || left === undefined || left === "") left = null;
-  if (right === null || right === undefined || right === "") right = null;
+  left = normalizeComparable(left);
+  right = normalizeComparable(right);
+  if (left === null || right === null) return left === right;
   if (typeof left === "number" || typeof right === "number") return Number(left) === Number(right);
   return left === right;
 }
