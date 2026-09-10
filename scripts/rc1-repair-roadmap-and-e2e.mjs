@@ -142,10 +142,16 @@ replaceExactly(
   });
   await page.locator('[data-before-confidence] [data-value="4"]').click();
   const begin = page.locator("#clinic-begin-exercise");
-  await expect(begin).toBeEnabled();
+  const recovery = page.locator("#camera-recovery");
+  await expect.poll(async () => {
+    if (await recovery.isVisible()) return "recovery";
+    if (await begin.isEnabled()) return "ready";
+    return "waiting";
+  }, { timeout: 8_000 }).not.toBe("waiting");
+  if (await recovery.isVisible()) return;
   await begin.click();
 }`,
-  "browser test follows roadmap identity and required clinical pre-session gate",
+  "browser test follows the clinical gate while allowing intentional recovery-state tests",
 );
 
 replaceExactly(
