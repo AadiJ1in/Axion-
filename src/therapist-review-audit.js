@@ -11,6 +11,7 @@ const state = {
   loading: false,
   loadedAt: 0,
   session: null,
+  authGeneration: 0,
   rows: new Map(),
 };
 
@@ -58,11 +59,14 @@ async function loadQueue(force = false) {
   if (!page || state.loading) return;
   if (!force && state.page === page && Date.now() - state.loadedAt < 15000) return;
   state.loading = true;
+  const authGeneration = state.authGeneration;
   try {
     const session = await authSession();
-    if (!session?.user) return;
+    const userId = session?.user?.id;
+    if (!userId) return;
     const { data, error } = await supabase.rpc("therapist_review_queue");
     if (error) throw error;
+    if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId || !page.isConnected) return;
     state.rows = new Map((data || []).map((row) => [row.patient_id, row]));
     state.page = page;
     state.loadedAt = Date.now();
@@ -172,8 +176,10 @@ function openModal({ title, description, activity = null, submitLabel, noteLabel
 }
 
 async function recordReview(patientId, note) {
+  const authGeneration = state.authGeneration;
   const session = await authSession();
   if (!session?.user) throw new Error("Your therapist session is no longer available.");
+  const userId = session.user.id;
   const row = state.rows.get(patientId) || null;
   const activity = rowActivity(row);
   const reviewedAt = new Date().toISOString();
@@ -185,6 +191,9 @@ async function recordReview(patientId, note) {
     snapshot: reviewSnapshot(activity),
   });
   if (reviewError) throw reviewError;
+  if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId) {
+    throw new Error("Your therapist session changed before the review finished.");
+  }
 
   const followups = [];
   if (note) followups.push(supabase.from("therapist_notes").insert({ therapist_id: session.user.id, patient_id: patientId, note }));
@@ -204,14 +213,17 @@ async function recordReview(patientId, note) {
 
 async function addNote(patientId, note) {
   if (!note) throw new Error("Enter a follow-up note before saving.");
+  const authGeneration = state.authGeneration;
   const session = await authSession();
   if (!session?.user) throw new Error("Your therapist session is no longer available.");
+  const userId = session.user.id;
   const { error } = await supabase.from("therapist_notes").insert({
     therapist_id: session.user.id,
     patient_id: patientId,
     note,
   });
   if (error) throw error;
+  if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return;
   state.loadedAt = 0;
   await loadQueue(true);
 }
@@ -262,8 +274,24 @@ function sync() {
   loadQueue(false);
 }
 
+let reviewAuthSubscription = null;
+if (isConfigured && supabase) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    state.session = session || null;
+    state.authGeneration += 1;
+    state.rows = new Map();
+    state.page = null;
+    state.loadedAt = 0;
+    closeModal();
+  });
+  reviewAuthSubscription = data?.subscription || null;
+}
+
 const reviewTimer = window.setInterval(sync, 1000);
-window.addEventListener("pagehide", () => window.clearInterval(reviewTimer), { once: true });
+window.addEventListener("pagehide", () => {
+  window.clearInterval(reviewTimer);
+  reviewAuthSubscription?.unsubscribe?.();
+}, { once: true });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) loadQueue(true); });
 sync();
 

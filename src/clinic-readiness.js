@@ -684,6 +684,7 @@ if (isConfigured && supabase) {
     runtime.setRejectedStart = new Map();
     runtime.lastRepCount = 0;
     runtime.lastResting = false;
+    document.querySelectorAll(".clinic-modal-layer").forEach((node) => node.remove());
   });
   clinicAuthSubscription = data?.subscription || null;
 }

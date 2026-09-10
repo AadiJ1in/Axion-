@@ -12,6 +12,7 @@ const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const runtime = {
   session: undefined,
   sessionCheckedAt: 0,
+  authGeneration: 0,
   therapistContext: null,
   patientWorkspace: null,
   targetMap: new Map(),
@@ -236,8 +237,12 @@ function addPatientTargetSummaries(page, context) {
 }
 
 function labAssignment(context) {
-  const title = document.querySelector(".lab-header h1")?.textContent?.trim();
-  return (context.workspace.assignments || []).find((item) => item.display_name === title) || null;
+  const lab = document.querySelector(".lab-page");
+  const assignmentId = String(lab?.dataset.sessionAssignmentId || "").trim();
+  const planId = String(lab?.dataset.sessionPlanId || "").trim();
+  if (!assignmentId || !planId || context.workspace?.plan?.id !== planId) return null;
+  return (context.workspace.assignments || []).find((item) =>
+    item.id === assignmentId && item.plan_id === planId && item.status === "active") || null;
 }
 
 function addLabTargetStrip(page, context) {
@@ -261,6 +266,7 @@ function observationStatus(label, result, observedText, targetText) {
 
 async function enhanceSessionModal(sessionId) {
   if (!sessionId || !supabase) return;
+  const authGeneration = runtime.authGeneration;
   let modal = null;
   for (let attempt = 0; attempt < 12 && !modal; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -270,12 +276,15 @@ async function enhanceSessionModal(sessionId) {
   const { data: session, error } = await supabase.from("exercise_sessions")
     .select("id, assignment_id, movement_summary, difficulty, client_session_id")
     .eq("id", sessionId).maybeSingle();
-  if (error || !session?.assignment_id) return;
-  const target = (await readTargets([session.assignment_id])).get(session.assignment_id);
+  if (error || !session?.assignment_id || authGeneration !== runtime.authGeneration) return;
+  const sessionTargets = await readTargets([session.assignment_id]);
+  if (authGeneration !== runtime.authGeneration) return;
+  const target = sessionTargets.get(session.assignment_id);
   if (!target) return;
   const { data: context } = await supabase.from("session_capture_context")
     .select("pain_after")
     .eq("session_id", sessionId).maybeSingle();
+  if (authGeneration !== runtime.authGeneration) return;
   let painAfter = finite(context?.pain_after);
   if (painAfter === null && session.client_session_id) {
     const { data: events } = await supabase.from("patient_safety_events")
@@ -313,9 +322,10 @@ async function enhanceSessionModal(sessionId) {
 async function enhanceTherapist(page) {
   if (runtime.therapistRoot === page && page.querySelector("[data-clinical-target-manager]")) return;
   runtime.therapistRoot = page;
+  const authGeneration = runtime.authGeneration;
   try {
     const context = await therapistContext();
-    if (!context) return;
+    if (!context || !page.isConnected || authGeneration !== runtime.authGeneration) return;
     runtime.therapistContext = context;
     runtime.targetMap = context.targetMap;
     renderTargetManager(page, context);
@@ -327,9 +337,10 @@ async function enhanceTherapist(page) {
 async function enhancePatient(page) {
   if (runtime.patientRoot === page && page.querySelector("[data-patient-review-target]")) return;
   runtime.patientRoot = page;
+  const authGeneration = runtime.authGeneration;
   try {
     const context = await patientWorkspace();
-    if (!context) return;
+    if (!context || !page.isConnected || authGeneration !== runtime.authGeneration) return;
     runtime.patientWorkspace = context;
     runtime.targetMap = context.targetMap;
     addPatientTargetSummaries(page, context);
@@ -341,9 +352,10 @@ async function enhancePatient(page) {
 async function enhanceLab(page) {
   if (runtime.labRoot === page && page.querySelector("[data-lab-review-target]")) return;
   runtime.labRoot = page;
+  const authGeneration = runtime.authGeneration;
   try {
     const context = runtime.patientWorkspace || await patientWorkspace();
-    if (!context) return;
+    if (!context || !page.isConnected || authGeneration !== runtime.authGeneration) return;
     runtime.patientWorkspace = context;
     addLabTargetStrip(page, context);
   } catch (error) {
@@ -369,6 +381,25 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") document.querySelector("#clinical-target-modal")?.remove();
 });
 
+let clinicalTargetsAuthSubscription = null;
+if (isConfigured && supabase) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    runtime.session = session || null;
+    runtime.sessionCheckedAt = Date.now();
+    runtime.authGeneration += 1;
+    runtime.therapistContext = null;
+    runtime.patientWorkspace = null;
+    runtime.targetMap = new Map();
+    runtime.therapistRoot = null;
+    runtime.patientRoot = null;
+    runtime.labRoot = null;
+    runtime.activeReviewSessionId = null;
+    document.querySelector("#clinical-target-modal")?.remove();
+    document.querySelectorAll("[data-clinical-target-comparison]").forEach((node) => node.remove());
+  });
+  clinicalTargetsAuthSubscription = data?.subscription || null;
+}
+
 const timer = window.setInterval(() => {
   const therapist = document.querySelector(".therapist-page");
   const patient = document.querySelector(".patient-portal.journey-page");
@@ -381,7 +412,10 @@ const timer = window.setInterval(() => {
   }
 }, 500);
 
-window.addEventListener("pagehide", () => window.clearInterval(timer), { once: true });
+window.addEventListener("pagehide", () => {
+  window.clearInterval(timer);
+  clinicalTargetsAuthSubscription?.unsubscribe?.();
+}, { once: true });
 
 window.__axionClinicalTargets = Object.freeze({
   version: 1,
