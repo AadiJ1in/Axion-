@@ -14,6 +14,8 @@ import {
   createVerifiedSessionContext,
   verifySessionContextAgainstWorkspace,
 } from "./session/session-context.js";
+import { APP_RELEASE, PROFILE_SCHEMA_VERSION } from "./release/release-config.js";
+import { SCHEMA_UNAVAILABLE_MESSAGE, SchemaCompatibilityError, verifyRuntimeSchema } from "./release/schema-compatibility.js";
 
 const FLEXION_ARC_SIGNALS = new Set(["knee_bend", "hip_flexion", "elbow_flexion", "torso_flexion"]);
 import {
@@ -1882,6 +1884,12 @@ async function submitTherapistMfa(event) {
 
 async function routeAuthenticatedProfile(profile) {
   currentProfile = profile;
+  try {
+    await verifyRuntimeSchema(supabase);
+  } catch (error) {
+    showSchemaCompatibilityError(error instanceof SchemaCompatibilityError ? error : new SchemaCompatibilityError(null, "SCHEMA_CHECK_FAILED"));
+    return;
+  }
   if (profile.role === "therapist") {
     if (!(await requireTherapistMfa())) return;
     await loadAssignedPatients();
@@ -2650,7 +2658,7 @@ async function saveSessionSummary(reps, feedback = {}) {
   const trackingProfile = getMovementProfile(context.exerciseKey, context.trackingMode);
   const degreeMetric = trackingProfile.unit === "°";
 
-  console.info("AXION_OPERATIONAL_EVENT", { event: "session_save_started", release: "rc1" });
+  console.info("AXION_OPERATIONAL_EVENT", { event: "session_save_started", release: APP_RELEASE });
   const { data, error } = await supabase
     .from("exercise_sessions")
     .insert({
@@ -2712,19 +2720,19 @@ async function saveSessionSummary(reps, feedback = {}) {
           && existing.data.plan_id === context.planId
           && existing.data.roadmap_node_id === context.roadmapNodeId
           && existing.data.exercise_key === context.exerciseKey) {
-        console.info("AXION_OPERATIONAL_EVENT", { event: "duplicate_session_rejected", release: "rc1" });
+        console.info("AXION_OPERATIONAL_EVENT", { event: "duplicate_session_rejected", release: APP_RELEASE });
         return existing.data;
       }
     }
-    console.error("AXION_OPERATIONAL_EVENT", { event: "session_save_failed", release: "rc1", errorCode: String(error.code || "SAVE_FAILED") });
+    console.error("AXION_OPERATIONAL_EVENT", { event: "session_save_failed", release: APP_RELEASE, errorCode: String(error.code || "SAVE_FAILED") });
     return null;
   }
 
-  console.info("AXION_OPERATIONAL_EVENT", { event: "session_save_succeeded", release: "rc1" });
+  console.info("AXION_OPERATIONAL_EVENT", { event: "session_save_succeeded", release: APP_RELEASE });
   reportSessions = [data, ...reportSessions.filter((session) => session.id !== data.id)];
   if (patientWorkspace) {
     patientWorkspace.sessions = [data, ...(patientWorkspace.sessions || []).filter((session) => session.id !== data.id)];
-    loadPatientWorkspace(supabase, context.patientId).then((workspace) => { patientWorkspace = workspace; }).catch(() => console.warn("AXION_OPERATIONAL_EVENT", { event: "roadmap_update_failed", release: "rc1", errorCode: "WORKSPACE_REFRESH_FAILED" }));
+    loadPatientWorkspace(supabase, context.patientId).then((workspace) => { patientWorkspace = workspace; }).catch(() => console.warn("AXION_OPERATIONAL_EVENT", { event: "roadmap_update_failed", release: APP_RELEASE, errorCode: "WORKSPACE_REFRESH_FAILED" }));
   }
   return data;
 }
@@ -3068,7 +3076,7 @@ function setText(selector, text) { const element = document.querySelector(select
 function movementProfileIdentity(assignment) {
   if (!assignment?.exercise_key || !assignment?.tracking_mode) throw new SessionContextError(SESSION_CONTEXT_ERROR.MISSING);
   const profile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
-  return `${assignment.exercise_key}:${assignment.tracking_mode}:${profile.signal || "signal"}:rc1-profile-v1`;
+  return `${assignment.exercise_key}:${assignment.tracking_mode}:${profile.signal || "signal"}:${PROFILE_SCHEMA_VERSION}`;
 }
 
 function beginVerifiedSessionContext(assignment, roadmapNode) {
@@ -3094,6 +3102,18 @@ function clearClinicalSessionIdentity() {
   activeSessionContext = null;
   sessionClientId = null;
   sessionStartedAt = null;
+}
+
+function showSchemaCompatibilityError(error = null) {
+  const code = error?.code || "SCHEMA_VERSION_MISMATCH";
+  console.error("AXION_OPERATIONAL_EVENT", { event: "schema_version_mismatch", release: APP_RELEASE, errorCode: code });
+  tracker?.stop?.();
+  stopMovementGameAnimation();
+  clearSetRest();
+  clearClinicalSessionIdentity();
+  currentView = "unavailable";
+  app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("shield",26)}</span><h2>Axion update in progress</h2><p>${escapeHtml(SCHEMA_UNAVAILABLE_MESSAGE)}</p><button class="button button--primary" data-reload>Try again</button></div></main>`);
+  bindEvents();
 }
 
 function showSessionIdentityError(error = null) {
