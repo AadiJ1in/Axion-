@@ -325,6 +325,23 @@ test("pose-model failure preserves a recoverable UI and writes no clinical sessi
   expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
 });
 
+test("same-user token refresh preserves an active clinical session", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  const begin = page.locator("#clinic-begin-exercise");
+  await expect(begin).toBeDisabled();
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.refreshSession());
+  await page.waitForTimeout(350);
+  await expect(begin).toBeDisabled();
+  await emitRep(page);
+  await openReflection(page);
+  await page.locator("[data-open-report]").click();
+  await expect.poll(async () => (await snapshot(page)).exercise_sessions.length).toBe(1);
+  await expect.poll(async () => (await snapshot(page)).session_capture_context.length).toBe(1);
+});
+
 test("slow patient workspace response cannot restore clinical data after session expiry", async ({ page }) => {
   await boot(page);
   await seedPlan(page);

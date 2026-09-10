@@ -231,6 +231,7 @@
     setTableDelay(table, milliseconds) { tableDelays.set(String(table), Math.max(0, Number(milliseconds) || 0)); },
     setSchemaVersion(value) { forceSchemaVersion = String(value); },
     expireSession() { session = null; aal = "aal1"; notify("SIGNED_OUT"); },
+    refreshSession() { if (session?.user) { session = sessionFor(session.user); notify("TOKEN_REFRESHED"); } },
     setPoseModelFailure(value) { poseModelFailure = Boolean(value); },
     get poseModelFailure() { return poseModelFailure; },
     snapshot() { return clone(db); },

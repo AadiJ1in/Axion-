@@ -277,7 +277,10 @@ function sync() {
 let reviewAuthSubscription = null;
 if (isConfigured && supabase) {
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const previousUserId = state.session?.user?.id || null;
+    const nextUserId = session?.user?.id || null;
     state.session = session || null;
+    if (previousUserId === nextUserId) return;
     state.authGeneration += 1;
     state.rows = new Map();
     state.page = null;

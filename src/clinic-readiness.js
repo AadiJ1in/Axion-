@@ -670,8 +670,11 @@ document.addEventListener("keydown", (event) => {
 let clinicAuthSubscription = null;
 if (isConfigured && supabase) {
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const previousUserId = runtime.liveSession?.user?.id || null;
+    const nextUserId = session?.user?.id || null;
     runtime.liveSession = session || null;
     runtime.liveSessionCheckedAt = Date.now();
+    if (previousUserId === nextUserId) return;
     runtime.authGeneration += 1;
     runtime.therapistContext = null;
     runtime.patientContext = null;

@@ -384,8 +384,11 @@ document.addEventListener("keydown", (event) => {
 let clinicalTargetsAuthSubscription = null;
 if (isConfigured && supabase) {
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const previousUserId = runtime.session?.user?.id || null;
+    const nextUserId = session?.user?.id || null;
     runtime.session = session || null;
     runtime.sessionCheckedAt = Date.now();
+    if (previousUserId === nextUserId) return;
     runtime.authGeneration += 1;
     runtime.therapistContext = null;
     runtime.patientWorkspace = null;
