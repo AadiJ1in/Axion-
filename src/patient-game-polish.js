@@ -1,3 +1,4 @@
+import "./clinical-session-capture.js";
 import "./clinic-readiness.js";
 
 // Patient-facing usability repairs for Movement Lab.
