@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - feature/rc1-session-identity
+    paths:
+      - .github/workflows/rc1-fix-roadmap-session-context.yml
 
 permissions:
   contents: write
 
 jobs:
   fix:
-    if: ${{ !contains(github.event.head_commit.message, '[rc1-roadmap-context-fixed]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
