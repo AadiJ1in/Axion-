@@ -424,9 +424,11 @@ async function refreshPatientWorkspaceFromRealtime() {
   const patientViews = new Set(["patient", "patient-profile", "patient-report", "awaiting-plan"]);
   if (!patientViews.has(currentView) || !currentSession?.user || currentSession.demo) return;
   const viewToRefresh = currentView;
+  const patientUserId = currentSession.user.id;
   try {
-    patientWorkspace = await loadPatientWorkspace(supabase, currentSession.user.id);
-    if (currentView !== viewToRefresh) return;
+    const loadedWorkspace = await loadPatientWorkspace(supabase, patientUserId);
+    if (currentView !== viewToRefresh || currentSession?.user?.id !== patientUserId) return;
+    patientWorkspace = loadedWorkspace;
     currentProfile = patientWorkspace.profile;
     startPatientRealtime();
     if (viewToRefresh === "patient-profile") patientProfileView();
@@ -485,7 +487,11 @@ async function routePatientPortal() {
     patientView();
     return;
   }
-  patientWorkspace = await loadPatientWorkspace(supabase, currentSession.user.id);
+  const patientUserId = currentSession?.user?.id;
+  if (!patientUserId) { authView(); return; }
+  const loadedWorkspace = await loadPatientWorkspace(supabase, patientUserId);
+  if (currentSession?.user?.id !== patientUserId || currentView !== "patient") return;
+  patientWorkspace = loadedWorkspace;
   startPatientRealtime();
   renderLoadedPatientWorkspace();
 }
@@ -1201,10 +1207,16 @@ async function loadAssignedPatients() {
     therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
     return;
   }
+  const therapistUserId = currentSession.user.id;
   try {
-    therapistConnections = await loadTherapistConnections(supabase, currentSession.user.id);
-    assignedPatients = therapistConnections.filter((item) => item.status === "active").map((item) => item.profile);
-    therapistWorkspace = await loadTherapistWorkspace(supabase, currentSession.user.id, assignedPatients.map((patient) => patient.id));
+    const loadedConnections = await loadTherapistConnections(supabase, therapistUserId);
+    if (currentSession?.user?.id !== therapistUserId) return;
+    const loadedPatients = loadedConnections.filter((item) => item.status === "active").map((item) => item.profile);
+    const loadedWorkspace = await loadTherapistWorkspace(supabase, therapistUserId, loadedPatients.map((patient) => patient.id));
+    if (currentSession?.user?.id !== therapistUserId) return;
+    therapistConnections = loadedConnections;
+    assignedPatients = loadedPatients;
+    therapistWorkspace = loadedWorkspace;
     startTherapistRealtime();
   } catch (error) {
     console.error("Failed to load therapist assignments:", error);
@@ -1990,7 +2002,7 @@ async function signOutPortal(reason = null) {
   demoRole = null;
   assignedPatients = [];
   therapistConnections = [];
-  therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [] };
+  therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
   stopTherapistRealtime();
   therapistSection = "overview";
   patientFilter = "all";
@@ -3543,11 +3555,21 @@ async function bootstrap() {
       armAuthIdleTimeout();
       if (!session) {
         currentProfile = null;
+        assignedPatients = [];
+        therapistConnections = [];
+        therapistWorkspace = { plans: [], assignments: [], sessions: [], alerts: [], safetyEvents: [], recommendations: [], roadmapNodes: [], roadmapCompletions: [] };
         stopPatientRealtime();
         stopTherapistRealtime();
         patientWorkspace = null;
         currentAssignment = null;
         currentRoadmapNode = null;
+        selectedPatient = null;
+        reportSessions = [];
+        reportSafetyEvents = [];
+        therapistNotes = [];
+        reportReps = [];
+        sessionReps = [];
+        sessionSafetyEvents = [];
         clearClinicalSessionIdentity();
         if (event === "SIGNED_OUT" || currentView !== "home") authView();
         return;
