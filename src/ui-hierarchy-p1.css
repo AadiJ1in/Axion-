@@ -1,0 +1,98 @@
+/* Secondary hierarchy refinements layered after the P0 shell. */
+
+/* Monitoring targets live under Plans as an advanced, collapsed workflow. */
+.ui-advanced-monitoring{margin:1rem 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.ui-advanced-monitoring>summary{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.85rem .25rem;cursor:pointer;list-style:none;color:#c7d7d1}
+.ui-advanced-monitoring>summary::-webkit-details-marker{display:none}
+.ui-advanced-monitoring>summary>div{display:grid;gap:.18rem}
+.ui-advanced-monitoring>summary b{font-size:1rem}
+.ui-advanced-monitoring>summary span{color:#7e928a;font-size:.8125rem}
+.ui-advanced-monitoring>summary strong{color:var(--mint);font-size:.8125rem}
+.ui-advanced-monitoring>[data-clinical-target-manager]{margin:0 0 1rem!important;padding:1rem!important;border:0!important;background:rgba(255,255,255,.018)!important}
+.ui-advanced-monitoring .clinical-target-head>div>span{display:none}
+.ui-advanced-monitoring .clinical-target-head em{font-size:.75rem}
+.ui-advanced-monitoring .clinical-target-plan{border-radius:10px}
+
+#clinical-target-modal .clinical-target-modal[data-ui-simplified="true"]{width:min(700px,100%);max-height:min(88vh,820px);overflow:auto}
+#clinical-target-modal .clinical-target-modal[data-ui-simplified="true"] fieldset>p{font-size:.8125rem}
+#clinical-target-modal .clinical-target-modal[data-ui-simplified="true"] label{font-size:.8125rem}
+#clinical-target-modal .clinical-target-modal[data-ui-simplified="true"] input,
+#clinical-target-modal .clinical-target-modal[data-ui-simplified="true"] textarea{font-size:.9rem;min-height:44px}
+
+/* Session review reads like a record rather than a metric wall. */
+.clinic-modal-layer:has(.clinic-session-modal[data-ui-session-review="true"]){place-items:stretch end;padding:0;background:rgba(3,8,7,.7)}
+.clinic-session-modal[data-ui-session-review="true"]{width:min(900px,96vw);max-width:none;height:100vh;max-height:none;overflow:auto;border-radius:18px 0 0 18px;padding:clamp(1.1rem,3vw,2rem);background:#0b1714}
+.clinic-session-modal[data-ui-session-review="true"] header{padding-bottom:1rem;border-bottom:1px solid var(--line)}
+.clinic-session-modal[data-ui-session-review="true"] header>span{font-size:.75rem}
+.clinic-session-modal[data-ui-session-review="true"] header h2{font-size:1.55rem;margin:.4rem 0 .25rem}
+.ui-record-section-heading{margin:1.5rem 0 .65rem}
+.ui-record-section-heading span{color:var(--mint);font:600 .72rem "DM Mono",monospace;letter-spacing:.1em}
+.ui-record-section-heading h3{margin:.25rem 0 0;font-size:1.15rem}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-cards{grid-template-columns:repeat(3,1fr);gap:.55rem}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-cards>article{min-height:92px;padding:.8rem;border:0;border-radius:10px;background:rgba(255,255,255,.025)}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-cards>article[data-ui-metric-priority="secondary"]{display:none}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-cards span{font-size:.7rem}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-cards b{font-size:1.1rem}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-grid{display:flex;flex-direction:column;gap:.7rem;margin-top:1.25rem}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-grid>article{padding:1rem;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
+.clinic-session-modal[data-ui-session-review="true"] [data-ui-review-section="patient-reported"]{order:1}
+.clinic-session-modal[data-ui-session-review="true"] [data-ui-review-section="changed"]{order:2}
+.clinic-session-modal[data-ui-session-review="true"] [data-ui-review-section="needs-review"]{order:3}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-grid h3{font-size:1rem}
+.clinic-session-modal[data-ui-session-review="true"] .clinic-review-grid :is(dt,dd,li,p){font-size:.8125rem}
+.ui-rep-details{margin-top:1rem;border-top:1px solid var(--line)}
+.ui-rep-details>summary{min-height:48px;display:flex;align-items:center;padding:.7rem 0;color:#8fa39b;cursor:pointer;font-weight:700}
+.ui-rep-details .clinic-rep-table{margin-top:0}
+
+/* Patient Progress: key information first, advanced movement analysis on demand. */
+.report-page[data-ui-patient-progress="true"]{padding-top:1.5rem;padding-bottom:6rem}
+.report-page[data-ui-patient-progress="true"] .report-header{margin-bottom:.5rem}
+.report-page[data-ui-patient-progress="true"] .report-header h1{font-size:clamp(2rem,4vw,2.7rem)}
+.ui-progress-intro{margin:0 0 1rem;padding:0 0 1rem;border-bottom:1px solid var(--line)}
+.ui-progress-intro span{color:var(--mint);font:600 .72rem "DM Mono",monospace;letter-spacing:.1em}
+.ui-progress-intro h2{margin:.35rem 0 .2rem;font-size:1.25rem}
+.ui-progress-intro p{margin:0;font-size:.875rem}
+.report-page[data-ui-patient-progress="true"] .pulse-banner{min-height:0;grid-template-columns:100px 1fr;padding:1rem;border:0;background:rgba(110,240,177,.035)}
+.report-page[data-ui-patient-progress="true"] .pulse-score{width:88px;height:88px}
+.report-page[data-ui-patient-progress="true"] .pulse-score b{font-size:1.8rem}
+.report-page[data-ui-patient-progress="true"] .pulse-factors{display:none}
+.report-page[data-ui-patient-progress="true"] .pulse-copy h2{font-size:1.15rem}
+.report-page[data-ui-patient-progress="true"] .pulse-copy p{font-size:.8125rem}
+.report-page[data-ui-patient-progress="true"] .report-metrics{margin:.7rem 0 1rem;border:0;background:rgba(255,255,255,.018)}
+.ui-more-movement{margin-top:1rem;border-top:1px solid var(--line)}
+.ui-more-movement>summary{min-height:52px;display:flex;align-items:center;padding:.75rem 0;color:var(--mint);cursor:pointer;font-size:.875rem;font-weight:800}
+.ui-more-movement>.analysis-grid{margin-top:.25rem}
+
+/* Therapist patient detail uses one clear record hierarchy. */
+.report-page[data-ui-therapist-record="true"]{max-width:1400px}
+.report-page[data-ui-therapist-record="true"] .report-header{margin-bottom:.5rem}
+.report-page[data-ui-therapist-record="true"] .report-header h1{font-size:clamp(1.8rem,3vw,2.35rem)}
+.report-page[data-ui-therapist-record="true"] .report-actions[data-ui-secondary-actions="true"] .button{background:transparent;border-color:var(--line-strong);color:#9fb1aa;box-shadow:none}
+.report-page[data-ui-therapist-record="true"] .pulse-banner{margin-top:.75rem}
+
+/* Reduce repeated developer-dashboard framing on signed-in surfaces. */
+body[data-axion-ui-screen="therapist"] :is(.workspace-list-card,.exercise-library-card,.plan-builder-card--v2,.therapist-roadmap-card),
+body[data-axion-ui-screen="patient"] :is(.daily-goal-card,.reward-card),
+body[data-axion-ui-screen="report"] :is(.rep-highlight,.ai-note,.heatmap-card,.review-card){box-shadow:none}
+body[data-axion-ui-screen="therapist"] .workspace-list-card{border-color:rgba(215,244,231,.07)}
+body[data-axion-ui-screen="patient"] .journey-atlas{box-shadow:none}
+
+/* One dominant action per panel. */
+body[data-axion-ui-screen] .button--primary{font-weight:800}
+body[data-axion-ui-screen] .button--ghost{box-shadow:none}
+body[data-axion-ui-screen] .text-link{font-size:.875rem}
+
+@media(max-width:900px){
+  .clinic-session-modal[data-ui-session-review="true"]{width:100vw;border-radius:0}
+  .clinic-session-modal[data-ui-session-review="true"] .clinic-review-cards{grid-template-columns:repeat(2,1fr)}
+  .report-page[data-ui-patient-progress="true"] .pulse-banner{grid-template-columns:90px 1fr}
+}
+
+@media(max-width:680px){
+  .ui-advanced-monitoring>summary{align-items:flex-start;flex-direction:column}
+  .clinic-session-modal[data-ui-session-review="true"]{padding:1rem}
+  .clinic-session-modal[data-ui-session-review="true"] .clinic-review-cards{grid-template-columns:1fr 1fr}
+  .report-page[data-ui-patient-progress="true"] .pulse-banner{grid-template-columns:1fr;text-align:left}
+  .report-page[data-ui-patient-progress="true"] .pulse-score{margin:0}
+  .ui-progress-intro h2{font-size:1.1rem}
+}
