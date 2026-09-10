@@ -1,29 +1,27 @@
-name: UI hierarchy one-shot correction
+name: UI hierarchy one shot
 
 on:
   push:
-    branches:
-      - feature/ui-hierarchy-sprint-final
-    paths:
-      - .github/workflows/ui-hierarchy-one-shot.yml
+    branches: [feature/ui-hierarchy-sprint-final]
+    paths: [.github/workflows/ui-hierarchy-one-shot.yml]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, 'Remove one-shot UI hierarchy workflow') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feature/ui-hierarchy-sprint-final
           fetch-depth: 0
-      - name: Make Journey placement one-time per render
+      - name: Patch Journey placement
+        shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('src/ui-hierarchy.js')
+          p = Path("src/ui-hierarchy.js")
           s = p.read_text()
           old = '''function ensureJourneyIntro(atlas) {
   if (!atlas || atlas.previousElementSibling?.matches("[data-ui-journey-intro]")) return;
@@ -47,16 +45,16 @@ jobs:
   atlas.before(intro);
 }'''
           if old not in s:
-              raise SystemExit('Journey intro block not found')
+              raise SystemExit("Journey intro block not found")
           s = s.replace(old, new, 1)
-          old2 = '''  if (atlas) {
+          old = '''  if (atlas) {
     atlas.id = "patient-journey";
     atlas.dataset.uiJourneyHero = "true";
     support?.after(atlas);
     ensureJourneyIntro(atlas);
     if (phases) atlas.after(phases);
   }'''
-          new2 = '''  if (atlas && atlas.dataset.uiPlaced !== "true") {
+          new = '''  if (atlas && atlas.dataset.uiPlaced !== "true") {
     atlas.dataset.uiPlaced = "true";
     atlas.id = "patient-journey";
     atlas.dataset.uiJourneyHero = "true";
@@ -64,15 +62,16 @@ jobs:
     ensureJourneyIntro(atlas);
     if (phases) atlas.after(phases);
   }'''
-          if old2 not in s:
-              raise SystemExit('Journey placement block not found')
-          p.write_text(s.replace(old2, new2, 1))
+          if old not in s:
+              raise SystemExit("Journey placement block not found")
+          p.write_text(s.replace(old, new, 1))
           PY
           node --check src/ui-hierarchy.js
-      - name: Commit correction
+      - name: Commit patched source
+        shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/ui-hierarchy.js
-          git commit -m "Make Journey placement idempotent [ui-hierarchy-layout-fixed]"
+          git commit -m "Make Journey placement idempotent"
           git push origin HEAD:feature/ui-hierarchy-sprint-final
