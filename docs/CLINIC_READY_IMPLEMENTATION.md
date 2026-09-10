@@ -15,16 +15,21 @@ This implementation reorganizes Axion around two questions:
 - Longitudinal 7-day, 30-day, and full-program charts for persisted consistency, range, symmetry, duration, patient-reported pain, and valid-rep percentage when attempted-rep coverage exists.
 - Camera setup checklist with person detection, body-region visibility, framing proxy, tracking confidence, explicit camera-angle limitation, and a Begin Exercise gate after calibration.
 - Live invalid-rep explanation layer derived only from the existing tracker state and calibration-relative movement-cycle rules. It never increments/decrements the clinical rep count.
-- Prescription-builder clarity: active functional controls are distinguished from future clinical target fields that the current data model/tracker does not safely enforce.
+- New-session patient context capture: pain before/after and confidence before/after are explicitly patient-reported, stored separately from pose-derived movement data, and shown in therapist session review.
+- New-session attempt coverage: observed attempts, rejected attempts, tracker validation reasons, and per-rep metrics are persisted when available. The existing Axion tracker remains the only authority that creates a valid clinical repetition.
+- Longitudinal valid-rep percentage becomes available only for sessions with persisted attempted-rep coverage; older sessions remain missing rather than being inferred.
+- Therapist-defined **review targets** for measured movement range, tempo, preferred maximum difficulty, and patient-reported pain. Targets are stored per assignment, visible to the patient, and compared against completed sessions for therapist review.
+- Review targets are deliberately separate from the calibration-relative rep detector: they do not change sets/reps, invalidate repetitions, unlock roadmap nodes, or modify a plan automatically.
+- Prescription-builder clarity distinguishes working dosage controls from review/decision-support fields and from future features that would require stronger clinical validation.
 - Isolated synthetic clinic demo fixture for a multi-week knee-rehabilitation case. The fixture is in browser source only and is never inserted into production patient tables.
 
-## Intentionally not represented as existing capability
+## Coverage boundaries
 
-- Pain **before/after** and confidence **before/after** are not separate persisted fields today, so live session review labels them as not collected.
-- Older sessions do not persist attempted-rep totals or invalid-rep reasons, so invalid counts and valid-rep percentages remain unavailable instead of being inferred.
-- The current movement-profile thresholds are calibration-relative cycle detectors, not therapist-prescribed clinical ROM targets. Target ROM/depth, prescribed tempo, difficulty target, and pain threshold remain explicitly future-ready rather than pretending to drive validation.
-- The database contains a `rep_metrics` table, but current stored coverage may be empty; the UI renders rep-by-rep detail only when rows actually exist.
+- Sessions completed before patient-context capture was introduced may not contain pain-before/after, confidence-before/after, attempted-rep totals, rejected-attempt reasons, or rep-metric rows. Axion leaves those values unavailable rather than backfilling synthetic data.
+- The current movement-profile thresholds are calibration-relative cycle detectors, not therapist-prescribed clinical ROM targets. Therapist review targets are comparison context only and do not feed the rep validator.
+- Single-camera pose estimation cannot prove clinical correctness, tissue loading, muscle activation, diagnosis, or safety. Camera setup and target comparisons remain descriptive.
+- A configured review target is not a treatment recommendation from Axion. It is a value entered by the treating therapist for their own review workflow.
 
 ## Clinical boundary
 
-All attention flags and trends are descriptive. They may say that pain increased, movement consistency changed, scheduled sessions were missed, or measured left/right variation increased. They do not diagnose injury, classify risk, or autonomously change treatment.
+All attention flags, target comparisons, and trends are descriptive. They may say that pain increased, a therapist-entered review target was crossed, movement consistency changed, scheduled sessions were missed, or measured left/right variation increased. They do not diagnose injury, classify medical risk, or autonomously change treatment.
