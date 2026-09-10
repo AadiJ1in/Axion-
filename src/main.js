@@ -7,6 +7,13 @@ import { journeyMapMarkup, sessionPathPresentation, layoutJourney } from "./jour
 import { adventureMarkup } from "./adventure-ui.js";
 import { motionInput, doseProgress, sessionCompletesDose } from "./adventure-definitions.js";
 import { matchesPrescriptionFilters } from "./prescription-filters.js";
+import {
+  SESSION_CONTEXT_ERROR,
+  SESSION_CONTEXT_USER_MESSAGE,
+  SessionContextError,
+  createVerifiedSessionContext,
+  verifySessionContextAgainstWorkspace,
+} from "./session/session-context.js";
 
 const FLEXION_ARC_SIGNALS = new Set(["knee_bend", "hip_flexion", "elbow_flexion", "torso_flexion"]);
 import {
@@ -120,6 +127,7 @@ let therapistRealtimeChannel = null;
 let therapistRealtimeRefreshTimer = null;
 let patientWorkspace = null;
 let currentAssignment = null;
+let activeSessionContext = null;
 let selectedPatient = null;
 let onboardingStep = 0;
 let tracker = null;
@@ -800,10 +808,14 @@ function movementGameMarkup(mapping, targetReps, assignment) {
 let backgroundPaused = false;
 
 function labView() {
-  if (!currentSession?.demo && !ownsActiveAssignment(currentSession, patientWorkspace, currentAssignment)) {
+  if (!currentSession?.demo) {
     if (!currentSession?.user) { authView(); return; }
-    routePatientPortal().catch(showPortalError);
-    return;
+    try { requireActiveSessionContext(); }
+    catch (error) { showSessionIdentityError(error); return; }
+    if (!ownsActiveAssignment(currentSession, patientWorkspace, currentAssignment)) {
+      showSessionIdentityError(new SessionContextError(SESSION_CONTEXT_ERROR.UNAUTHORIZED));
+      return;
+    }
   }
   clearSetRest();
   backgroundPaused = false;
@@ -1964,6 +1976,10 @@ async function signOutPortal(reason = null) {
   roadmapExpanded = false;
   patientWorkspace = null;
   currentAssignment = null;
+  activeSessionContext = null;
+  currentRoadmapNode = null;
+  sessionClientId = null;
+  sessionStartedAt = null;
   selectedPatient = null;
   reportSessions = [];
   reportSafetyEvents = [];
@@ -1981,11 +1997,15 @@ async function initializeLab() {
   if (!video || !canvas) return;
   tracker?.stop?.();
   stopMovementGameAnimation();
-  sessionStartedAt = Date.now();
-  sessionClientId = createUuid();
+  if (currentSession?.demo) {
+    sessionStartedAt = Date.now();
+    sessionClientId = createUuid();
+  } else {
+    try { requireActiveSessionContext(); } catch (error) { showSessionIdentityError(error); return; }
+  }
   sessionSafetyEvents = [];
   updateSyntheticTwin(0);
-  const activeProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
+  const activeProfile = getMovementProfile(currentAssignment.exercise_key, currentAssignment.tracking_mode);
   movementGameController = createMovementGameController({
     exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
     targetReps: demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10),
@@ -1997,8 +2017,8 @@ async function initializeLab() {
   setText("#calibration-copy", activeProfile.cameraHint);
   tracker = await createMovementTracker({
     video, canvas,
-    exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
-    trackingMode: currentAssignment?.tracking_mode || "pose_reps",
+    exerciseKey: currentAssignment.exercise_key,
+    trackingMode: currentAssignment.tracking_mode,
     prescribedSide: currentAssignment?.prescribed_side || "either",
     onCalibration: ({ progress, status }) => updateCalibration(progress, status),
     onPose: (points) => { updateTwinFromLandmarks(points); movementGameController?.updateCameraPose(points); },
@@ -2478,8 +2498,13 @@ function resetLab() {
   sessionSafetyEvents = [];
   movementGameController?.consume({ type: MOVEMENT_EVENT.RESET });
   tracker?.resume?.();
-  sessionStartedAt = Date.now();
-  sessionClientId = createUuid();
+  if (currentSession?.demo) {
+    sessionStartedAt = Date.now();
+    sessionClientId = createUuid();
+  } else {
+    try { beginVerifiedSessionContext(currentAssignment, currentRoadmapNode); }
+    catch (error) { showSessionIdentityError(error); return; }
+  }
   document.querySelector("#calibration-overlay")?.classList.remove("complete");
   document.querySelector(".camera-placeholder")?.classList.remove("demo-active");
   updateCalibration(0, "Stand naturally with your full body in view.");
@@ -2607,71 +2632,99 @@ function showReflection() {
 
 async function saveSessionSummary(reps, feedback = {}) {
   if (!supabase || !currentSession?.user || currentSession.demo || simulationSession || !reps.length) return null;
-  if (!ownsActiveAssignment(currentSession, patientWorkspace, currentAssignment)) return null;
+
+  let context;
+  try {
+    context = requireActiveSessionContext();
+  } catch (error) {
+    console.error("AXION_OPERATIONAL_EVENT", { event: "assignment_context_mismatch", errorCode: error?.code || SESSION_CONTEXT_ERROR.MISMATCH });
+    showSessionIdentityError(error);
+    return null;
+  }
+  if (!ownsActiveAssignment(currentSession, patientWorkspace, currentAssignment)) {
+    showSessionIdentityError(new SessionContextError(SESSION_CONTEXT_ERROR.UNAUTHORIZED));
+    return null;
+  }
 
   const stats = summaryFor(reps);
-  const trackingProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
+  const trackingProfile = getMovementProfile(context.exerciseKey, context.trackingMode);
   const degreeMetric = trackingProfile.unit === "°";
 
+  console.info("AXION_OPERATIONAL_EVENT", { event: "session_save_started", release: "rc1" });
   const { data, error } = await supabase
     .from("exercise_sessions")
     .insert({
-      patient_id: currentSession.user.id,
-      client_session_id: sessionClientId || createUuid(),
-      assignment_id: currentAssignment?.id?.startsWith?.("demo-") ? null : (currentAssignment?.id || null),
-      roadmap_node_id: currentRoadmapNode?.id?.startsWith?.("demo-") ? null : (currentRoadmapNode?.id || null),
-      exercise_key: currentAssignment?.exercise_key || "bodyweight_squat",
+      patient_id: context.patientId,
+      plan_id: context.planId,
+      client_session_id: context.clientSessionId,
+      assignment_id: context.assignmentId,
+      roadmap_node_id: context.roadmapNodeId,
+      exercise_key: context.exerciseKey,
       repetitions: trackingProfile.mode === "hold" ? 0 : reps.length,
-      duration_seconds: sessionStartedAt ? Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)) : null,
-      started_at: sessionStartedAt ? new Date(sessionStartedAt).toISOString() : null,
+      duration_seconds: Math.max(0, Math.round((Date.now() - new Date(context.startedAt).getTime()) / 1000)),
+      started_at: context.startedAt,
       movement_summary: {
         average_depth_angle: degreeMetric ? stats.depth : null,
-        tracked_joint: currentAssignment?.joint || exerciseCatalog[currentAssignment?.exercise_key]?.joint || "knee",
+        tracked_joint: currentAssignment?.joint || exerciseCatalog[context.exerciseKey]?.joint || null,
         tracking_signal: trackingProfile.signal,
         metric_label: trackingProfile.label,
         measurement_unit: trackingProfile.unit,
+        movement_profile_id: context.movementProfileId,
         average_signal_value: stats.jointAngle,
         average_signal_excursion: stats.movementRange,
         average_joint_angle_degrees: degreeMetric ? stats.jointAngle : null,
         average_joint_movement_range_degrees: degreeMetric ? stats.movementRange : null,
         average_knee_bend_degrees: trackingProfile.signal === "knee_bend" ? stats.kneeBend : null,
         measured_hold_seconds: trackingProfile.mode === "hold" ? reps.reduce((total, rep) => total + (rep.holdSeconds || 0), 0) : null,
-        average_tempo_seconds: Number(stats.tempo),
-        average_symmetry_delta: Number(stats.symmetry),
-        movement_consistency: stats.consistency,
+        average_tempo_seconds: Number.isFinite(Number(stats.tempo)) ? Number(stats.tempo) : null,
+        average_symmetry_delta: Number.isFinite(Number(stats.symmetry)) ? Number(stats.symmetry) : null,
+        movement_consistency: Number.isFinite(Number(stats.consistency)) ? Number(stats.consistency) : null,
         completed_sets: doseProgress(currentAssignment, reps.length).completedSets,
-        prescribed_sets: currentAssignment?.target_sets,
-        prescribed_reps_per_set: currentAssignment?.target_repetitions,
+        prescribed_sets: context.prescribedSets,
+        prescribed_reps_per_set: context.prescribedReps,
+        prescribed_hold_seconds: context.prescribedHoldSeconds,
+        prescribed_rest_seconds: context.restSeconds,
         adventure: movementGameController?.getState().mode === "game" ? {
-          version: 2, perspective: currentAssignment.exercise_key === "bodyweight_squat" ? "live_camera" : "world", scene: movementGameController.getState().mapping?.scene,
+          version: 2,
+          perspective: context.exerciseKey === "bodyweight_squat" ? "live_camera" : "world",
+          scene: movementGameController.getState().mapping?.scene,
           score: movementGameController.getState().score,
           stars: movementGameController.getState().stars,
           collectibles: movementGameController.getState().collectibles,
           collisions: movementGameController.getState().collisions,
-        } : null
+        } : null,
       },
-      difficulty: Number(feedback.difficulty) || null,
+      difficulty: Number.isInteger(Number(feedback.difficulty)) ? Number(feedback.difficulty) : null,
       discomfort: ["none", "mild", "moderate", "stop"].includes(feedback.discomfort) ? feedback.discomfort : null,
-      completed_at: new Date().toISOString()
+      completed_at: new Date().toISOString(),
     })
-    .select("id, patient_id, assignment_id, roadmap_node_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, started_at, completed_at, created_at")
+    .select("id, patient_id, plan_id, assignment_id, roadmap_node_id, exercise_key, repetitions, duration_seconds, movement_summary, difficulty, discomfort, started_at, completed_at, created_at, session_context_version, session_identity_context")
     .single();
 
   if (error) {
-    if (error.code === "23505" && sessionClientId) {
+    if (error.code === "23505" && context.clientSessionId) {
       const existing = await supabase.from("exercise_sessions")
-        .select("id").eq("patient_id", currentSession.user.id)
-        .eq("client_session_id", sessionClientId).maybeSingle();
-      if (!existing.error && existing.data) return existing.data;
+        .select("id, patient_id, plan_id, assignment_id, roadmap_node_id, exercise_key")
+        .eq("patient_id", context.patientId)
+        .eq("client_session_id", context.clientSessionId).maybeSingle();
+      if (!existing.error && existing.data
+          && existing.data.assignment_id === context.assignmentId
+          && existing.data.plan_id === context.planId
+          && existing.data.roadmap_node_id === context.roadmapNodeId
+          && existing.data.exercise_key === context.exerciseKey) {
+        console.info("AXION_OPERATIONAL_EVENT", { event: "duplicate_session_rejected", release: "rc1" });
+        return existing.data;
+      }
     }
-    console.error("Failed to save exercise session:", error);
+    console.error("AXION_OPERATIONAL_EVENT", { event: "session_save_failed", release: "rc1", errorCode: String(error.code || "SAVE_FAILED") });
     return null;
   }
 
+  console.info("AXION_OPERATIONAL_EVENT", { event: "session_save_succeeded", release: "rc1" });
   reportSessions = [data, ...reportSessions.filter((session) => session.id !== data.id)];
   if (patientWorkspace) {
     patientWorkspace.sessions = [data, ...(patientWorkspace.sessions || []).filter((session) => session.id !== data.id)];
-    loadPatientWorkspace(supabase, currentSession.user.id).then((workspace) => { patientWorkspace = workspace; }).catch((error) => console.warn("Could not refresh roadmap progress", error));
+    loadPatientWorkspace(supabase, context.patientId).then((workspace) => { patientWorkspace = workspace; }).catch(() => console.warn("AXION_OPERATIONAL_EVENT", { event: "roadmap_update_failed", release: "rc1", errorCode: "WORKSPACE_REFRESH_FAILED" }));
   }
   return data;
 }
@@ -3011,6 +3064,72 @@ function safeOperationalMessage(error, fallback) {
 }
 
 function setText(selector, text) { const element = document.querySelector(selector); if (element) element.textContent = text; }
+
+function movementProfileIdentity(assignment) {
+  if (!assignment?.exercise_key || !assignment?.tracking_mode) throw new SessionContextError(SESSION_CONTEXT_ERROR.MISSING);
+  const profile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
+  return `${assignment.exercise_key}:${assignment.tracking_mode}:${profile.signal || "signal"}:rc1-profile-v1`;
+}
+
+function beginVerifiedSessionContext(assignment, roadmapNode) {
+  if (currentSession?.demo) { activeSessionContext = null; return null; }
+  const startedAt = new Date();
+  const clientSessionId = createUuid();
+  const context = createVerifiedSessionContext({
+    authUserId: currentSession?.user?.id,
+    workspace: patientWorkspace,
+    assignmentId: assignment?.id,
+    roadmapNodeId: roadmapNode?.id || null,
+    clientSessionId,
+    startedAt,
+    movementProfileId: movementProfileIdentity(assignment),
+  });
+  activeSessionContext = context;
+  sessionStartedAt = new Date(context.startedAt).getTime();
+  sessionClientId = context.clientSessionId;
+  return context;
+}
+
+function clearClinicalSessionIdentity() {
+  activeSessionContext = null;
+  sessionClientId = null;
+  sessionStartedAt = null;
+}
+
+function showSessionIdentityError(error = null) {
+  const code = error?.code || SESSION_CONTEXT_ERROR.MISSING;
+  console.error("AXION_OPERATIONAL_EVENT", { event: "assignment_context_invalid", errorCode: code });
+  tracker?.stop?.();
+  stopMovementGameAnimation();
+  clearSetRest();
+  clearClinicalSessionIdentity();
+  currentAssignment = null;
+  currentRoadmapNode = null;
+  currentView = "patient";
+  app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("shield",26)}</span><h2>Session verification required</h2><p>${escapeHtml(SESSION_CONTEXT_USER_MESSAGE)}</p><button class="button button--primary" data-nav="patient">Return to treatment plan</button></div></main>`);
+  bindEvents();
+}
+
+function requireActiveSessionContext() {
+  if (currentSession?.demo) return null;
+  const context = verifySessionContextAgainstWorkspace(activeSessionContext, {
+    authUserId: currentSession?.user?.id,
+    workspace: patientWorkspace,
+  });
+  const assignment = patientWorkspace?.assignments?.find((item) => item.id === context.assignmentId) || null;
+  const node = context.roadmapNodeId
+    ? patientWorkspace?.roadmapNodes?.find((item) => item.id === context.roadmapNodeId) || null
+    : null;
+  if (!assignment || assignment.id !== context.assignmentId || assignment.exercise_key !== context.exerciseKey) {
+    throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
+  }
+  if (context.roadmapNodeId && !node) throw new SessionContextError(SESSION_CONTEXT_ERROR.ROADMAP_STALE);
+  currentAssignment = assignment;
+  currentRoadmapNode = node;
+  sessionStartedAt = new Date(context.startedAt).getTime();
+  sessionClientId = context.clientSessionId;
+  return context;
+}
 function animateNumber(element, target, duration = 650) {
   if (!element || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const start = performance.now();
@@ -3091,6 +3210,7 @@ function navigateTo(target) {
   clearSetRest();
   tracker?.stop?.();
   stopMovementGameAnimation();
+  if (target !== "lab") clearClinicalSessionIdentity();
   if (demoScriptActive) { stopDemo(); demoScriptActive = false; }
   currentView = target;
   app.innerHTML = layout(loadingMarkup(`Loading ${target}`));
@@ -3098,8 +3218,15 @@ function navigateTo(target) {
     if (target === "home") homeView();
     if (target === "patient") routePatientPortal().catch(showPortalError);
     if (target === "lab") {
-      if ((currentProfile?.role === "patient" || demoRole === "patient") && !patientWorkspace?.assignments?.length) routePatientPortal().catch(showPortalError);
-      else { currentAssignment = currentAssignment || patientWorkspace?.assignments?.[0] || null; labView(); }
+      if (currentProfile?.role === "patient" && currentSession?.user && !currentSession.demo) {
+        if (!activeSessionContext) { showSessionIdentityError(new SessionContextError(SESSION_CONTEXT_ERROR.MISSING)); return; }
+        try { requireActiveSessionContext(); labView(); } catch (error) { showSessionIdentityError(error); }
+      } else {
+        // Synthetic demo navigation may choose its fixture assignment. Clinical
+        // patient navigation never falls back to the first prescription.
+        currentAssignment = currentAssignment || patientWorkspace?.assignments?.[0] || null;
+        labView();
+      }
     }
     if (target === "report") {
       if (currentSession?.user && !currentSession.demo) {
@@ -3296,11 +3423,31 @@ function bindEvents() {
     if (roadmapExpanded) requestAnimationFrame(() => document.querySelector("#patient-exercises")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   });
   document.querySelectorAll("[data-start-assignment]").forEach((element) => element.addEventListener("click", () => {
+    const assignmentId = element.dataset.startAssignment;
     const path = sessionPathPresentation(patientWorkspace || demoPatientWorkspace());
     const activeNode = path.nodes.find((node) => ["current", "override"].includes(node.state));
-    currentRoadmapNode = activeNode?.assignmentIds.includes(element.dataset.startAssignment) ? activeNode : null;
-    currentAssignment = patientWorkspace?.assignments?.find((assignment) => assignment.id === element.dataset.startAssignment) || null;
-    if (currentAssignment) labView();
+    const roadmapNode = activeNode?.assignmentIds.includes(assignmentId) ? activeNode : null;
+    const assignment = patientWorkspace?.assignments?.find((item) => item.id === assignmentId) || null;
+
+    if (currentSession?.demo) {
+      currentRoadmapNode = roadmapNode;
+      currentAssignment = assignment;
+      if (currentAssignment) labView();
+      return;
+    }
+
+    if (!assignment || !roadmapNode) {
+      showSessionIdentityError(new SessionContextError(assignment ? SESSION_CONTEXT_ERROR.ROADMAP_STALE : SESSION_CONTEXT_ERROR.MISMATCH));
+      return;
+    }
+    try {
+      currentAssignment = assignment;
+      currentRoadmapNode = roadmapNode;
+      beginVerifiedSessionContext(assignment, roadmapNode);
+      labView();
+    } catch (error) {
+      showSessionIdentityError(error);
+    }
   }));
   document.querySelector("[data-onboarding-next]")?.addEventListener("click", advanceOnboarding);
   document.querySelector("[data-onboarding-back]")?.addEventListener("click", () => { onboardingStep = Math.max(0, onboardingStep - 1); onboardingView(); });
