@@ -41,6 +41,80 @@ replaceExactly(
 );
 
 replaceExactly(
+  "src/main.js",
+  `    <main class="lab-page \${gameMapping ? "adventure-lab" : ""} \${gameMapping?.action === "duck" ? "ruins-runner-lab" : ""}">`,
+  `    <main class="lab-page \${gameMapping ? "adventure-lab" : ""} \${gameMapping?.action === "duck" ? "ruins-runner-lab" : ""}" data-session-assignment-id="\${escapeHtml(activeSessionContext?.assignmentId || assignment.id || "")}" data-session-plan-id="\${escapeHtml(activeSessionContext?.planId || assignment.plan_id || "")}" data-session-roadmap-node-id="\${escapeHtml(activeSessionContext?.roadmapNodeId || currentRoadmapNode?.id || "")}">`,
+  "lab DOM exposes immutable non-PHI session identifiers to enhancement layers",
+);
+
+replaceExactly(
+  "src/main.js",
+  `      if (!session) {
+        currentProfile = null;
+        stopPatientRealtime();
+        stopTherapistRealtime();
+      }
+      if (event === "PASSWORD_RECOVERY") {`,
+  `      if (!session) {
+        currentProfile = null;
+        stopPatientRealtime();
+        stopTherapistRealtime();
+        patientWorkspace = null;
+        currentAssignment = null;
+        currentRoadmapNode = null;
+        clearClinicalSessionIdentity();
+        if (event === "SIGNED_OUT" || currentView !== "home") authView();
+        return;
+      }
+      if (event === "PASSWORD_RECOVERY") {`,
+  "auth expiry clears clinical identity and returns to sign-in",
+);
+
+replaceExactly(
+  "src/clinical-session-capture.js",
+  `async function resolveAssignment() {
+  if (state.assignment) return state.assignment;
+  const session = await authSession();
+  if (!session?.user) return null;
+  if (!state.workspace) state.workspace = await loadPatientWorkspace(supabase, session.user.id);
+  const title = document.querySelector(".lab-header h1")?.textContent?.trim();
+  state.assignment = (state.workspace.assignments || []).find((item) => item.display_name === title)
+    || state.workspace.assignments?.[0]
+    || null;
+  if (state.assignment) {
+    state.profile = getMovementProfile(state.assignment.exercise_key, state.assignment.tracking_mode);
+    if (state.profile.mode !== "hold") state.attemptTracker = createAttemptTracker(state.profile);
+  }
+  return state.assignment;
+}`,
+  `async function resolveAssignment() {
+  if (state.assignment) return state.assignment;
+  const session = await authSession();
+  if (!session?.user) return null;
+  if (!state.workspace) state.workspace = await loadPatientWorkspace(supabase, session.user.id);
+  const lab = document.querySelector(".lab-page");
+  const assignmentId = String(lab?.dataset.sessionAssignmentId || "").trim();
+  const planId = String(lab?.dataset.sessionPlanId || "").trim();
+  if (!assignmentId || !planId || state.workspace?.plan?.id !== planId) return null;
+  state.assignment = (state.workspace.assignments || []).find((item) =>
+    item.id === assignmentId && item.plan_id === planId && item.status === "active") || null;
+  if (state.assignment) {
+    state.profile = getMovementProfile(state.assignment.exercise_key, state.assignment.tracking_mode);
+    if (state.profile.mode !== "hold") state.attemptTracker = createAttemptTracker(state.profile);
+  }
+  return state.assignment;
+}`,
+  "clinical capture resolves only the immutable verified assignment id",
+);
+
+replaceExactly(
+  "src/styles.css",
+  `.reflection-card{width:min(520px,100%);padding:2rem;border:1px solid var(--line-strong);border-radius:18px;background:#0d1916;box-shadow:0 40px 100px rgba(0,0,0,.5)}`,
+  `.reflection-card{width:min(520px,100%);max-height:calc(100vh - 2rem);overflow-y:auto;overscroll-behavior:contain;padding:2rem;border:1px solid var(--line-strong);border-radius:18px;background:#0d1916;box-shadow:0 40px 100px rgba(0,0,0,.5)}`,
+  "reflection modal remains usable when clinical context expands its height",
+);
+
+replaceExactly(
   "tests/e2e/rc1-critical.spec.js",
   '  await expect(page.locator(`[data-start-assignment="${IDS.assignmentA}"]`)).toBeVisible();',
   '  await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toBeVisible();',
@@ -59,22 +133,54 @@ replaceExactly(
   await expect(startButton).toBeVisible();
   await startButton.click();
   await expect(page.locator("#finish-session")).toBeVisible();
+
+  const beforePain = page.locator("#session-pain-before");
+  await expect(beforePain).toBeVisible();
+  await beforePain.evaluate((input) => {
+    input.value = "0";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator('[data-before-confidence] [data-value="4"]').click();
+  const begin = page.locator("#clinic-begin-exercise");
+  await expect(begin).toBeEnabled();
+  await begin.click();
 }`,
-  "browser test starts the exact assignment through the real roadmap modal",
+  "browser test follows roadmap identity and required clinical pre-session gate",
+);
+
+replaceExactly(
+  "tests/e2e/rc1-critical.spec.js",
+  `async function openReflection(page) {
+  await page.locator("#finish-session").click();
+  await expect(page.locator("[data-open-report]")).toBeVisible();
+}`,
+  `async function openReflection(page) {
+  await page.locator("#finish-session").click();
+  const afterPain = page.locator("#session-pain-after");
+  await expect(afterPain).toBeVisible();
+  await afterPain.evaluate((input) => {
+    input.value = "0";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator('[data-after-confidence] [data-value="4"]').click();
+  await expect(page.locator("[data-open-report]")).toBeVisible();
+}`,
+  "browser test completes required post-session patient context before report save",
 );
 
 replaceExactly(
   "tests/e2e/rc1-critical.spec.js",
   '  await expect(page.getByText("RC Patient B").first()).toBeVisible();',
-  '  await expect(page.locator("main.patient-portal")).toBeVisible();',
-  "patient B isolation test waits for the patient portal rather than presentation copy",
+  '  await expect(page.locator("#auth-form")).toHaveCount(0);',
+  "patient B isolation waits for authenticated state without assuming an active plan layout",
 );
 
 replaceExactly(
   "tests/e2e/rc1-critical.spec.js",
   '  await expect(page.getByText("RC Patient A")).toHaveCount(0);',
-  '  await expect(page.getByText("RC1 exact identity plan")).toHaveCount(0);',
-  "patient B isolation test asserts patient A treatment data is absent",
+  `  await expect(page.getByText("RC1 exact identity plan")).toHaveCount(0);
+  await expect(page.locator(\`[data-roadmap-node="\${IDS.node}"]\`)).toHaveCount(0);`,
+  "patient B isolation asserts patient A plan and roadmap data are absent",
 );
 
-console.log("RC1 roadmap identity repair applied successfully.");
+console.log("RC1 roadmap identity and clinical workflow repair applied successfully.");
