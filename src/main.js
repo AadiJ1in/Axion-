@@ -3088,8 +3088,7 @@ function setText(selector, text) { const element = document.querySelector(select
 
 function movementProfileIdentity(assignment) {
   if (!assignment?.exercise_key || !assignment?.tracking_mode) throw new SessionContextError(SESSION_CONTEXT_ERROR.MISSING);
-  const profile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
-  return `${assignment.exercise_key}:${assignment.tracking_mode}:${profile.signal || "signal"}:${PROFILE_SCHEMA_VERSION}`;
+  return `${assignment.exercise_key}:${assignment.tracking_mode}:${PROFILE_SCHEMA_VERSION}`;
 }
 
 function beginVerifiedSessionContext(assignment, roadmapNode) {
@@ -3154,6 +3153,9 @@ function requireActiveSessionContext() {
     ? patientWorkspace?.roadmapNodes?.find((item) => item.id === context.roadmapNodeId) || null
     : null;
   if (!assignment || assignment.id !== context.assignmentId || assignment.exercise_key !== context.exerciseKey) {
+    throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
+  }
+  if (context.movementProfileId !== movementProfileIdentity(assignment)) {
     throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
   }
   if (context.roadmapNodeId && !node) throw new SessionContextError(SESSION_CONTEXT_ERROR.ROADMAP_STALE);
