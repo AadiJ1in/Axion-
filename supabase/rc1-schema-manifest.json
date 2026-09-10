@@ -1,0 +1,141 @@
+{
+  "manifestVersion": 1,
+  "applicationSchemaVersion": "202609100004",
+  "notes": "This is the authoritative RC1 application-schema capability manifest. Production migration timestamps may differ from repository filenames because some migrations were applied through the connected Supabase project before the repository naming was normalized.",
+  "acceptedDuplicateRepositoryPrefixes": {
+    "202609100001": [
+      "202609100001_session_capture_context.sql",
+      "202609100001_therapist_patient_reviews.sql"
+    ],
+    "202609100002": [
+      "202609100002_assignment_clinical_review_targets.sql",
+      "202609100002_therapist_review_queue_rpc.sql"
+    ]
+  },
+  "requiredCapabilities": [
+    {
+      "id": "production_security",
+      "repositoryFile": "202608250004_production_security.sql",
+      "productionMigration": "production_security",
+      "productionVersion": "20260825131517",
+      "changeType": "security-policy",
+      "destructive": false
+    },
+    {
+      "id": "defense_in_depth",
+      "repositoryFile": "202609030001_defense_in_depth.sql",
+      "productionMigration": "defense_in_depth",
+      "productionVersion": "20260903174420",
+      "changeType": "security-policy",
+      "destructive": false
+    },
+    {
+      "id": "therapist_mfa",
+      "repositoryFile": "202609030002_therapist_mfa.sql",
+      "productionMigration": "therapist_mfa",
+      "productionVersion": "20260903182032",
+      "changeType": "authorization",
+      "destructive": false
+    },
+    {
+      "id": "roadmap_state",
+      "repositoryFile": "202609010003_session_path_roadmap.sql",
+      "productionMigration": "session_path_roadmap",
+      "productionVersion": "20260901182529",
+      "changeType": "schema-and-functions",
+      "destructive": false
+    },
+    {
+      "id": "movement_game_assignments",
+      "repositoryFile": "202609040001_movement_game_assignments.sql",
+      "productionMigration": "movement_game_assignments",
+      "productionVersion": "20260904155008",
+      "changeType": "additive-schema",
+      "destructive": false
+    },
+    {
+      "id": "rest_intervals",
+      "repositoryFile": "202609050001_assignment_rest_intervals.sql",
+      "productionMigration": "assignment_rest_intervals",
+      "productionVersion": "20260905174218",
+      "changeType": "additive-schema",
+      "destructive": false
+    },
+    {
+      "id": "session_capture_context",
+      "repositoryFile": "202609100001_session_capture_context.sql",
+      "productionMigration": "session_capture_context",
+      "productionVersion": "20260910023300",
+      "changeType": "additive-schema",
+      "destructive": false
+    },
+    {
+      "id": "clinical_review_targets",
+      "repositoryFile": "202609100002_assignment_clinical_review_targets.sql",
+      "productionMigration": "assignment_clinical_review_targets",
+      "productionVersion": "20260910024321",
+      "changeType": "additive-schema-and-rls",
+      "destructive": false
+    },
+    {
+      "id": "therapist_review_receipts",
+      "repositoryFile": "202609100001_therapist_patient_reviews.sql",
+      "productionMigration": "therapist_patient_reviews",
+      "productionVersion": "20260910030323",
+      "changeType": "additive-schema-and-rls",
+      "destructive": false
+    },
+    {
+      "id": "therapist_review_queue",
+      "repositoryFile": "202609100002_therapist_review_queue_rpc.sql",
+      "productionMigration": "therapist_review_queue_rpc",
+      "productionVersion": "20260910030459",
+      "changeType": "additive-rpc",
+      "destructive": false
+    },
+    {
+      "id": "rc1_verified_session_identity",
+      "repositoryFile": "202609100003_rc1_verified_session_identity.sql",
+      "productionMigration": "rc1_verified_session_identity",
+      "productionVersion": null,
+      "changeType": "additive-schema-and-validation-trigger",
+      "destructive": false,
+      "deploymentOrder": 1
+    },
+    {
+      "id": "rc1_application_schema_version",
+      "repositoryFile": "202609100004_rc1_application_schema_version.sql",
+      "productionMigration": "rc1_application_schema_version",
+      "productionVersion": null,
+      "changeType": "additive-rpc",
+      "destructive": false,
+      "deploymentOrder": 2
+    }
+  ],
+  "historicalProductionOnly": [
+    {
+      "version": "20260908173439",
+      "name": "optimize_patient_workspace_login_reads",
+      "status": "historical-production-migration",
+      "currentClientRequirement": false
+    },
+    {
+      "version": "20260908183021",
+      "name": "patient_roadmap_assignment_lookup",
+      "status": "historical-production-migration",
+      "currentClientRequirement": false
+    },
+    {
+      "version": "20260908200905",
+      "name": "patient_workspace_bootstrap_rpc",
+      "status": "historical-production-migration",
+      "currentClientRequirement": false
+    },
+    {
+      "version": "20260908201321",
+      "name": "remove_unused_patient_workspace_rpcs",
+      "status": "historical-production-migration",
+      "currentClientRequirement": false
+    }
+  ]
+}
