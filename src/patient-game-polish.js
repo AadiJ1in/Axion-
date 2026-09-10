@@ -5,6 +5,7 @@ import "./therapist-review-audit.js";
 import "./plan-version-history.js";
 import "./session-review-notes.js";
 import { syncUiHierarchy } from "./ui-hierarchy.js";
+import { syncUiHierarchyP1 } from "./ui-hierarchy-p1.js";
 
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
@@ -26,8 +27,9 @@ function restVisible(overlay) {
 
 function syncRestExperience() {
   // Reuse this existing lightweight interval for presentation hierarchy too.
-  // The hierarchy layer is idempotent and does not observe or write clinical state.
+  // Both hierarchy layers are idempotent and do not observe or write clinical state.
   syncUiHierarchy();
+  syncUiHierarchyP1();
 
   const overlay = document.querySelector('#set-rest-overlay');
   const viewport = document.querySelector('.adventure-card .adventure-viewport');
