@@ -136,19 +136,23 @@ export function createRepCycleDetector(profile) {
   };
 }
 
-export async function createMovementTracker({
-  video,
-  canvas,
-  exerciseKey = "bodyweight_squat",
-  trackingMode = "pose_reps",
-  prescribedSide = "either",
-  onUpdate = () => {},
-  onPose = () => {},
-  onRep = () => {},
-  onCalibration = () => {},
-  onTrackingState = () => {},
-  onError = () => {},
-}) {
+export async function createMovementTracker(options) {
+  if (import.meta.env.MODE === "e2e" && typeof window !== "undefined" && typeof window.__AXION_E2E_MOVEMENT_TRACKER_FACTORY__ === "function") {
+    return window.__AXION_E2E_MOVEMENT_TRACKER_FACTORY__(options);
+  }
+  const {
+    video,
+    canvas,
+    exerciseKey = "bodyweight_squat",
+    trackingMode = "pose_reps",
+    prescribedSide = "either",
+    onUpdate = () => {},
+    onPose = () => {},
+    onRep = () => {},
+    onCalibration = () => {},
+    onTrackingState = () => {},
+    onError = () => {},
+  } = options || {};
   const profile = getMovementProfile(exerciseKey, trackingMode);
   let landmarker;
   const trackerApi = {};
@@ -344,18 +348,17 @@ export async function createMovementTracker({
     const rightDelta = metrics.right !== null && baselineRight !== null ? Math.abs(metrics.right - baselineRight) : null;
     const sideDeltas = [leftDelta, rightDelta].filter(Number.isFinite);
     const averageDelta = Math.abs(metrics.value - baselineAngle);
-    // Use the side actually moving most. Averaging a working limb with a still limb
-    // previously halved unilateral excursion and made valid reps harder to capture.
     const preferredDelta = prescribedSide === "left" ? leftDelta : prescribedSide === "right" ? rightDelta : null;
     const movementDelta = prescribedSide !== "either" ? (preferredDelta ?? 0) : sideDeltas.length ? Math.max(...sideDeltas) : averageDelta;
-    const measurementSide = prescribedSide !== "either" ? prescribedSide : Number.isFinite(leftDelta) || Number.isFinite(rightDelta)
-      ? ((leftDelta ?? -Infinity) >= (rightDelta ?? -Infinity) ? "left" : "right")
-      : null;
-    const displayValue = measurementSide && Number.isFinite(metrics[measurementSide]) ? metrics[measurementSide] : metrics.value;
+    const measurementSide = prescribedSide !== "either" ? prescribedSide : Number.isFinite(leftDelta) && Number.isFinite(rightDelta)
+      ? (leftDelta >= rightDelta ? "left" : "right")
+      : Number.isFinite(leftDelta) ? "left" : Number.isFinite(rightDelta) ? "right" : null;
+    const displayValue = metrics.value;
     latestAngle = displayValue;
     latestSymmetryDelta = metrics.symmetryDelta;
     latestMovementRange = movementDelta;
     latestMeasurementSide = measurementSide;
+
     if (profile.mode === "hold") {
       if (profile.activeMotion && movementDelta >= profile.startThreshold) lastActiveMovementAt = now;
       const active = profile.activeMotion
@@ -414,18 +417,7 @@ export async function createMovementTracker({
       message = slowing ? "Your last reps are slowing—take a breath." : `Rep ${reps} captured. Keep that rhythm.`;
     }
 
-    onUpdate({
-      reps,
-      stage,
-      angle: Math.round(metrics.value),
-      jointAngle: Math.round(metrics.value),
-      angleLabel: profile.label,
-      measurementUnit: profile.unit,
-      movementRange: Math.round(movementDelta),
-      symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)),
-      measurementSide,
-      message,
-    });
+    onUpdate({ reps, stage, angle: Math.round(metrics.value), jointAngle: Math.round(metrics.value), angleLabel: profile.label, measurementUnit: profile.unit, movementRange: Math.round(movementDelta), symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)), measurementSide, message });
   }
 
   async function frame() {
@@ -456,26 +448,16 @@ export async function createMovementTracker({
       let quality = null;
       if (!landmarks) {
         noPoseFrames += 1;
-        if (noPoseFrames > 12) {
-          onTrackingState({ code: "out_of_frame", label: "Body not fully visible", quality: "Low" });
-        }
+        if (noPoseFrames > 12) onTrackingState({ code: "out_of_frame", label: "Body not fully visible", quality: "Low" });
       } else {
         noPoseFrames = 0;
         quality = trackingQuality(landmarks);
-        onTrackingState({
-          code: quality.label === "Low" ? "low_confidence" : "body_detected",
-          label: quality.label === "Low" ? "Improve camera position" : "Body detected",
-          quality: quality.label,
-          confidence: Math.round(quality.score * 100),
-        });
+        onTrackingState({ code: quality.label === "Low" ? "low_confidence" : "body_detected", label: quality.label === "Low" ? "Improve camera position" : "Body detected", quality: quality.label, confidence: Math.round(quality.score * 100) });
       }
       if (landmarks) onPose(landmarks);
       if (!landmarks || !acceptsTrackingQuality(quality?.score)) {
-        pauseMeasurement(landmarks
-          ? `Reposition for a clearer ${profile.label.toLowerCase()} view. Rep counting is paused.`
-          : `Return to frame. ${profile.cameraHint}`);
-        rafId = requestAnimationFrame(frame);
-        return;
+        pauseMeasurement(landmarks ? `Reposition for a clearer ${profile.label.toLowerCase()} view. Rep counting is paused.` : `Return to frame. ${profile.cameraHint}`);
+        rafId = requestAnimationFrame(frame); return;
       }
       const measurementLandmarks = result.worldLandmarks?.[0] || landmarks;
       updateState(measurementLandmarks ? measureMovementSignal(measurementLandmarks, profile) : { value: null, left: null, right: null, symmetryDelta: null }, now);
@@ -488,153 +470,35 @@ export async function createMovementTracker({
     const generation = cameraGeneration;
     repCycle.cancelPending();
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        onTrackingState({ code: "no_camera", label: "No compatible camera found", quality: null });
-        throw new Error("This browser does not expose a compatible camera.");
-      }
+      if (!navigator.mediaDevices?.getUserMedia) { onTrackingState({ code: "no_camera", label: "No compatible camera found", quality: null }); throw new Error("This browser does not expose a compatible camera."); }
       if (!landmarker) await initialize();
       if (generation !== cameraGeneration) return;
       onTrackingState({ code: "camera_starting", label: "Starting camera", quality: null });
-      const openedStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } },
-        audio: false,
-      });
+      const openedStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
       if (generation !== cameraGeneration) { openedStream.getTracks().forEach(track => track.stop()); return; }
-      stream = openedStream;
-      video.srcObject = stream;
-      stream.getVideoTracks().forEach((track) => {
-        track.addEventListener("ended", () => {
-          if (generation !== cameraGeneration) return;
-          running = false;
-          onTrackingState({ code: "camera_disconnected", label: "Camera disconnected", quality: null });
-          onError("Camera disconnected. Reconnect it and restart the camera scan.");
-        }, { once: true });
-      });
+      stream = openedStream; video.srcObject = stream;
+      stream.getVideoTracks().forEach((track) => { track.addEventListener("ended", () => { if (generation !== cameraGeneration) return; running = false; onTrackingState({ code: "camera_disconnected", label: "Camera disconnected", quality: null }); onError("Camera disconnected. Reconnect it and restart the camera scan."); }, { once: true }); });
       await video.play();
       if (generation !== cameraGeneration) return;
-      lastVideoTime = -1;
-      running = true;
-      sessionStart = performance.now();
-      calibrationStart = null;
-      calibrated = false;
-      baselineAngle = null;
-      baselineLeft = null;
-      baselineRight = null;
-      calibrationSamples = [];
-      calibrationLeftSamples = [];
-      calibrationRightSamples = [];
-      holdElapsedMs = 0;
-      holdLastFrame = null;
-      activeFrames = 0;
-      lastActiveMovementAt = 0;
-      frame();
+      lastVideoTime = -1; running = true; sessionStart = performance.now(); calibrationStart = null; calibrated = false; baselineAngle = null; baselineLeft = null; baselineRight = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; frame();
     } catch (error) {
       if (generation !== cameraGeneration) return;
       stop();
-      const code = error?.name === "NotAllowedError"
-        ? "permission_denied"
-        : error?.name === "NotFoundError"
-          ? "no_camera"
-          : error?.name === "NotReadableError"
-            ? "camera_busy"
-            : "camera_error";
-      const messages = {
-        permission_denied: "Camera permission was denied. Allow access in browser settings and try again.",
-        no_camera: "No camera was found. Connect a camera and try again.",
-        camera_busy: "The camera is being used by another application. Close it there and try again.",
-        camera_error: error instanceof Error ? error.message : "Camera initialization failed.",
-      };
-      onTrackingState({ code, label: messages[code], quality: null });
-      onError(messages[code]);
+      const code = error?.name === "NotAllowedError" ? "permission_denied" : error?.name === "NotFoundError" ? "no_camera" : error?.name === "NotReadableError" ? "camera_busy" : "camera_error";
+      const messages = { permission_denied: "Camera permission was denied. Allow access in browser settings and try again.", no_camera: "No camera was found. Connect a camera and try again.", camera_busy: "The camera is being used by another application. Close it there and try again.", camera_error: error instanceof Error ? error.message : "Camera initialization failed." };
+      onTrackingState({ code, label: messages[code], quality: null }); onError(messages[code]);
     }
   }
 
   function reset() {
-    calibrated = false;
-    calibrationStart = null;
-    calibrationSamples = [];
-    calibrationLeftSamples = [];
-    calibrationRightSamples = [];
-    baselineAngle = null;
-    baselineLeft = null;
-    baselineRight = null;
-    lastVideoTime = -1;
-    sessionStart = performance.now();
-    onCalibration({ progress: 0, status: "Learning a fresh session baseline" });
-    reps = 0;
-    stage = "up";
-    repCycle.reset();
-    repStart = null;
-    peakAngle = null;
-    peakDelta = 0;
-    symmetrySamples = [];
-    noPoseFrames = 0;
-    latestAngle = null;
-    latestSymmetryDelta = null;
-    latestMovementRange = null;
-    latestMeasurementSide = null;
-    holdElapsedMs = 0;
-    holdLastFrame = null;
-    activeFrames = 0;
-    lastActiveMovementAt = 0;
-    repHistory.length = 0;
+    calibrated = false; calibrationStart = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; baselineAngle = null; baselineLeft = null; baselineRight = null; lastVideoTime = -1; sessionStart = performance.now(); onCalibration({ progress: 0, status: "Learning a fresh session baseline" }); reps = 0; stage = "up"; repCycle.reset(); repStart = null; peakAngle = null; peakDelta = 0; symmetrySamples = []; noPoseFrames = 0; latestAngle = null; latestSymmetryDelta = null; latestMovementRange = null; latestMeasurementSide = null; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; repHistory.length = 0;
     onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: "Session reset." });
   }
+  function stop() { cameraGeneration++; running = false; if (rafId) cancelAnimationFrame(rafId); stream?.getTracks().forEach((track) => track.stop()); stream = null; video.srcObject = null; const ctx = canvas.getContext("2d"); ctx?.clearRect(0, 0, canvas.width, canvas.height); }
+  function pause() { if (!running) return; running = false; if (rafId) cancelAnimationFrame(rafId); repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
+  function resume() { if (running || !stream?.active) return; running = true; lastVideoTime = -1; frame(); }
 
-  function stop() {
-    cameraGeneration++;
-    running = false;
-    if (rafId) cancelAnimationFrame(rafId);
-    stream?.getTracks().forEach((track) => track.stop());
-    stream = null;
-    video.srcObject = null;
-    const ctx = canvas.getContext("2d");
-    ctx?.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-  function pause() {
-    if (!running) return;
-    running = false;
-    if (rafId) cancelAnimationFrame(rafId);
-    repCycle.cancelPending();
-    pauseMeasurement("Session paused. Your completed repetitions are preserved.");
-  }
-
-  function resume() {
-    if (running || !stream?.active) return;
-    running = true;
-    lastVideoTime = -1;
-    frame();
-  }
-
-  return {
-    start,
-    stop,
-    pause,
-    resume,
-    reset,
-    resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; },
-    getReps: () => reps,
-    getMetrics: () => ({
-      repetitions: reps,
-      reps: [...repHistory],
-      durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0,
-      calibrated,
-      baselineAngle: baselineAngle ? Math.round(baselineAngle) : null,
-      jointAngle: latestAngle === null ? null : Math.round(latestAngle),
-      movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange),
-      symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)),
-      measurementSide: latestMeasurementSide,
-      angleLabel: profile.label,
-      measurementUnit: profile.unit,
-      exerciseKey: profile.exerciseKey,
-      trackingSignal: profile.signal,
-      holdSeconds: Math.round(holdElapsedMs / 1000),
-      cameraHint: profile.cameraHint,
-    }),
-  };
+  return { start, stop, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint }) };
 }
 
-// Backward-compatible export for older imports while callers migrate to the
-// exercise-agnostic name.
 export const createSquatTracker = createMovementTracker;
