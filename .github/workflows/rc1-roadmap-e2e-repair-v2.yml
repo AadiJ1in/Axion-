@@ -42,9 +42,9 @@ jobs:
         run: npx playwright test
       - name: Commit verified repair
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name "github-actions[bot]]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A src/main.js tests/e2e/rc1-critical.spec.js .github/workflows/rc1-fix-roadmap-session-context.yml .github/workflows/rc1-roadmap-e2e-repair-v2.yml scripts/rc1-repair-roadmap-and-e2e.mjs
+          git add -A src/main.js src/styles.css src/clinical-session-capture.js tests/e2e/rc1-critical.spec.js .github/workflows/rc1-fix-roadmap-session-context.yml .github/workflows/rc1-roadmap-e2e-repair-v2.yml scripts/rc1-repair-roadmap-and-e2e.mjs
           if git diff --cached --quiet; then
             echo "No verified changes to commit."
             exit 0
