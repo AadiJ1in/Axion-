@@ -1,0 +1,7 @@
+.patient-portal .ui-week-support[data-ui-moved="true"]{display:block;margin:1rem 0 2.5rem}
+.patient-portal .ui-week-support[data-ui-moved="true"] .daily-goal-card{min-height:0;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:1rem;padding:1rem 1.2rem;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
+.patient-portal .ui-week-support[data-ui-moved="true"] .goal-ring{width:76px;height:76px}
+.patient-portal .ui-week-support[data-ui-moved="true"] .daily-goal-card h3{font-size:1rem}
+.patient-portal .ui-week-support[data-ui-moved="true"] .daily-goal-card p{font-size:.8125rem}
+@media(max-width:900px){.patient-portal .ui-week-support[data-ui-moved="true"] .daily-goal-card{grid-template-columns:auto 1fr}.patient-portal .ui-week-support[data-ui-moved="true"] .ui-journey-link{grid-column:2;justify-self:start;padding-left:0}}
+@media(max-width:680px){.patient-portal .ui-week-support[data-ui-moved="true"] .daily-goal-card{grid-template-columns:64px 1fr;padding:.9rem 0}.patient-portal .ui-week-support[data-ui-moved="true"] .goal-ring{width:60px;height:60px}}
