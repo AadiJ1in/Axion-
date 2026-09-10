@@ -205,6 +205,43 @@ test("one completed prescribed assignment persists once, completes roadmap once,
   expect(state.profiles.find((profile) => profile.id === IDS.patientA).recovery_xp).toBe(50);
 });
 
+test("session detail binds to the exact client session even with a newer same-assignment decoy", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  const clientSessionId = await page.locator(".lab-page").getAttribute("data-session-client-id");
+  expect(clientSessionId).toBeTruthy();
+  await page.evaluate(({ ids }) => {
+    const { db } = window.__AXION_E2E_CONTROL__;
+    const later = new Date(Date.now() + 60_000).toISOString();
+    db.exercise_sessions.push({
+      id: "60000000-0000-4000-8000-000000000099",
+      patient_id: ids.patientA,
+      plan_id: ids.plan,
+      assignment_id: ids.assignmentA,
+      roadmap_node_id: null,
+      client_session_id: "70000000-0000-4000-8000-000000000099",
+      exercise_key: "bodyweight_squat",
+      repetitions: 1,
+      duration_seconds: 1,
+      movement_summary: {},
+      started_at: later,
+      completed_at: later,
+      created_at: later,
+    });
+  }, { ids: IDS });
+  await emitRep(page);
+  await openReflection(page);
+  await page.locator("[data-open-report]").click();
+  await expect.poll(async () => (await snapshot(page)).session_capture_context.length).toBe(1);
+  const state = await snapshot(page);
+  const actual = state.exercise_sessions.find((row) => row.client_session_id === clientSessionId);
+  expect(actual).toBeTruthy();
+  expect(state.session_capture_context[0].session_id).toBe(actual.id);
+  expect(state.session_capture_context[0].session_id).not.toBe("60000000-0000-4000-8000-000000000099");
+});
+
 test("duplicate browser submission is idempotent and cannot double-award progress", async ({ page }) => {
   await boot(page);
   await seedPlan(page);

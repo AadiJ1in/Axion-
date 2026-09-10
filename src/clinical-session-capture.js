@@ -27,6 +27,7 @@ const state = {
   finalizing: false,
   finalizingAt: null,
   persistedSessionId: null,
+  clientSessionId: null,
   reviewSessionId: null,
   progressPatientId: null,
 };
@@ -60,6 +61,7 @@ function resetForLab(root) {
   state.finalizing = false;
   state.finalizingAt = null;
   state.persistedSessionId = null;
+  state.clientSessionId = String(root?.dataset.sessionClientId || "").trim() || null;
 }
 
 async function resolveAssignment() {
@@ -70,7 +72,10 @@ async function resolveAssignment() {
   const lab = document.querySelector(".lab-page");
   const assignmentId = String(lab?.dataset.sessionAssignmentId || "").trim();
   const planId = String(lab?.dataset.sessionPlanId || "").trim();
-  if (!assignmentId || !planId || state.workspace?.plan?.id !== planId) return null;
+  const clientSessionId = String(lab?.dataset.sessionClientId || "").trim();
+  if (!assignmentId || !planId || !clientSessionId || state.workspace?.plan?.id !== planId) return null;
+  if (state.clientSessionId && state.clientSessionId !== clientSessionId) return null;
+  state.clientSessionId = clientSessionId;
   state.assignment = (state.workspace.assignments || []).find((item) =>
     item.id === assignmentId && item.plan_id === planId && item.status === "active") || null;
   if (state.assignment) {
@@ -204,18 +209,19 @@ function currentPainValue(id, touched) {
 
 async function newestSavedSession() {
   const session = await authSession();
-  if (!session?.user || !state.assignment || !state.startedAt) return null;
-  const earliest = new Date(state.startedAt - 120000).toISOString();
+  if (!session?.user || !state.assignment || !state.clientSessionId) return null;
   const { data, error } = await supabase.from("exercise_sessions")
-    .select("id, patient_id, assignment_id, exercise_key, repetitions, started_at, completed_at, created_at")
+    .select("id, patient_id, assignment_id, client_session_id, exercise_key, repetitions, started_at, completed_at, created_at")
     .eq("patient_id", session.user.id)
     .eq("assignment_id", state.assignment.id)
-    .gte("created_at", earliest)
-    .order("created_at", { ascending: false })
-    .limit(5);
-  if (error) return null;
-  const finalizeFloor = (state.finalizingAt || Date.now()) - 120000;
-  return (data || []).find((item) => new Date(item.completed_at || item.created_at).getTime() >= finalizeFloor) || data?.[0] || null;
+    .eq("client_session_id", state.clientSessionId)
+    .maybeSingle();
+  if (error || !data) return null;
+  if (data.patient_id !== session.user.id
+      || data.assignment_id !== state.assignment.id
+      || data.client_session_id !== state.clientSessionId
+      || data.exercise_key !== state.assignment.exercise_key) return null;
+  return data;
 }
 
 function safeRepRow(rep, sessionId) {
