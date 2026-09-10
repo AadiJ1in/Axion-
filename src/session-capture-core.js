@@ -132,43 +132,43 @@ export function createAttemptTracker(profile) {
         };
         return events;
       }
-+      if (!candidate) return events;
-+
-+      candidate.peak = Math.max(candidate.peak, range);
-+      if (!candidate.motionStartedAt && state === "IN MOTION") candidate.motionStartedAt = now;
-+      if (trackingInterrupted) candidate.trackingInterrupted = true;
-+
-+      const returned = range <= profile.returnThreshold + 0.75 && now - candidate.startedAt > 250;
-+      if (!returned) return events;
-+
-+      const durationMs = Math.max(0, now - (candidate.motionStartedAt ?? candidate.startedAt));
-+      const outcome = rejection(profile, candidate, durationMs);
-+      attempted += 1;
-+      rejected += 1;
-+      rejectedReasons.set(outcome.reason, (rejectedReasons.get(outcome.reason) || 0) + 1);
-+      events.push({ type: "rejected", ...outcome, durationMs, peak: candidate.peak });
-+      candidate = null;
-+      return events;
-+    },
-+
-+    reset() {
-+      candidate = null;
-+      lastRepCount = 0;
-+      attempted = 0;
-+      rejected = 0;
-+      rejectedReasons.clear();
-+      reps.length = 0;
-+    },
-+
-+    summary() {
-+      return {
-+        attempted,
-+        rejected,
-+        valid: Math.max(0, attempted - rejected),
-+        validPercent: validRepPercent(attempted, rejected),
-+        rejectedReasons: Object.fromEntries(rejectedReasons),
-+        reps: reps.map((rep) => ({ ...rep, metrics: { ...rep.metrics } })),
-+      };
-+    },
-+  };
-+}
+      if (!candidate) return events;
+
+      candidate.peak = Math.max(candidate.peak, range);
+      if (!candidate.motionStartedAt && state === "IN MOTION") candidate.motionStartedAt = now;
+      if (trackingInterrupted) candidate.trackingInterrupted = true;
+
+      const returned = range <= profile.returnThreshold + 0.75 && now - candidate.startedAt > 250;
+      if (!returned) return events;
+
+      const durationMs = Math.max(0, now - (candidate.motionStartedAt ?? candidate.startedAt));
+      const outcome = rejection(profile, candidate, durationMs);
+      attempted += 1;
+      rejected += 1;
+      rejectedReasons.set(outcome.reason, (rejectedReasons.get(outcome.reason) || 0) + 1);
+      events.push({ type: "rejected", ...outcome, durationMs, peak: candidate.peak });
+      candidate = null;
+      return events;
+    },
+
+    reset() {
+      candidate = null;
+      lastRepCount = 0;
+      attempted = 0;
+      rejected = 0;
+      rejectedReasons.clear();
+      reps.length = 0;
+    },
+
+    summary() {
+      return {
+        attempted,
+        rejected,
+        valid: Math.max(0, attempted - rejected),
+        validPercent: validRepPercent(attempted, rejected),
+        rejectedReasons: Object.fromEntries(rejectedReasons),
+        reps: reps.map((rep) => ({ ...rep, metrics: { ...rep.metrics } })),
+      };
+    },
+  };
+}
