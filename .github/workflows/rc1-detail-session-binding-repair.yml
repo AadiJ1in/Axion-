@@ -1,0 +1,54 @@
+name: RC1 repair exact session detail binding
+
+on:
+  push:
+    branches:
+      - feature/rc1-session-identity
+    paths:
+      - .github/workflows/rc1-detail-session-binding-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/rc1-session-identity
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply guarded exact-session repair
+        run: node scripts/rc1-fix-detail-session-binding.mjs
+      - name: Remove one-time repair helpers
+        run: |
+          rm -f .github/workflows/rc1-detail-session-binding-repair.yml
+          rm -f scripts/rc1-fix-detail-session-binding.mjs
+      - name: Install application dependencies
+        run: npm ci
+      - name: Install Playwright test runner
+        run: npm install --no-save @playwright/test@1.63.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Static and unit regression suite
+        run: npm run check
+      - name: Production build
+        run: npm run build
+      - name: RC1 browser critical paths
+        run: npx playwright test
+      - name: Commit verified repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A src/main.js src/clinical-session-capture.js tests/e2e/rc1-critical.spec.js .github/workflows/rc1-detail-session-binding-repair.yml scripts/rc1-fix-detail-session-binding.mjs
+          if git diff --cached --quiet; then
+            echo "No verified changes to commit."
+            exit 0
+          fi
+          git commit -m "Bind persisted session detail to exact RC1 session"
+          git push origin HEAD:feature/rc1-session-identity
