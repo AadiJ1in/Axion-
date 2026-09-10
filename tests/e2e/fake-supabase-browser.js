@@ -46,6 +46,7 @@
   let failNextSessionSave = false;
   let forceSchemaVersion = "202609100004";
   let poseModelFailure = false;
+  const tableDelays = new Map();
 
   function sessionFor(user) {
     return { access_token: `e2e-${user.id}`, refresh_token: `e2e-r-${user.id}`, user: clone(user), aal };
@@ -119,6 +120,8 @@
     delete() { this.operation = "delete"; return this; }
     upsert(payload) { this.operation = "upsert"; this.payload = Array.isArray(payload) ? payload : [payload]; return this; }
     async execute() {
+      const delayMs = Math.max(0, Number(tableDelays.get(this.table) || 0));
+      if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
       const table = getTable(this.table);
       if (this.operation === "select") {
         let rows = table.filter((row) => matches(row, this.filters));
@@ -225,6 +228,7 @@
     ids,
     db,
     failNextSessionSave() { failNextSessionSave = true; },
+    setTableDelay(table, milliseconds) { tableDelays.set(String(table), Math.max(0, Number(milliseconds) || 0)); },
     setSchemaVersion(value) { forceSchemaVersion = String(value); },
     expireSession() { session = null; aal = "aal1"; notify("SIGNED_OUT"); },
     setPoseModelFailure(value) { poseModelFailure = Boolean(value); },

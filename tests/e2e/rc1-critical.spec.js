@@ -325,6 +325,20 @@ test("pose-model failure preserves a recoverable UI and writes no clinical sessi
   expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
 });
 
+test("slow patient workspace response cannot restore clinical data after session expiry", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.setTableDelay("exercise_plans", 500));
+  await signIn(page, "patienta@axion.test");
+  await page.waitForTimeout(75);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.expireSession());
+  await expect(page.locator("#auth-form")).toBeVisible();
+  await page.waitForTimeout(650);
+  await expect(page.locator("#auth-form")).toBeVisible();
+  await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toHaveCount(0);
+  await expect(page.getByText("RC1 exact identity plan")).toHaveCount(0);
+});
+
 test("expired session returns to sign-in and clears clinical workspace", async ({ page }) => {
   await boot(page);
   await seedPlan(page);
