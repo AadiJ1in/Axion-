@@ -67,10 +67,12 @@ async function resolveAssignment() {
   const session = await authSession();
   if (!session?.user) return null;
   if (!state.workspace) state.workspace = await loadPatientWorkspace(supabase, session.user.id);
-  const title = document.querySelector(".lab-header h1")?.textContent?.trim();
-  state.assignment = (state.workspace.assignments || []).find((item) => item.display_name === title)
-    || state.workspace.assignments?.[0]
-    || null;
+  const lab = document.querySelector(".lab-page");
+  const assignmentId = String(lab?.dataset.sessionAssignmentId || "").trim();
+  const planId = String(lab?.dataset.sessionPlanId || "").trim();
+  if (!assignmentId || !planId || state.workspace?.plan?.id !== planId) return null;
+  state.assignment = (state.workspace.assignments || []).find((item) =>
+    item.id === assignmentId && item.plan_id === planId && item.status === "active") || null;
   if (state.assignment) {
     state.profile = getMovementProfile(state.assignment.exercise_key, state.assignment.tracking_mode);
     if (state.profile.mode !== "hold") state.attemptTracker = createAttemptTracker(state.profile);

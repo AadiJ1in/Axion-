@@ -767,7 +767,20 @@ function showRoadmapNode(nodeId) {
     currentRoadmapNode = node;
     currentAssignment = workspace.assignments.find((item) => item.id === button.dataset.startNodeAssignment) || null;
     modal.remove();
-    if (currentAssignment) labView();
+    if (!currentAssignment) {
+      showSessionIdentityError(new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH));
+      return;
+    }
+    if (currentSession?.demo) {
+      labView();
+      return;
+    }
+    try {
+      beginVerifiedSessionContext(currentAssignment, node);
+      labView();
+    } catch (error) {
+      showSessionIdentityError(error);
+    }
   }));
 }
 
@@ -842,7 +855,7 @@ function labView() {
   const assignmentCount = Math.max(1, patientWorkspace?.assignments?.length || 1);
   const backTarget = currentProfile?.role === "patient" || demoRole === "patient" ? "patient" : "home";
   app.innerHTML = layout(`
-    <main class="lab-page ${gameMapping ? "adventure-lab" : ""} ${gameMapping?.action === "duck" ? "ruins-runner-lab" : ""}">
+    <main class="lab-page ${gameMapping ? "adventure-lab" : ""} ${gameMapping?.action === "duck" ? "ruins-runner-lab" : ""}" data-session-assignment-id="${escapeHtml(activeSessionContext?.assignmentId || assignment.id || "")}" data-session-plan-id="${escapeHtml(activeSessionContext?.planId || assignment.plan_id || "")}" data-session-roadmap-node-id="${escapeHtml(activeSessionContext?.roadmapNodeId || currentRoadmapNode?.id || "")}">
       <div class="lab-header container-wide">
         <div><button class="back-link" data-nav="${backTarget}">${icon("back", 16)} Back to ${escapeHtml(patientName.split(" ")[0])}’s recovery</button><div class="eyebrow"><span></span> ${escapeHtml(patientName)}’s Movement Science Lab · ${currentRoadmapNode ? `Roadmap session ${currentRoadmapNode.session_number} · ` : ""}Exercise ${assignmentNumber} of ${assignmentCount}</div><h1>${escapeHtml(assignment.display_name)}</h1><p class="lab-prescriber">Prescribed by ${escapeHtml(therapistName)} · ${escapeHtml(dosageLabel)}</p></div>
         <div class="session-steps"><span class="active"><i>1</i> Calibrate</span><b></b><span><i>2</i> Move</span><b></b><span><i>3</i> Reflect</span></div>
@@ -3530,6 +3543,12 @@ async function bootstrap() {
         currentProfile = null;
         stopPatientRealtime();
         stopTherapistRealtime();
+        patientWorkspace = null;
+        currentAssignment = null;
+        currentRoadmapNode = null;
+        clearClinicalSessionIdentity();
+        if (event === "SIGNED_OUT" || currentView !== "home") authView();
+        return;
       }
       if (event === "PASSWORD_RECOVERY") {
         passwordRecoveryMode = true;

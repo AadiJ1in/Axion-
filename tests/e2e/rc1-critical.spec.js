@@ -115,12 +115,32 @@ async function signIn(page, email) {
 
 async function signInPatientA(page) {
   await signIn(page, "patienta@axion.test");
-  await expect(page.locator(`[data-start-assignment="${IDS.assignmentA}"]`)).toBeVisible();
+  await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toBeVisible();
 }
 
 async function startAssignment(page, assignmentId = IDS.assignmentA) {
-  await page.locator(`[data-start-assignment="${assignmentId}"]`).click();
+  await page.locator(`[data-roadmap-node="${IDS.node}"]`).click();
+  const startButton = page.locator(`[data-start-node-assignment="${assignmentId}"]`);
+  await expect(startButton).toBeVisible();
+  await startButton.click();
   await expect(page.locator("#finish-session")).toBeVisible();
+
+  const beforePain = page.locator("#session-pain-before");
+  await expect(beforePain).toBeVisible();
+  await beforePain.evaluate((input) => {
+    input.value = "0";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator('[data-before-confidence] [data-value="4"]').click();
+  const begin = page.locator("#clinic-begin-exercise");
+  const recovery = page.locator("#camera-recovery");
+  await expect.poll(async () => {
+    if (await recovery.isVisible()) return "recovery";
+    if (await begin.isEnabled()) return "ready";
+    return "waiting";
+  }, { timeout: 8_000 }).not.toBe("waiting");
+  if (await recovery.isVisible()) return;
+  await begin.click();
 }
 
 async function emitRep(page, overrides = {}) {
@@ -130,6 +150,13 @@ async function emitRep(page, overrides = {}) {
 
 async function openReflection(page) {
   await page.locator("#finish-session").click();
+  const afterPain = page.locator("#session-pain-after");
+  await expect(afterPain).toBeVisible();
+  await afterPain.evaluate((input) => {
+    input.value = "0";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator('[data-after-confidence] [data-value="4"]').click();
   await expect(page.locator("[data-open-report]")).toBeVisible();
 }
 
@@ -221,9 +248,10 @@ test("patient B cannot see or start patient A treatment data", async ({ page }) 
   await boot(page);
   await seedPlan(page);
   await signIn(page, "patientb@axion.test");
-  await expect(page.getByText("RC Patient B").first()).toBeVisible();
+  await expect(page.locator("#auth-form")).toHaveCount(0);
   await expect(page.locator("[data-start-assignment]")).toHaveCount(0);
-  await expect(page.getByText("RC Patient A")).toHaveCount(0);
+  await expect(page.getByText("RC1 exact identity plan")).toHaveCount(0);
+  await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toHaveCount(0);
 });
 
 test("therapist MFA blocks clinical workspace until valid second factor", async ({ page }) => {
