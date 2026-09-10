@@ -1,5 +1,6 @@
 import "./clinical-session-capture.js";
 import "./clinic-readiness.js";
+import "./clinical-targets.js";
 
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
