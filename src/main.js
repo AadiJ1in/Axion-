@@ -6,6 +6,7 @@ import { ownsActiveAssignment } from "./squat-camera.js";
 import { journeyMapMarkup, sessionPathPresentation, layoutJourney } from "./journey-map.js";
 import { adventureMarkup } from "./adventure-ui.js";
 import { motionInput, doseProgress, sessionCompletesDose } from "./adventure-definitions.js";
+import { normalizeRestSeconds, restDeadlineMs, restRemainingSeconds } from "./rest-timer.js";
 import { matchesPrescriptionFilters } from "./prescription-filters.js";
 import {
   SESSION_CONTEXT_ERROR,
@@ -2489,11 +2490,12 @@ function clearSetRest() {
 }
 
 function startSetRest(seconds, completedSet) {
-  if (!seconds || completedSet >= Number(currentAssignment?.target_sets || 1)) return;
+  const restSeconds = normalizeRestSeconds(seconds);
+  if (!restSeconds || completedSet >= Number(currentAssignment?.target_sets || 1)) return;
   clearSetRest();
   tracker?.pause?.();
   movementGameController?.consume({ type: MOVEMENT_EVENT.PAUSE });
-  setRestEndsAt = Date.now() + seconds * 1000;
+  setRestEndsAt = restDeadlineMs(Date.now(), restSeconds);
   document.querySelectorAll("#game-pause, #session-pause").forEach(button => {button.disabled=true;button.textContent="Resting";});
   setText("#game-status", "Therapist-scheduled rest · your progress is preserved");
   const overlay = document.querySelector("#set-rest-overlay");
@@ -2502,7 +2504,7 @@ function startSetRest(seconds, completedSet) {
   setText("#set-rest-title", `Next: set ${completedSet + 1} of ${currentAssignment?.target_sets || 1}`);
   setText("#capture-status", "THERAPIST-SCHEDULED REST");
   const tick = () => {
-    const remaining = Math.max(0, Math.ceil((setRestEndsAt - Date.now()) / 1000));
+    const remaining = restRemainingSeconds(setRestEndsAt, Date.now());
     setText("#set-rest-seconds", remaining);
     if (remaining > 0) return;
     clearSetRest();
