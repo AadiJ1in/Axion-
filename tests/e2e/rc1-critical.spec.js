@@ -325,6 +325,31 @@ test("pose-model failure preserves a recoverable UI and writes no clinical sessi
   expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
 });
 
+test("tracking interruption pauses game readiness, explains recovery, and does not create a session", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page, { targetReps: 2 });
+  await signInPatientA(page);
+  await startAssignment(page);
+  await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.emitTrackingState({
+    code: "out_of_frame",
+    label: "Step back so your full body is visible.",
+    quality: "Low",
+    confidence: 28,
+  }));
+  await expect(page.locator("#coach-message")).toHaveText(/step back so your full body is visible/i);
+  await expect(page.locator("#body-state")).toHaveClass(/warning/);
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+  await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.emitTrackingState({
+    code: "body_detected",
+    label: "Body detected",
+    quality: "High",
+    confidence: 99,
+  }));
+  await expect(page.locator("#body-state")).toContainText(/body detected/i);
+  await emitRep(page);
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+});
+
 test("same-user token refresh preserves an active clinical session", async ({ page }) => {
   await boot(page);
   await seedPlan(page);
@@ -367,6 +392,46 @@ test("leaving Movement Lab destroys tracker and stale game controller resources"
   const after = await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount);
   expect(after).toBe(before + 1);
   expect(await page.evaluate(() => window.__axionMovementGameController == null)).toBe(true);
+});
+
+test("auth sign-out during an active clinical session clears unsaved treatment state", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page, { targetReps: 2 });
+  await signInPatientA(page);
+  await startAssignment(page);
+  await emitRep(page);
+  const destroyBefore = await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.expireSession());
+  await expect(page.locator("#auth-form")).toBeVisible();
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+  expect(await page.evaluate(() => window.__axionMovementGameController == null)).toBe(true);
+  expect(await page.evaluate((before) => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount > before, destroyBefore)).toBe(true);
+});
+
+test("mobile rotation during Movement Lab preserves the active session without overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page);
+  await seedPlan(page, { targetReps: 2 });
+  await page.evaluate(({ assignmentId, planId }) => {
+    const plan = window.__AXION_E2E_CONTROL__.db.exercise_plans.find((item) => item.id === planId);
+    const assignment = window.__AXION_E2E_CONTROL__.db.exercise_assignments.find((item) => item.id === assignmentId);
+    if (!plan || !assignment) throw new Error("Missing RC1 mobile rotation plan or assignment");
+    plan.game_enabled = true;
+    assignment.exercise_mode = "movement_game";
+  }, { assignmentId: IDS.assignmentA, planId: IDS.plan });
+  await signInPatientA(page);
+  await startAssignment(page);
+  await expect(page.locator("#adventure-canvas")).toBeVisible();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(150);
+  await expect(page.locator(".lab-page")).toBeVisible();
+  await expect(page.locator("#finish-session")).toBeVisible();
+  await expect(page.locator("#adventure-canvas")).toBeVisible();
+  const canvasBox = await page.locator("#adventure-canvas").boundingBox();
+  expect(canvasBox).not.toBeNull();
+  expect(canvasBox.width).toBeLessThanOrEqual(845);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
+  await emitRep(page);
 });
 
 test("expired session returns to sign-in and clears clinical workspace", async ({ page }) => {

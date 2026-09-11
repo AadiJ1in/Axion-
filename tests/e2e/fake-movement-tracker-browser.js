@@ -36,6 +36,10 @@
       });
       return rep;
     },
+    emitTrackingState(payload = {}) {
+      if (!active) throw new Error("No active E2E tracker");
+      active.onTrackingState({ code: "out_of_frame", label: "Full body is not visible", quality: "Low", confidence: 30, ...payload });
+    },
     get activeReps() { return active ? [...active.reps] : []; },
     get destroyCount() { return destroyCount; },
   };
