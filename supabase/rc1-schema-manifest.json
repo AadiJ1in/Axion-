@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "applicationSchemaVersion": "202609100004",
-  "notes": "This is the authoritative RC1 application-schema capability manifest. Production migration timestamps may differ from repository filenames because some migrations were applied through the connected Supabase project before the repository naming was normalized.",
+  "applicationSchemaVersion": "axion-rc1-2026-09-11",
+  "notes": "This is the authoritative RC1 application-schema capability manifest. Production migration timestamps are authoritative in supabase_migrations.schema_migrations. Legacy repository filename-prefix collisions are documented rather than renamed because those migrations are already applied under distinct production versions.",
   "acceptedDuplicateRepositoryPrefixes": {
     "202609100001": [
       "202609100001_session_capture_context.sql",
@@ -95,7 +95,7 @@
     },
     {
       "id": "rc1_verified_session_identity",
-      "repositoryFile": "202609100003_rc1_verified_session_identity.sql",
+      "repositoryFile": "20260911131500_rc1_verified_session_identity.sql",
       "productionMigration": "rc1_verified_session_identity",
       "productionVersion": null,
       "changeType": "additive-schema-and-validation-trigger",
@@ -104,7 +104,7 @@
     },
     {
       "id": "rc1_application_schema_version",
-      "repositoryFile": "202609100004_rc1_application_schema_version.sql",
+      "repositoryFile": "20260911131600_rc1_application_schema_version.sql",
       "productionMigration": "rc1_application_schema_version",
       "productionVersion": null,
       "changeType": "additive-rpc",

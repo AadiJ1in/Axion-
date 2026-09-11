@@ -20,7 +20,7 @@ for (const capability of manifest.requiredCapabilities || []) {
 
 const prefixes = new Map();
 for (const file of files) {
-  const match = file.match(/^(\d{12})_/);
+  const match = file.match(/^(\d{12,14})_/);
   if (!match) continue;
   const list = prefixes.get(match[1]) || [];
   list.push(file);
@@ -36,8 +36,11 @@ const pending = manifest.requiredCapabilities.filter((item) => item.productionVe
 assert.deepEqual(pending.map((item) => item.id), ["rc1_verified_session_identity", "rc1_application_schema_version"],
   "unexpected pending RC1 production migration set");
 assert.deepEqual(pending.map((item) => item.deploymentOrder), [1, 2], "RC1 migrations must have deterministic order");
+assert.equal(new Set(pending.map((item) => item.repositoryFile.split("_")[0])).size, pending.length,
+  "new RC1 migration versions must be unique");
 
-const schemaVersionSql = fs.readFileSync(path.join(migrationDir, "202609100004_rc1_application_schema_version.sql"), "utf8");
+const schemaFile = manifest.requiredCapabilities.find((item) => item.id === "rc1_application_schema_version")?.repositoryFile;
+const schemaVersionSql = fs.readFileSync(path.join(migrationDir, schemaFile), "utf8");
 assert.ok(schemaVersionSql.includes(`select '${EXPECTED_SCHEMA_VERSION}'::text`), "schema RPC does not expose expected version");
 
 console.log(`RC1 schema manifest: ok (${manifest.requiredCapabilities.length} required capabilities, ${pending.length} pending production migrations)`);

@@ -70,6 +70,23 @@ function nodeIsStartable(workspace, node) {
   return Number(node.session_number) <= completedForPlan + 1;
 }
 
+function therapistIdentity(workspace, plan) {
+  const therapistId = requiredString(
+    plan?.therapist_id || workspace?.therapist?.id || workspace?.connection?.therapist_id,
+    SESSION_CONTEXT_ERROR.MISMATCH,
+  );
+  if (workspace?.connection?.therapist_id && workspace.connection.therapist_id !== therapistId) {
+    throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
+  }
+  if (workspace?.therapist?.id && workspace.therapist.id !== therapistId) {
+    throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
+  }
+  if (plan?.therapist_id && plan.therapist_id !== therapistId) {
+    throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
+  }
+  return therapistId;
+}
+
 export function createVerifiedSessionContext({
   authUserId,
   workspace,
@@ -78,7 +95,8 @@ export function createVerifiedSessionContext({
   clientSessionId,
   startedAt = new Date(),
   movementProfileId,
-  reviewTargetVersion = null,
+  movementProfileVersion = movementProfileId,
+  reviewTargetVersion = undefined,
 } = {}) {
   const patientId = requiredString(authUserId, SESSION_CONTEXT_ERROR.UNAUTHORIZED);
   if (workspace?.profile?.role !== "patient" || workspace.profile.id !== patientId) {
@@ -93,6 +111,7 @@ export function createVerifiedSessionContext({
     throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
   }
   if (plan.status !== "active") throw new SessionContextError(SESSION_CONTEXT_ERROR.PLAN_INACTIVE);
+  const therapistId = therapistIdentity(workspace, plan);
 
   const exactAssignmentId = requiredString(assignmentId);
   const assignment = (workspace?.assignments || []).find((item) => item.id === exactAssignmentId) || null;
@@ -103,9 +122,12 @@ export function createVerifiedSessionContext({
   const exerciseKey = requiredString(assignment.exercise_key);
   const trackingMode = requiredString(assignment.tracking_mode);
   const clientId = requiredString(clientSessionId);
-  const profileId = requiredString(movementProfileId);
+  const profileVersion = requiredString(movementProfileVersion || movementProfileId);
   const started = iso(startedAt);
   if (!started) throw new SessionContextError(SESSION_CONTEXT_ERROR.MISSING);
+  const normalizedReviewTargetVersion = iso(
+    reviewTargetVersion === undefined ? assignment.review_target_version : reviewTargetVersion,
+  );
 
   let node = null;
   if (roadmapNodeId) {
@@ -115,31 +137,33 @@ export function createVerifiedSessionContext({
     }
     if (!nodeIsStartable(workspace, node)) throw new SessionContextError(SESSION_CONTEXT_ERROR.ROADMAP_STALE);
   } else if ((workspace?.roadmapNodes || []).length) {
-    // A roadmap-backed patient must start from a concrete current node. A direct
-    // Movement Lab navigation is not a valid clinical session start.
     throw new SessionContextError(SESSION_CONTEXT_ERROR.ROADMAP_STALE);
   }
 
+  const durationSeconds = integerOrNull(assignment.duration_seconds);
   return deepFreeze({
     version: SESSION_CONTEXT_VERSION,
     patientId,
+    therapistId,
     planId: plan.id,
-    assignmentId: assignment.id,
     roadmapNodeId: node?.id || null,
+    assignmentId: assignment.id,
     exerciseKey,
     trackingMode,
     prescribedSets: integerOrNull(assignment.target_sets),
     prescribedReps: integerOrNull(assignment.target_repetitions),
-    prescribedHoldSeconds: integerOrNull(assignment.duration_seconds),
+    durationSeconds,
+    prescribedHoldSeconds: durationSeconds,
     restSeconds: integerOrNull(assignment.rest_seconds),
+    movementProfileVersion: profileVersion,
+    movementProfileId: profileVersion,
+    reviewTargetVersion: normalizedReviewTargetVersion,
     clientSessionId: clientId,
-    movementProfileId: profileId,
     startedAt: started,
     exerciseMode: assignment.exercise_mode === "movement_game" ? "movement_game" : "standard",
     prescribedSide: ["left", "right"].includes(assignment.prescribed_side) ? assignment.prescribed_side : "either",
     prescriptionVersion: iso(assignment.updated_at || assignment.created_at),
     planVersion: iso(plan.updated_at || plan.created_at),
-    reviewTargetVersion: iso(reviewTargetVersion),
     roadmapVersion: iso(node?.updated_at || node?.created_at),
   });
 }
@@ -155,16 +179,23 @@ export function verifySessionContextAgainstWorkspace(context, { authUserId, work
     roadmapNodeId: context.roadmapNodeId,
     clientSessionId: context.clientSessionId,
     startedAt: context.startedAt,
-    movementProfileId: context.movementProfileId,
+    movementProfileVersion: context.movementProfileVersion || context.movementProfileId,
     reviewTargetVersion: context.reviewTargetVersion,
   });
   const immutableKeys = [
-    "patientId", "planId", "assignmentId", "roadmapNodeId", "exerciseKey", "trackingMode",
-    "prescribedSets", "prescribedReps", "prescribedHoldSeconds", "restSeconds", "exerciseMode",
-    "prescribedSide", "prescriptionVersion", "planVersion", "roadmapVersion",
+    "patientId", "therapistId", "planId", "roadmapNodeId", "assignmentId", "exerciseKey", "trackingMode",
+    "prescribedSets", "prescribedReps", "durationSeconds", "restSeconds", "movementProfileVersion",
+    "reviewTargetVersion", "clientSessionId", "startedAt", "exerciseMode", "prescribedSide",
+    "prescriptionVersion", "planVersion", "roadmapVersion",
   ];
   for (const key of immutableKeys) {
     if (rebuilt[key] !== context[key]) throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
+  }
+
+  const liveAssignment = (workspace?.assignments || []).find((item) => item.id === context.assignmentId) || null;
+  const liveReviewTargetVersion = iso(liveAssignment?.review_target_version);
+  if (liveReviewTargetVersion !== context.reviewTargetVersion) {
+    throw new SessionContextError(SESSION_CONTEXT_ERROR.MISMATCH);
   }
   return context;
 }
