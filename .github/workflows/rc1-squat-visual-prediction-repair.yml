@@ -1,0 +1,54 @@
+name: RC1 flagship squat visual prediction repair
+
+on:
+  push:
+    branches:
+      - feature/rc1-session-identity
+    paths:
+      - .github/workflows/rc1-squat-visual-prediction-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feature/rc1-session-identity
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply bounded visual prediction repair
+        run: node scripts/rc1-squat-visual-prediction-repair.mjs
+      - name: Remove one-time repair helpers
+        run: |
+          rm -f .github/workflows/rc1-squat-visual-prediction-repair.yml
+          rm -f scripts/rc1-squat-visual-prediction-repair.mjs
+      - name: Install application dependencies
+        run: npm ci
+      - name: Install Playwright test runner
+        run: npm install --no-save @playwright/test@1.63.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Static and regression suite
+        run: npm run check
+      - name: Production build
+        run: npm run build
+      - name: Full RC1 browser suite
+        run: npx playwright test
+      - name: Commit verified visual prediction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A src/squat-camera.js scripts/squat-camera-test.mjs .github/workflows/rc1-squat-visual-prediction-repair.yml scripts/rc1-squat-visual-prediction-repair.mjs
+          if git diff --cached --quiet; then
+            echo "No verified changes to commit."
+            exit 0
+          fi
+          git commit -m "Reduce visual squat lag with bounded prediction"
+          git push origin HEAD:feature/rc1-session-identity
