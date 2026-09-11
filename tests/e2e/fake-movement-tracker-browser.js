@@ -1,6 +1,7 @@
 (() => {
   let failureMode = null;
   let active = null;
+  let destroyCount = 0;
   const control = {
     setFailure(mode) { failureMode = mode || null; },
     clearFailure() { failureMode = null; },
@@ -36,6 +37,7 @@
       return rep;
     },
     get activeReps() { return active ? [...active.reps] : []; },
+    get destroyCount() { return destroyCount; },
   };
 
   window.__AXION_E2E_TRACKER_CONTROL__ = control;
@@ -80,6 +82,7 @@
         state.onUpdate({ reps: state.reps.length, jointAngle: 180, angleLabel: "Joint angle", measurementUnit: "°", movementRange: 0, symmetryDelta: 0, measurementSide: "left", message: "Ready for the next rep.", stage: "up", elapsedSeconds: 0 });
       },
       stop() { state.running = false; },
+      destroy() { if (!state.destroyed) { state.destroyed = true; destroyCount += 1; } state.running = false; },
       pause() { state.running = false; },
       resume() { state.running = true; },
       reset() { state.reps.length = 0; state.startedAt = performance.now(); },

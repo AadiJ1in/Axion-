@@ -160,6 +160,18 @@ const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 let authIdleTimer = null;
 let lastTwinPoints = null;
 
+function destroyMovementTracker() {
+  const activeTracker = tracker;
+  tracker = null;
+  if (!activeTracker) return;
+  try {
+    if (typeof activeTracker.destroy === "function") activeTracker.destroy();
+    else activeTracker.stop?.();
+  } catch (error) {
+    console.warn("Movement tracker cleanup failed", error);
+  }
+}
+
 const prescriptionBodyAreas = {
   All: null,
   "Lower body": ["Hips & glutes", "Thighs & quads", "Hamstrings", "Knees", "Calves & shins", "Ankles & feet", "Balance"],
@@ -1995,7 +2007,7 @@ async function signOutPortal(reason = null) {
   clearTimeout(authIdleTimer);
   authIdleTimer = null;
   if (supabase && !currentSession?.demo) await supabase.auth.signOut();
-  tracker?.stop?.();
+  destroyMovementTracker();
   stopMovementGameAnimation();
   currentSession = null;
   currentProfile = null;
@@ -2028,7 +2040,7 @@ async function initializeLab() {
   const video = document.querySelector("#camera");
   const canvas = document.querySelector("#overlay");
   if (!video || !canvas) return;
-  tracker?.stop?.();
+  destroyMovementTracker();
   stopMovementGameAnimation();
   if (currentSession?.demo) {
     sessionStartedAt = Date.now();
@@ -2100,7 +2112,7 @@ async function initializeLab() {
       showCameraRecovery("Camera needs attention", message);
     },
   });
-  if (!video.isConnected) { tracker?.stop?.(); return; }
+  if (!video.isConnected) { destroyMovementTracker(); return; }
   document.querySelector("#start-camera")?.addEventListener("click", async () => {
     if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return; stopDemo(); document.querySelector(".camera-pane")?.classList.add("camera-on"); setText("#capture-status", "CAMERA ACTIVE"); await tracker.start(); });
   document.querySelector("#run-demo")?.addEventListener("click", runPitchDemo);
@@ -2236,6 +2248,12 @@ function stopMovementGameAnimation() {
   adventureScene = null;
   if (movementGameAnimation) cancelAnimationFrame(movementGameAnimation);
   movementGameAnimation = null;
+  gameTrackingReady = false;
+  const activeController = movementGameController;
+  movementGameController = null;
+  if (typeof window !== "undefined" && window.__axionMovementGameController === activeController) {
+    try { delete window.__axionMovementGameController; } catch { window.__axionMovementGameController = null; }
+  }
 }
 
 function handleTrackingState({ code, label, quality, confidence }) {
@@ -2294,7 +2312,7 @@ function updateCalibration(progress, status) {
 function runPitchDemo() {
   if (currentSession?.user && !currentSession.demo) return;
   stopDemo();
-  tracker?.stop?.();
+  destroyMovementTracker();
   demoScriptActive = true;
   demoDashboardUpdated = false;
   demoStageIndex = 0;
@@ -3131,7 +3149,7 @@ function clearClinicalSessionIdentity() {
 function showSchemaCompatibilityError(error = null) {
   const code = error?.code || "SCHEMA_VERSION_MISMATCH";
   console.error("AXION_OPERATIONAL_EVENT", { event: "schema_version_mismatch", release: APP_RELEASE, errorCode: code });
-  tracker?.stop?.();
+  destroyMovementTracker();
   stopMovementGameAnimation();
   clearSetRest();
   clearClinicalSessionIdentity();
@@ -3143,7 +3161,7 @@ function showSchemaCompatibilityError(error = null) {
 function showSessionIdentityError(error = null) {
   const code = error?.code || SESSION_CONTEXT_ERROR.MISSING;
   console.error("AXION_OPERATIONAL_EVENT", { event: "assignment_context_invalid", errorCode: code });
-  tracker?.stop?.();
+  destroyMovementTracker();
   stopMovementGameAnimation();
   clearSetRest();
   clearClinicalSessionIdentity();
@@ -3255,7 +3273,7 @@ function armAuthIdleTimeout() {
 
 function navigateTo(target) {
   clearSetRest();
-  tracker?.stop?.();
+  destroyMovementTracker();
   stopMovementGameAnimation();
   if (target !== "lab") clearClinicalSessionIdentity();
   if (demoScriptActive) { stopDemo(); demoScriptActive = false; }
@@ -3526,6 +3544,7 @@ document.addEventListener("visibilitychange", () => {
     gameTrackingReady = false; movementGameController?.setCameraReady(false);
   }
   if (document.visibilityState === "visible") { armAuthIdleTimeout(); void refreshPatientWorkspaceFromRealtime(); } });
+window.addEventListener("pagehide", () => { destroyMovementTracker(); stopMovementGameAnimation(); clearSetRest(); }, { once: true });
 window.addEventListener("pageshow", (event) => { if (event.persisted) window.location.reload(); });
 window.addEventListener("resize", () => requestAnimationFrame(drawSessionPathTrail));
 
@@ -3554,6 +3573,9 @@ async function bootstrap() {
       currentSession = session;
       armAuthIdleTimeout();
       if (!session) {
+        destroyMovementTracker();
+        stopMovementGameAnimation();
+        clearSetRest();
         currentProfile = null;
         assignedPatients = [];
         therapistConnections = [];

@@ -356,6 +356,19 @@ test("slow patient workspace response cannot restore clinical data after session
   await expect(page.getByText("RC1 exact identity plan")).toHaveCount(0);
 });
 
+test("leaving Movement Lab destroys tracker and stale game controller resources", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  const before = await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount);
+  await page.locator('.lab-page [data-nav="patient"]').click();
+  await expect(page.locator('.patient-portal')).toBeVisible();
+  const after = await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount);
+  expect(after).toBe(before + 1);
+  expect(await page.evaluate(() => window.__axionMovementGameController == null)).toBe(true);
+});
+
 test("expired session returns to sign-in and clears clinical workspace", async ({ page }) => {
   await boot(page);
   await seedPlan(page);

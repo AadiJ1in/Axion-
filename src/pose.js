@@ -494,11 +494,27 @@ export async function createMovementTracker(options) {
     calibrated = false; calibrationStart = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; baselineAngle = null; baselineLeft = null; baselineRight = null; lastVideoTime = -1; sessionStart = performance.now(); onCalibration({ progress: 0, status: "Learning a fresh session baseline" }); reps = 0; stage = "up"; repCycle.reset(); repStart = null; peakAngle = null; peakDelta = 0; symmetrySamples = []; noPoseFrames = 0; latestAngle = null; latestSymmetryDelta = null; latestMovementRange = null; latestMeasurementSide = null; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; repHistory.length = 0;
     onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: "Session reset." });
   }
-  function stop() { cameraGeneration++; running = false; if (rafId) cancelAnimationFrame(rafId); stream?.getTracks().forEach((track) => track.stop()); stream = null; video.srcObject = null; const ctx = canvas.getContext("2d"); ctx?.clearRect(0, 0, canvas.width, canvas.height); }
-  function pause() { if (!running) return; running = false; if (rafId) cancelAnimationFrame(rafId); repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
+  function stop() {
+    cameraGeneration++;
+    running = false;
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    rafId = null;
+    stream?.getTracks().forEach((track) => track.stop());
+    stream = null;
+    video.srcObject = null;
+    const ctx = canvas.getContext("2d");
+    ctx?.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  function destroy() {
+    stop();
+    try { landmarker?.close?.(); } catch { /* A failed model may already be disposed. */ }
+    landmarker = null;
+    repCycle.cancelPending();
+  }
+  function pause() { if (!running) return; running = false; if (rafId !== null) cancelAnimationFrame(rafId); rafId = null; repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
   function resume() { if (running || !stream?.active) return; running = true; lastVideoTime = -1; frame(); }
 
-  return { start, stop, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint }) };
+  return { start, stop, destroy, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint }) };
 }
 
 export const createSquatTracker = createMovementTracker;
