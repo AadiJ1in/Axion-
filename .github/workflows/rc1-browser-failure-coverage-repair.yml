@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply missing browser failure coverage
+      - name: Apply missing browser failure coverage and mobile repair
         run: node scripts/rc1-browser-failure-coverage-repair.mjs
       - name: Remove one-time repair helpers
         run: |
@@ -41,14 +41,14 @@ jobs:
         run: npm run build
       - name: Expanded RC1 browser suite
         run: npx playwright test
-      - name: Commit verified browser coverage
+      - name: Commit verified browser and mobile fixes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A tests/e2e/fake-movement-tracker-browser.js tests/e2e/rc1-critical.spec.js .github/workflows/rc1-browser-failure-coverage-repair.yml scripts/rc1-browser-failure-coverage-repair.mjs
+          git add -A src/styles.css tests/e2e/fake-movement-tracker-browser.js tests/e2e/rc1-critical.spec.js .github/workflows/rc1-browser-failure-coverage-repair.yml scripts/rc1-browser-failure-coverage-repair.mjs
           if git diff --cached --quiet; then
             echo "No verified changes to commit."
             exit 0
           fi
-          git commit -m "Cover tracker interruption logout and mobile rotation"
+          git commit -m "Fix mobile auth overlap and cover RC1 failure paths"
           git push origin HEAD:feature/rc1-session-identity
