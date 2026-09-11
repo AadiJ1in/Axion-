@@ -74,11 +74,13 @@ test("mobile rotation during Movement Lab preserves the active session without o
   await page.setViewportSize({ width: 390, height: 844 });
   await boot(page);
   await seedPlan(page, { targetReps: 2 });
-  await page.evaluate((assignmentId) => {
+  await page.evaluate(({ assignmentId, planId }) => {
+    const plan = window.__AXION_E2E_CONTROL__.db.exercise_plans.find((item) => item.id === planId);
     const assignment = window.__AXION_E2E_CONTROL__.db.exercise_assignments.find((item) => item.id === assignmentId);
-    if (!assignment) throw new Error("Missing RC1 mobile rotation assignment");
+    if (!plan || !assignment) throw new Error("Missing RC1 mobile rotation plan or assignment");
+    plan.game_enabled = true;
     assignment.exercise_mode = "movement_game";
-  }, IDS.assignmentA);
+  }, { assignmentId: IDS.assignmentA, planId: IDS.plan });
   await signInPatientA(page);
   await startAssignment(page);
   await expect(page.locator("#adventure-canvas")).toBeVisible();
