@@ -74,6 +74,11 @@ test("mobile rotation during Movement Lab preserves the active session without o
   await page.setViewportSize({ width: 390, height: 844 });
   await boot(page);
   await seedPlan(page, { targetReps: 2 });
+  await page.evaluate((assignmentId) => {
+    const assignment = window.__AXION_E2E_CONTROL__.db.exercise_assignments.find((item) => item.id === assignmentId);
+    if (!assignment) throw new Error("Missing RC1 mobile rotation assignment");
+    assignment.exercise_mode = "movement_game";
+  }, IDS.assignmentA);
   await signInPatientA(page);
   await startAssignment(page);
   await expect(page.locator("#adventure-canvas")).toBeVisible();
@@ -81,6 +86,7 @@ test("mobile rotation during Movement Lab preserves the active session without o
   await page.waitForTimeout(150);
   await expect(page.locator(".lab-page")).toBeVisible();
   await expect(page.locator("#finish-session")).toBeVisible();
+  await expect(page.locator("#adventure-canvas")).toBeVisible();
   const canvasBox = await page.locator("#adventure-canvas").boundingBox();
   expect(canvasBox).not.toBeNull();
   expect(canvasBox.width).toBeLessThanOrEqual(845);
@@ -89,7 +95,7 @@ test("mobile rotation during Movement Lab preserves the active session without o
 });
 
 test("expired session returns to sign-in and clears clinical workspace", async ({ page }) => {`,
-  'browser suite covers auth-boundary sign-out and mobile rotation/resize',
+  'browser suite covers auth-boundary sign-out and flagship game mobile rotation/resize',
 );
 
 replaceExactly(
