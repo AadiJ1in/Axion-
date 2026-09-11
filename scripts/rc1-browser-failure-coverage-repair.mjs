@@ -56,18 +56,18 @@ test("same-user token refresh preserves an active clinical session", async ({ pa
 replaceExactly(
   'tests/e2e/rc1-critical.spec.js',
   `test("expired session returns to sign-in and clears clinical workspace", async ({ page }) => {`,
-  `test("explicit sign-out after starting a clinical session clears unsaved treatment state", async ({ page }) => {
+  `test("auth sign-out during an active clinical session clears unsaved treatment state", async ({ page }) => {
   await boot(page);
   await seedPlan(page, { targetReps: 2 });
   await signInPatientA(page);
   await startAssignment(page);
   await emitRep(page);
-  await page.locator('[data-nav="account"]').click();
-  await expect(page.locator('[data-portal-signout]')).toBeVisible();
-  await page.locator('[data-portal-signout]').click();
+  const destroyBefore = await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.expireSession());
   await expect(page.locator("#auth-form")).toBeVisible();
   expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
   expect(await page.evaluate(() => window.__axionMovementGameController == null)).toBe(true);
+  expect(await page.evaluate((before) => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount > before, destroyBefore)).toBe(true);
 });
 
 test("mobile rotation during Movement Lab preserves the active session without overflow", async ({ page }) => {
@@ -89,7 +89,14 @@ test("mobile rotation during Movement Lab preserves the active session without o
 });
 
 test("expired session returns to sign-in and clears clinical workspace", async ({ page }) => {`,
-  'browser suite covers explicit logout and mobile rotation/resize',
+  'browser suite covers auth-boundary sign-out and mobile rotation/resize',
 );
 
-console.log('RC1 browser failure-path coverage repair applied successfully.');
+replaceExactly(
+  'src/styles.css',
+  `@media(max-width:900px){.topbar{grid-template-columns:1fr auto;padding-inline:18px}.nav{position:fixed;left:10px;right:10px;bottom:10px;z-index:70;display:grid;grid-template-columns:repeat(4,1fr);padding:.35rem;background:rgba(9,19,16,.92);border:1px solid var(--line);border-radius:12px;backdrop-filter:blur(18px)}`,
+  `@media(max-width:900px){.topbar{grid-template-columns:1fr auto;padding-inline:18px}.topbar:has(.account-entry-button) .nav{display:none!important}.nav{position:fixed;top:auto;left:10px;right:10px;bottom:max(10px,env(safe-area-inset-bottom));height:auto;min-height:0;z-index:70;display:grid;grid-template-columns:repeat(4,1fr);padding:.35rem;background:rgba(9,19,16,.92);border:1px solid var(--line);border-radius:12px;backdrop-filter:blur(18px)}`,
+  'signed-out mobile header keeps sign-in unobstructed and constrains bottom nav geometry',
+);
+
+console.log('RC1 browser failure-path and mobile-navigation repair applied successfully.');
