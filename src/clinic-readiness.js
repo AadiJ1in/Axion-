@@ -35,7 +35,7 @@ const runtime = {
   therapistContext: null,
   patientContext: null,
   lastPatientId: null,
-  activeAssignmentId: null,
+  authGeneration: 0,
   labRoot: null,
   labGatePaused: false,
   labStarted: false,
@@ -388,13 +388,12 @@ function resetLabState(root) {
 
 function labAssignment() {
   const workspace = runtime.patientContext?.workspace;
-  if (!workspace) return null;
-  if (runtime.activeAssignmentId) {
-    const assignment = (workspace.assignments || []).find((item) => item.id === runtime.activeAssignmentId);
-    if (assignment) return assignment;
-  }
-  const title = document.querySelector(".lab-header h1")?.textContent?.trim();
-  return (workspace.assignments || []).find((item) => item.display_name === title) || workspace.assignments?.[0] || null;
+  const lab = document.querySelector(".lab-page");
+  const assignmentId = String(lab?.dataset.sessionAssignmentId || "").trim();
+  const planId = String(lab?.dataset.sessionPlanId || "").trim();
+  if (!workspace || !assignmentId || !planId || workspace.plan?.id !== planId) return null;
+  return (workspace.assignments || []).find((item) =>
+    item.id === assignmentId && item.plan_id === planId && item.status === "active") || null;
 }
 
 function setupLab(page) {
@@ -561,8 +560,10 @@ function enrichLiveReport(page, context, patientId) {
 async function enhanceTherapistPage(page) {
   if (page.dataset.clinicEnhancing || page.dataset.clinicEnhanced) return;
   page.dataset.clinicEnhancing = "true";
+  const authGeneration = runtime.authGeneration;
   try {
     const context = await therapistContext();
+    if (!page.isConnected || authGeneration !== runtime.authGeneration) return;
     runtime.therapistContext = context;
     renderNeedsAttention(page, context);
     enhanceCheckins(page, context);
@@ -578,8 +579,10 @@ async function enhanceTherapistPage(page) {
 async function enhancePatientPage(page) {
   if (page.dataset.clinicEnhancing || page.dataset.clinicEnhanced) return;
   page.dataset.clinicEnhancing = "true";
+  const authGeneration = runtime.authGeneration;
   try {
     const context = await patientContext();
+    if (!page.isConnected || authGeneration !== runtime.authGeneration) return;
     runtime.patientContext = context;
     renderTodayRecovery(page, context);
     page.dataset.clinicEnhanced = "true";
@@ -597,7 +600,12 @@ async function syncClinicReadiness() {
   if (therapistPage) enhanceTherapistPage(therapistPage);
   if (patientPage) enhancePatientPage(patientPage);
   if (labPage) {
-    if (!runtime.patientContext) patientContext().then((context) => { runtime.patientContext = context; }).catch(() => {});
+    if (!runtime.patientContext) {
+      const authGeneration = runtime.authGeneration;
+      patientContext().then((context) => {
+        if (authGeneration === runtime.authGeneration && document.querySelector(".lab-page") === labPage) runtime.patientContext = context;
+      }).catch(() => {});
+    }
     setupLab(labPage);
     syncCalibrationGate();
     syncSetSummary();
@@ -610,8 +618,6 @@ document.addEventListener("click", (event) => {
   const target = event.target.closest?.("[data-report-patient-id], [data-start-assignment], [data-start-node-assignment], [data-clinic-open-patient], [data-clinic-progress-patient], [data-clinic-start-today], #clinic-begin-exercise, .checkin-row[data-clinic-session-id]");
   if (!target) return;
   if (target.dataset.reportPatientId) runtime.lastPatientId = target.dataset.reportPatientId;
-  if (target.dataset.startAssignment) runtime.activeAssignmentId = target.dataset.startAssignment;
-  if (target.dataset.startNodeAssignment) runtime.activeAssignmentId = target.dataset.startNodeAssignment;
 
   if (target.dataset.clinicOpenPatient) {
     event.preventDefault();
@@ -661,8 +667,36 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") document.querySelector(".clinic-modal-layer")?.remove();
 });
 
+let clinicAuthSubscription = null;
+if (isConfigured && supabase) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const previousUserId = runtime.liveSession?.user?.id || null;
+    const nextUserId = session?.user?.id || null;
+    runtime.liveSession = session || null;
+    runtime.liveSessionCheckedAt = Date.now();
+    if (previousUserId === nextUserId) return;
+    runtime.authGeneration += 1;
+    runtime.therapistContext = null;
+    runtime.patientContext = null;
+    runtime.lastPatientId = null;
+    runtime.labRoot = null;
+    runtime.labGatePaused = false;
+    runtime.labStarted = false;
+    runtime.repCandidate = null;
+    runtime.rejectedByReason = new Map();
+    runtime.setRejectedStart = new Map();
+    runtime.lastRepCount = 0;
+    runtime.lastResting = false;
+    document.querySelectorAll(".clinic-modal-layer").forEach((node) => node.remove());
+  });
+  clinicAuthSubscription = data?.subscription || null;
+}
+
 const clinicTimer = window.setInterval(syncClinicReadiness, 250);
-window.addEventListener("pagehide", () => window.clearInterval(clinicTimer), { once: true });
+window.addEventListener("pagehide", () => {
+  window.clearInterval(clinicTimer);
+  clinicAuthSubscription?.unsubscribe?.();
+}, { once: true });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncClinicReadiness(); });
 syncClinicReadiness();
 

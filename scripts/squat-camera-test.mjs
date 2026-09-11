@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { createMovementGameController, MOVEMENT_EVENT as E } from '../src/movement-game.js';
-import { containedFrame, ownsActiveAssignment, createSquatCameraControl } from '../src/squat-camera.js';
+import { containedFrame, ownsActiveAssignment, createSquatCameraControl, predictVisualPoint } from '../src/squat-camera.js';
+const forward = predictVisualPoint({x:.5,y:.22},{x:.5,y:.20},{x:0,y:0},16);
+assert.equal(forward.reversed,false);
+assert(forward.point.y > .22,'one-frame prediction leads continuing visual motion');
+assert(forward.point.y <= .2380001,'prediction lead is heavily clamped');
+const reversal = predictVisualPoint({x:.5,y:.20},{x:.5,y:.22},forward.velocity,16);
+assert.equal(reversal.reversed,true,'unexpected reversal disables prediction immediately');
+assert.equal(reversal.point.y,.20);
+const noHistory = predictVisualPoint({x:.4,y:.3},null,null,16);
+assert.deepEqual(noHistory.point,{x:.4,y:.3},'first frame is never fabricated ahead');
+
 let time = 0;
 const game = createMovementGameController({exerciseKey:'bodyweight_squat',targetReps:3,liveCamera:true,now:()=>time});
 game.setMode('game');

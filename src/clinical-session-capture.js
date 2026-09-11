@@ -14,6 +14,7 @@ const state = {
   root: null,
   session: undefined,
   sessionCheckedAt: 0,
+  authGeneration: 0,
   workspace: null,
   assignment: null,
   profile: null,
@@ -27,6 +28,7 @@ const state = {
   finalizing: false,
   finalizingAt: null,
   persistedSessionId: null,
+  clientSessionId: null,
   reviewSessionId: null,
   progressPatientId: null,
 };
@@ -60,17 +62,29 @@ function resetForLab(root) {
   state.finalizing = false;
   state.finalizingAt = null;
   state.persistedSessionId = null;
+  state.clientSessionId = String(root?.dataset.sessionClientId || "").trim() || null;
 }
 
 async function resolveAssignment() {
   if (state.assignment) return state.assignment;
   const session = await authSession();
   if (!session?.user) return null;
-  if (!state.workspace) state.workspace = await loadPatientWorkspace(supabase, session.user.id);
-  const title = document.querySelector(".lab-header h1")?.textContent?.trim();
-  state.assignment = (state.workspace.assignments || []).find((item) => item.display_name === title)
-    || state.workspace.assignments?.[0]
-    || null;
+  const authGeneration = state.authGeneration;
+  const userId = session.user.id;
+  if (!state.workspace) {
+    const workspace = await loadPatientWorkspace(supabase, userId);
+    if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return null;
+    state.workspace = workspace;
+  }
+  const lab = document.querySelector(".lab-page");
+  const assignmentId = String(lab?.dataset.sessionAssignmentId || "").trim();
+  const planId = String(lab?.dataset.sessionPlanId || "").trim();
+  const clientSessionId = String(lab?.dataset.sessionClientId || "").trim();
+  if (!assignmentId || !planId || !clientSessionId || state.workspace?.plan?.id !== planId) return null;
+  if (state.clientSessionId && state.clientSessionId !== clientSessionId) return null;
+  state.clientSessionId = clientSessionId;
+  state.assignment = (state.workspace.assignments || []).find((item) =>
+    item.id === assignmentId && item.plan_id === planId && item.status === "active") || null;
   if (state.assignment) {
     state.profile = getMovementProfile(state.assignment.exercise_key, state.assignment.tracking_mode);
     if (state.profile.mode !== "hold") state.attemptTracker = createAttemptTracker(state.profile);
@@ -202,18 +216,21 @@ function currentPainValue(id, touched) {
 
 async function newestSavedSession() {
   const session = await authSession();
-  if (!session?.user || !state.assignment || !state.startedAt) return null;
-  const earliest = new Date(state.startedAt - 120000).toISOString();
+  if (!session?.user || !state.assignment || !state.clientSessionId) return null;
+  const authGeneration = state.authGeneration;
+  const userId = session.user.id;
   const { data, error } = await supabase.from("exercise_sessions")
-    .select("id, patient_id, assignment_id, exercise_key, repetitions, started_at, completed_at, created_at")
+    .select("id, patient_id, assignment_id, client_session_id, exercise_key, repetitions, started_at, completed_at, created_at")
     .eq("patient_id", session.user.id)
     .eq("assignment_id", state.assignment.id)
-    .gte("created_at", earliest)
-    .order("created_at", { ascending: false })
-    .limit(5);
-  if (error) return null;
-  const finalizeFloor = (state.finalizingAt || Date.now()) - 120000;
-  return (data || []).find((item) => new Date(item.completed_at || item.created_at).getTime() >= finalizeFloor) || data?.[0] || null;
+    .eq("client_session_id", state.clientSessionId)
+    .maybeSingle();
+  if (error || !data || authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return null;
+  if (data.patient_id !== userId
+      || data.assignment_id !== state.assignment.id
+      || data.client_session_id !== state.clientSessionId
+      || data.exercise_key !== state.assignment.exercise_key) return null;
+  return data;
 }
 
 function safeRepRow(rep, sessionId) {
@@ -253,12 +270,14 @@ async function persistSessionDetail() {
   if (state.persistedSessionId || !state.finalizing) return;
   const session = await authSession();
   if (!session?.user || !state.assignment) return;
+  const authGeneration = state.authGeneration;
+  const userId = session.user.id;
   let saved = null;
   for (let attempt = 0; attempt < 20 && !saved; attempt += 1) {
     saved = await newestSavedSession();
     if (!saved) await sleep(450);
   }
-  if (!saved || state.persistedSessionId) return;
+  if (!saved || state.persistedSessionId || authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return;
 
   const summary = state.attemptTracker?.summary?.() || { attempted: 0, rejected: 0, rejectedReasons: {}, reps: [] };
   const attemptedReps = Math.max(summary.attempted, Number(saved.repetitions || 0) + summary.rejected);
@@ -273,7 +292,7 @@ async function persistSessionDetail() {
   });
   const { error: contextError } = await supabase.from("session_capture_context").insert({
     session_id: saved.id,
-    patient_id: session.user.id,
+    patient_id: userId,
     assignment_id: state.assignment.id,
     ...context,
   });
@@ -281,7 +300,9 @@ async function persistSessionDetail() {
     console.warn("Could not persist patient session context", contextError);
     return;
   }
+  if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return;
   const repRows = await persistRepMetrics(saved.id, summary.reps || []);
+  if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return;
   state.persistedSessionId = saved.id;
   showPersistenceReceipt(context, repRows);
 }
@@ -304,17 +325,19 @@ async function enhanceSessionReview(sessionId) {
   if (!sessionId || !supabase) return;
   const session = await authSession();
   if (!session?.user) return;
+  const authGeneration = state.authGeneration;
+  const userId = session.user.id;
   let modal = null;
   for (let attempt = 0; attempt < 10 && !modal; attempt += 1) {
     await sleep(120);
     modal = document.querySelector(".clinic-session-modal");
   }
-  if (!modal || modal.querySelector("[data-persisted-session-context]")) return;
+  if (!modal || modal.querySelector("[data-persisted-session-context]") || authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return;
   const { data, error } = await supabase.from("session_capture_context")
     .select("session_id, pain_before, pain_after, confidence_before, confidence_after, attempted_reps, rejected_reps, rejected_reasons, created_at")
     .eq("session_id", sessionId)
     .maybeSingle();
-  if (error || !data) return;
+  if (error || !data || authGeneration !== state.authGeneration || state.session?.user?.id !== userId || !modal.isConnected) return;
   const valid = Math.max(0, Number(data.attempted_reps || 0) - Number(data.rejected_reps || 0));
   const percent = validRepPercent(data.attempted_reps, data.rejected_reps);
   const block = document.createElement("section");
@@ -340,23 +363,25 @@ async function enhanceProgressCoverage(patientId) {
   if (!patientId || !supabase) return;
   const session = await authSession();
   if (!session?.user) return;
+  const authGeneration = state.authGeneration;
+  const userId = session.user.id;
   let modal = null;
   for (let attempt = 0; attempt < 10 && !modal; attempt += 1) {
     await sleep(120);
     modal = document.querySelector("#clinic-progress-modal");
   }
-  if (!modal) return;
+  if (!modal || authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return;
   const { data: sessions, error: sessionError } = await supabase.from("exercise_sessions")
     .select("id, completed_at, created_at")
     .eq("patient_id", patientId)
     .order("completed_at", { ascending: true })
     .limit(50);
-  if (sessionError || !sessions?.length) return;
+  if (sessionError || !sessions?.length || authGeneration !== state.authGeneration || state.session?.user?.id !== userId || !modal.isConnected) return;
   const ids = sessions.map((item) => item.id);
   const { data: contexts, error } = await supabase.from("session_capture_context")
     .select("session_id, attempted_reps, rejected_reps")
     .in("session_id", ids);
-  if (error || !contexts?.length) return;
+  if (error || !contexts?.length || authGeneration !== state.authGeneration || state.session?.user?.id !== userId || !modal.isConnected) return;
   const bySession = new Map(contexts.map((item) => [item.session_id, item]));
   const points = sessions.map((item) => {
     const context = bySession.get(item.id);
@@ -431,6 +456,23 @@ document.addEventListener("click", (event) => {
   }
 }, true);
 
+let sessionCaptureAuthSubscription = null;
+if (isConfigured && supabase) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const previousUserId = state.session?.user?.id || null;
+    const nextUserId = session?.user?.id || null;
+    state.session = session || null;
+    state.sessionCheckedAt = Date.now();
+    if (previousUserId === nextUserId) return;
+    state.authGeneration += 1;
+    resetForLab(null);
+    state.reviewSessionId = null;
+    state.progressPatientId = null;
+    document.querySelectorAll("[data-session-detail-receipt], [data-persisted-session-context]").forEach((node) => node.remove());
+  });
+  sessionCaptureAuthSubscription = data?.subscription || null;
+}
+
 const timer = window.setInterval(() => {
   const lab = document.querySelector(".lab-page");
   if (lab && state.root !== lab) {
@@ -446,7 +488,10 @@ const timer = window.setInterval(() => {
   if (state.finalizing && !state.persistedSessionId) persistSessionDetail().catch(() => {});
 }, 250);
 
-window.addEventListener("pagehide", () => window.clearInterval(timer), { once: true });
+window.addEventListener("pagehide", () => {
+  window.clearInterval(timer);
+  sessionCaptureAuthSubscription?.unsubscribe?.();
+}, { once: true });
 
 window.__axionClinicalSessionCapture = Object.freeze({
   version: 1,

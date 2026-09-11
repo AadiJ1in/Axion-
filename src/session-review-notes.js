@@ -9,6 +9,7 @@ const esc = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
 const state = {
   pendingSessionId: null,
   session: null,
+  authGeneration: 0,
   activeLoadToken: 0,
 };
 
@@ -46,13 +47,16 @@ function scheduleEnhance(sessionId, attempt = 0) {
 }
 
 async function fetchSessionAndNotes(sessionId) {
+  const authGeneration = state.authGeneration;
   const auth = await authSession();
   if (!auth?.user) throw new Error("Your therapist session is no longer available.");
+  const userId = auth.user.id;
   const sessionResult = await supabase.from("exercise_sessions")
     .select("id, patient_id, exercise_key, completed_at, created_at")
     .eq("id", sessionId)
     .maybeSingle();
   if (sessionResult.error) throw sessionResult.error;
+  if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId) throw new Error("Your therapist session changed while loading this review.");
   if (!sessionResult.data) throw new Error("This session is not available to the current therapist account.");
   const notesResult = await supabase.from("therapist_notes")
     .select("id, therapist_id, patient_id, session_id, note, created_at")
@@ -60,6 +64,7 @@ async function fetchSessionAndNotes(sessionId) {
     .eq("session_id", sessionId)
     .order("created_at", { ascending: false });
   if (notesResult.error) throw notesResult.error;
+  if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId) throw new Error("Your therapist session changed while loading notes.");
   return { auth, session: sessionResult.data, notes: sortTherapistNotes(notesResult.data || []) };
 }
 
@@ -108,6 +113,9 @@ async function saveNote(panel, context) {
   button.disabled = true;
   if (message) { message.className = "clinic-session-note-message"; message.textContent = "Saving…"; }
   try {
+    const activeAuth = await authSession();
+    if (!activeAuth?.user || activeAuth.user.id !== context.auth.user.id) throw new Error("Your therapist session changed before this note could be saved.");
+    const authGeneration = state.authGeneration;
     const { error } = await supabase.from("therapist_notes").insert({
       therapist_id: context.auth.user.id,
       patient_id: context.session.patient_id,
@@ -115,6 +123,7 @@ async function saveNote(panel, context) {
       note,
     });
     if (error) throw error;
+    if (authGeneration !== state.authGeneration || state.session?.user?.id !== context.auth.user.id) throw new Error("Your therapist session changed while saving this note.");
     const refreshed = await fetchSessionAndNotes(context.session.id);
     const list = panel.querySelector("[data-session-note-list]");
     if (list) list.innerHTML = noteListMarkup(refreshed.notes);
@@ -136,6 +145,22 @@ document.addEventListener("keydown", (event) => {
     rememberSessionFromTarget(event.target);
   }
 }, true);
+
+let sessionNotesAuthSubscription = null;
+if (isConfigured && supabase) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const previousUserId = state.session?.user?.id || null;
+    const nextUserId = session?.user?.id || null;
+    state.session = session || null;
+    if (previousUserId === nextUserId) return;
+    state.authGeneration += 1;
+    state.pendingSessionId = null;
+    state.activeLoadToken += 1;
+    document.querySelectorAll("[data-clinic-session-notes]").forEach((node) => node.remove());
+  });
+  sessionNotesAuthSubscription = data?.subscription || null;
+}
+window.addEventListener("pagehide", () => sessionNotesAuthSubscription?.unsubscribe?.(), { once: true });
 
 window.__axionSessionReviewNotes = Object.freeze({
   version: 1,
