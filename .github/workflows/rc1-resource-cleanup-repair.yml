@@ -1,0 +1,54 @@
+name: RC1 repair tracker and game cleanup
+
+on:
+  push:
+    branches:
+      - feature/rc1-session-identity
+    paths:
+      - .github/workflows/rc1-resource-cleanup-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feature/rc1-session-identity
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply guarded resource cleanup repair
+        run: node scripts/rc1-resource-cleanup-repair.mjs
+      - name: Remove one-time repair helpers
+        run: |
+          rm -f .github/workflows/rc1-resource-cleanup-repair.yml
+          rm -f scripts/rc1-resource-cleanup-repair.mjs
+      - name: Install application dependencies
+        run: npm ci
+      - name: Install Playwright test runner
+        run: npm install --no-save @playwright/test@1.63.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Static and regression suite
+        run: npm run check
+      - name: Production build
+        run: npm run build
+      - name: Full RC1 browser suite
+        run: npx playwright test
+      - name: Commit verified cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A src/pose.js src/main.js scripts/tracker-lifecycle-test.mjs tests/e2e/fake-movement-tracker-browser.js tests/e2e/rc1-critical.spec.js .github/workflows/rc1-resource-cleanup-repair.yml scripts/rc1-resource-cleanup-repair.mjs
+          if git diff --cached --quiet; then
+            echo "No verified changes to commit."
+            exit 0
+          fi
+          git commit -m "Dispose tracker and game resources on clinical exit"
+          git push origin HEAD:feature/rc1-session-identity
