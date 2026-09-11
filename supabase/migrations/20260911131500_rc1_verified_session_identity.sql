@@ -156,6 +156,7 @@ begin
     'prescribed_reps', v_assignment.target_repetitions,
     'duration_seconds', v_assignment.duration_seconds,
     'rest_seconds', v_assignment.rest_seconds,
+    'movement_profile_id', v_assignment.exercise_key || ':' || v_assignment.tracking_mode || ':rc1-profile-v1',
     'movement_profile_version', 'rc1-profile-v1',
     'review_target_version', v_review_target_version,
     'client_session_id', new.client_session_id,
