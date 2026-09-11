@@ -1,0 +1,61 @@
+name: RC1 latency and flagship squat repair
+
+on:
+  push:
+    branches:
+      - feature/rc1-session-identity
+    paths:
+      - .github/workflows/rc1-latency-squat-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feature/rc1-session-identity
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply deterministic latency and squat repair
+        run: node scripts/rc1-latency-squat-repair-v2.mjs
+      - name: Remove one-time repair helpers
+        run: |
+          rm -f .github/workflows/rc1-latency-squat-repair.yml
+          rm -f scripts/rc1-latency-squat-repair.mjs
+          rm -f scripts/rc1-latency-squat-repair-v2.mjs
+      - name: Install application dependencies
+        run: npm ci
+      - name: Install Playwright test runner
+        run: npm install --no-save @playwright/test@1.63.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Existing static and regression suite
+        run: npm run check
+      - name: Latency diagnostics contract
+        run: node scripts/performance-diagnostics-test.mjs
+      - name: Adaptive rendering contract
+        run: node scripts/render-quality-test.mjs
+      - name: Flagship camera synchronization regression
+        run: node scripts/squat-camera-test.mjs
+      - name: Production build
+        run: npm run build
+      - name: Full RC1 browser suite
+        run: npx playwright test
+      - name: Commit verified latency and squat changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A src/pose.js src/movement-game.js src/main.js src/adventure-scene.js src/performance-diagnostics.js src/render-quality.js scripts/performance-diagnostics-test.mjs scripts/render-quality-test.mjs .github/workflows/rc1-latency-squat-repair.yml scripts/rc1-latency-squat-repair.mjs scripts/rc1-latency-squat-repair-v2.mjs
+          if git diff --cached --quiet; then
+            echo "No verified changes to commit."
+            exit 0
+          fi
+          git commit -m "Measure motion latency and prioritize live squat rendering"
+          git push origin HEAD:feature/rc1-session-identity
