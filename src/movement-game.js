@@ -47,7 +47,7 @@ export function createMovementGameController({
     exerciseKey,mapping,mode:'standard',gameDifficulty:'standard',clinicalTarget,holdTargetSeconds,
     completed:0,remaining:clinicalTarget,movement:0,rawMovement:0,runnerY:25,obstacleX:108,obstaclePattern:0,
     attemptActive:false,attemptCollided:false,obstacleResolved:false,collisions:0,collectibles:0,score:0,
-    combo:0,paused:false,safetyFlagged:false,lastOutcome:null,side:null,elapsed:0,stars:0
+    combo:0,paused:false,safetyFlagged:false,lastOutcome:null,side:null,elapsed:0,stars:0,latestDebugTiming:null
   });
   state = initial();
 
@@ -122,6 +122,7 @@ export function createMovementGameController({
       if(state.paused||state.completed>=clinicalTarget) return snapshot();
 
       if(event.type===MOVEMENT_EVENT.MOVEMENT_PROGRESS){
+        if(event.debugTiming) state.latestDebugTiming=Object.freeze({...event.debugTiming,gameStateAt:now()});
         runner?.motion(event,now());
         const rawMovement = runner?.snapshot(now()).movement ?? clamp01(event.progress);
         if(runner){state.rawMovement=rawMovement;state.movement=rawMovement;state.runnerY=25+rawMovement*50;return snapshot();}

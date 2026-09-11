@@ -2056,10 +2056,11 @@ async function initializeLab() {
     targetReps: demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10),
     targetHoldSeconds: currentAssignment?.tracking_mode === "timed_hold" ? (currentAssignment?.duration_seconds || 30) : 0,
     liveCamera: true,
-    runnerMode: true,
+    runnerMode: Boolean(currentSession?.demo),
     onState: renderMovementGameState,
   });
   setText("#calibration-copy", activeProfile.cameraHint);
+  let pendingPerformanceTrace = null;
   tracker = await createMovementTracker({
     video, canvas,
     exerciseKey: currentAssignment.exercise_key,
@@ -2067,6 +2068,7 @@ async function initializeLab() {
     prescribedSide: currentAssignment?.prescribed_side || "either",
     onCalibration: ({ progress, status }) => updateCalibration(progress, status),
     onPose: (points) => { updateTwinFromLandmarks(points); movementGameController?.updateCameraPose(points); },
+    onTiming: (trace) => { pendingPerformanceTrace = trace; },
     onTrackingState: handleTrackingState,
     onRep: acceptValidatedRep,
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
@@ -2097,7 +2099,9 @@ async function initializeLab() {
       movementGameController?.setCameraReady(gameTrackingReady);
       setText("#game-quality", gameTrackingReady ? "Tracking steady" : "Adjust camera");
       const input = motionInput(activeProfile, { movementRange, stage, measurementSide });
-      if (input) movementGameController?.consume(input);
+      const debugTiming = pendingPerformanceTrace;
+      pendingPerformanceTrace = null;
+      if (input) movementGameController?.consume(debugTiming ? { ...input, debugTiming } : input);
       if (stage === "hold" && (elapsedSeconds || 0) >= Math.min(5, currentAssignment?.duration_seconds || 30)) document.querySelector("#finish-session")?.removeAttribute("disabled");
       if (stage === "hold" && elapsedSeconds >= (currentAssignment?.duration_seconds || 30)) {
         const metrics = tracker?.getMetrics?.() || {};

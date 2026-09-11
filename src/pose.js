@@ -151,6 +151,7 @@ export async function createMovementTracker(options) {
     onRep = () => {},
     onCalibration = () => {},
     onTrackingState = () => {},
+    onTiming = () => {},
     onError = () => {},
   } = options || {};
   const profile = getMovementProfile(exerciseKey, trackingMode);
@@ -179,6 +180,7 @@ export async function createMovementTracker(options) {
   let calibrationLeftSamples = [];
   let calibrationRightSamples = [];
   let noPoseFrames = 0;
+  let timingSequence = 0;
   let latestAngle = null;
   let latestSymmetryDelta = null;
   let latestMovementRange = null;
@@ -424,10 +426,13 @@ export async function createMovementTracker(options) {
     if (!running) return;
     if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
       lastVideoTime = video.currentTime;
-      const now = performance.now();
+      const cameraFrameAt = performance.now();
+      const now = cameraFrameAt;
       let result;
+      let poseAt = cameraFrameAt;
       try {
         result = landmarker.detectForVideo(video, now);
+        poseAt = performance.now();
         draw(result);
       } catch {
         stop();
@@ -460,7 +465,10 @@ export async function createMovementTracker(options) {
         rafId = requestAnimationFrame(frame); return;
       }
       const measurementLandmarks = result.worldLandmarks?.[0] || landmarks;
-      updateState(measurementLandmarks ? measureMovementSignal(measurementLandmarks, profile) : { value: null, left: null, right: null, symmetryDelta: null }, now);
+      const metrics = measurementLandmarks ? measureMovementSignal(measurementLandmarks, profile) : { value: null, left: null, right: null, symmetryDelta: null };
+      const movementAt = performance.now();
+      onTiming({ id: ++timingSequence, cameraFrameAt, poseAt, movementAt });
+      updateState(metrics, now);
     }
     rafId = requestAnimationFrame(frame);
   }
