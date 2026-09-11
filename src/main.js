@@ -344,6 +344,11 @@ function homeView() {
   requestAnimationFrame(() => updateSyntheticTwin(0.38));
 }
 
+function patientWorkspaceForCurrentSession() {
+  if (currentSession?.demo) return patientWorkspace || demoPatientWorkspace();
+  return patientWorkspace;
+}
+
 function demoPatientWorkspace() {
   const assignment = assignmentDetails({ id: "demo-assignment", plan_id: "demo-plan", exercise_key: "bodyweight_squat", display_name: "Bodyweight Squat", sequence: 1, tracking_mode: "pose_reps", exercise_mode: "movement_game", target_sets: 3, target_repetitions: 10, instructions: "Move at a comfortable pace and stop if you feel pain.", status: "active" });
   const roadmapNodes = Array.from({ length: 84 }, (_, index) => ({
@@ -764,7 +769,8 @@ function currentRoadmapSessionMarkup(workspace) {
 }
 
 function showRoadmapNode(nodeId) {
-  const workspace = patientWorkspace || demoPatientWorkspace();
+  const workspace = patientWorkspaceForCurrentSession();
+  if (!workspace) { showSessionIdentityError(new SessionContextError(SESSION_CONTEXT_ERROR.MISSING)); return; }
   const node = sessionPathPresentation(workspace).nodes.find((item) => item.id === nodeId);
   if (!node) return;
   if (node.state === "locked") {
@@ -805,7 +811,8 @@ function showRoadmapNode(nodeId) {
 function patientView() {
   currentView = "patient";
   stopDemo();
-  const workspace = patientWorkspace || demoPatientWorkspace();
+  const workspace = patientWorkspaceForCurrentSession();
+  if (!workspace) { showPortalError(new Error("Patient workspace unavailable")); return; }
   const patientName = workspace.profile?.display_name || currentProfile?.display_name || "Patient";
   const firstName = patientName.split(" ")[0];
   const profile = workspace.profile || {};
@@ -1681,7 +1688,8 @@ function patientAvatarMarkup(key = "pulse", { large = false } = {}) {
 function patientProfileView() {
   currentView = "patient-profile";
   stopDemo();
-  const workspace = patientWorkspace || demoPatientWorkspace();
+  const workspace = patientWorkspaceForCurrentSession();
+  if (!workspace) { showPortalError(new Error("Patient workspace unavailable")); return; }
   const profile = workspace.profile || currentProfile || {};
   const completions = workspace.roadmapCompletions || [];
   const totalNodes = workspace.roadmapNodes?.length || 0;
@@ -1718,7 +1726,8 @@ function patientProfileView() {
 function patientReportView() {
   currentView = "patient-report";
   stopDemo();
-  const workspace = patientWorkspace || demoPatientWorkspace();
+  const workspace = patientWorkspaceForCurrentSession();
+  if (!workspace) { showPortalError(new Error("Patient workspace unavailable")); return; }
   const assignments = workspace.assignments || [];
   const reports = workspace.safetyEvents || [];
   app.innerHTML = layout(`
@@ -1763,7 +1772,8 @@ async function submitPatientReport(event) {
   const status = document.querySelector("#patient-report-status");
   const button = form.querySelector('[type="submit"]');
   const assignmentId = document.querySelector("#patient-report-assignment")?.value;
-  const assignment = patientWorkspace?.assignments?.find((item) => item.id === assignmentId) || demoPatientWorkspace().assignments.find((item) => item.id === assignmentId);
+  const workspace = patientWorkspaceForCurrentSession();
+  const assignment = workspace?.assignments?.find((item) => item.id === assignmentId) || null;
   const eventType = form.querySelector('[name="patient-report-type"]:checked')?.value;
   const painScore = Number(document.querySelector("#patient-pain-score")?.value || 0);
   const comment = document.querySelector("#patient-report-comment")?.value || "";
@@ -3493,10 +3503,12 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-start-assignment]").forEach((element) => element.addEventListener("click", () => {
     const assignmentId = element.dataset.startAssignment;
-    const path = sessionPathPresentation(patientWorkspace || demoPatientWorkspace());
+    const workspace = patientWorkspaceForCurrentSession();
+    if (!workspace) { showSessionIdentityError(new SessionContextError(SESSION_CONTEXT_ERROR.MISSING)); return; }
+    const path = sessionPathPresentation(workspace);
     const activeNode = path.nodes.find((node) => ["current", "override"].includes(node.state));
     const roadmapNode = activeNode?.assignmentIds.includes(assignmentId) ? activeNode : null;
-    const assignment = patientWorkspace?.assignments?.find((item) => item.id === assignmentId) || null;
+    const assignment = workspace.assignments?.find((item) => item.id === assignmentId) || null;
 
     if (currentSession?.demo) {
       currentRoadmapNode = roadmapNode;
