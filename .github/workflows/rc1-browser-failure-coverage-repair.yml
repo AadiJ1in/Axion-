@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply missing browser failure coverage and mobile repair
+      - name: Apply missing browser failure coverage and flagship mobile repair
         run: node scripts/rc1-browser-failure-coverage-repair.mjs
       - name: Remove one-time repair helpers
         run: |
