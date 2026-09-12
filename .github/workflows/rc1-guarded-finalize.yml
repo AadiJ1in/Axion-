@@ -26,6 +26,9 @@ jobs:
       - name: Stabilize the clinical start gate and browser contract
         run: node scripts/rc1-clinical-gate-repair.mjs
 
+      - name: Stabilize WebKit reflection submission harness
+        run: node scripts/rc1-webkit-report-test-repair.mjs
+
       - name: Apply DOM-safe blocking-state repair
         run: node scripts/rc1-codeql-dom-xss-repair.mjs
 
