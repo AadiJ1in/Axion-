@@ -79,6 +79,18 @@ export async function loadPatientWorkspace(client, userId) {
         client.from("roadmap_node_completions").select("id, roadmap_node_id, patient_id, xp_awarded, completed_at").eq("patient_id", userId).order("completed_at"),
       ]);
       assignments = (await throwIfError(assignmentResult, "Could not load prescribed exercises") || []).map(assignmentDetails);
+      if (assignments.length) {
+        const reviewVersionResult = await client.from("assignment_clinical_review_targets")
+          .select("assignment_id, updated_at")
+          .in("assignment_id", assignments.map((assignment) => assignment.id));
+        if (!reviewVersionResult.error) {
+          const reviewVersions = new Map((reviewVersionResult.data || []).map((row) => [row.assignment_id, row.updated_at]));
+          assignments = assignments.map((assignment) => ({
+            ...assignment,
+            review_target_version: reviewVersions.get(assignment.id) || null,
+          }));
+        }
+      }
       roadmap = await throwIfError(roadmapResult, "Could not load your roadmap") || [];
       roadmapNodes = await throwIfError(nodeResult, "Could not load your session path") || [];
       const nodeIds = new Set(roadmapNodes.map((node) => node.id));

@@ -38,6 +38,7 @@ const runtime = {
   authGeneration: 0,
   labRoot: null,
   labGatePaused: false,
+  labCalibrationReady: false,
   labStarted: false,
   repCandidate: null,
   rejectedByReason: new Map(),
@@ -378,6 +379,7 @@ function calibrationGuideForAssignment(assignment) {
 function resetLabState(root) {
   runtime.labRoot = root;
   runtime.labGatePaused = false;
+  runtime.labCalibrationReady = false;
   runtime.labStarted = false;
   runtime.repCandidate = null;
   runtime.rejectedByReason = new Map();
@@ -413,6 +415,7 @@ function setupLab(page) {
   feedback.className = "clinic-rep-feedback";
   feedback.innerHTML = `<div><span>REP VALIDATION</span><b id="clinic-rep-feedback-title">Validated reps will appear here.</b><p id="clinic-rep-feedback-copy">Axion counts only completed tracker-validated movement cycles.</p></div><aside id="clinic-set-summary">No rejected attempts observed in this set.</aside>`;
   capture.appendChild(feedback);
+  document.dispatchEvent(new CustomEvent("axion:clinical-gate-mounted"));
 }
 
 function setCalibrationItem(name, state, detail) {
@@ -439,7 +442,13 @@ function syncCalibrationGate() {
   setCalibrationItem("region", qualityReady, qualityReady ? "Required landmarks are visible" : "Keep the prescribed body region visible");
   setCalibrationItem("framing", bodyReady && qualityReady, bodyReady && qualityReady ? "Tracking landmarks remain in frame" : "Move back or recenter if landmarks are missing");
   setCalibrationItem("confidence", qualityReady, qualityReady ? qualityText.replace("Tracking quality:", "").trim() : "Improve lighting / camera position if confidence stays low");
-  const ready = bodyReady && qualityReady && calibrated;
+  const sensorReady = bodyReady && qualityReady && calibrated;
+  const recovery = document.querySelector("#camera-recovery");
+  const recoveryVisible = Boolean(recovery && !recovery.classList.contains("hidden"));
+  const hardTrackingFailure = recoveryVisible || (body?.classList.contains("warning") && !runtime.labGatePaused);
+  if (hardTrackingFailure) runtime.labCalibrationReady = false;
+  if (sensorReady && !runtime.labStarted) runtime.labCalibrationReady = true;
+  const ready = !hardTrackingFailure && (sensorReady || (runtime.labGatePaused && runtime.labCalibrationReady));
   const grade = document.querySelector("#clinic-calibration-grade");
   if (grade) { grade.textContent = ready ? "Tracking Quality: Good" : calibrated ? "Adjust setup" : "Calibrating"; grade.className = ready ? "ready" : ""; }
   const begin = document.querySelector("#clinic-begin-exercise");
@@ -646,6 +655,7 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     if (target.disabled) return;
     runtime.labStarted = true;
+    runtime.labCalibrationReady = false;
     const pause = document.querySelector("#session-pause");
     if (runtime.labGatePaused && pause && /resume/i.test(pause.textContent || "")) pause.click();
     runtime.labGatePaused = false;
@@ -681,6 +691,7 @@ if (isConfigured && supabase) {
     runtime.lastPatientId = null;
     runtime.labRoot = null;
     runtime.labGatePaused = false;
+    runtime.labCalibrationReady = false;
     runtime.labStarted = false;
     runtime.repCandidate = null;
     runtime.rejectedByReason = new Map();
@@ -692,13 +703,39 @@ if (isConfigured && supabase) {
   clinicAuthSubscription = data?.subscription || null;
 }
 
-const clinicTimer = window.setInterval(syncClinicReadiness, 250);
+let clinicSyncScheduled = false;
+function scheduleClinicReadiness() {
+  if (clinicSyncScheduled) return;
+  clinicSyncScheduled = true;
+  queueMicrotask(() => {
+    clinicSyncScheduled = false;
+    syncClinicReadiness();
+  });
+}
+
+const readinessTargetIds = new Set(["body-state", "quality-state", "calibration-overlay", "calibration-title", "camera-recovery"]);
+const clinicObserver = new MutationObserver((mutations) => {
+  const relevant = mutations.some((mutation) => {
+    const target = mutation.target?.nodeType === Node.ELEMENT_NODE ? mutation.target : mutation.target?.parentElement;
+    if (target?.id && readinessTargetIds.has(target.id)) return true;
+    return [...(mutation.addedNodes || [])].some((node) => node.nodeType === Node.ELEMENT_NODE
+      && (node.matches?.(".lab-page, [data-clinic-calibration]") || node.querySelector?.(".lab-page, [data-clinic-calibration]")));
+  });
+  if (relevant) scheduleClinicReadiness();
+});
+clinicObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+document.addEventListener("axion:tracker-readiness", scheduleClinicReadiness);
+document.addEventListener("axion:clinical-gate-mounted", scheduleClinicReadiness);
+const clinicTimer = window.setInterval(scheduleClinicReadiness, 250);
 window.addEventListener("pagehide", () => {
   window.clearInterval(clinicTimer);
+  clinicObserver.disconnect();
+  document.removeEventListener("axion:tracker-readiness", scheduleClinicReadiness);
+  document.removeEventListener("axion:clinical-gate-mounted", scheduleClinicReadiness);
   clinicAuthSubscription?.unsubscribe?.();
 }, { once: true });
-document.addEventListener("visibilitychange", () => { if (!document.hidden) syncClinicReadiness(); });
-syncClinicReadiness();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleClinicReadiness(); });
+scheduleClinicReadiness();
 
 window.__axionClinicReadiness = Object.freeze({
   version: 1,

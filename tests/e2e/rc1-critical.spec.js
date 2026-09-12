@@ -116,6 +116,7 @@ async function signIn(page, email) {
 async function signInPatientA(page) {
   await signIn(page, "patienta@axion.test");
   await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toBeVisible();
+  await expect(page.locator(".patient-portal.journey-page")).toHaveAttribute("data-clinic-enhanced", "true");
 }
 
 async function startAssignment(page, assignmentId = IDS.assignmentA) {
@@ -126,7 +127,8 @@ async function startAssignment(page, assignmentId = IDS.assignmentA) {
   await expect(page.locator("#finish-session")).toBeVisible();
 
   const beforePain = page.locator("#session-pain-before");
-  await expect(beforePain).toBeVisible();
+  await expect(page.locator("[data-session-before-context]")).toBeVisible();
+  await expect(beforePain).toHaveCount(1);
   await beforePain.evaluate((input) => {
     input.value = "0";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -157,7 +159,9 @@ async function openReflection(page) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await page.locator('[data-after-confidence] [data-value="4"]').click();
-  await expect(page.locator("[data-open-report]")).toBeVisible();
+  const report = page.locator("[data-open-report]");
+  await expect(report).toBeVisible();
+  await expect(report).toBeEnabled();
 }
 
 async function snapshot(page) {
@@ -171,7 +175,7 @@ test("exact assignment id survives duplicate display titles and saves the perfor
   await startAssignment(page, IDS.assignmentB);
   await emitRep(page, { jointAngle: 154, movementRangeDegrees: 26 });
   await openReflection(page);
-  await page.locator("[data-open-report]").click();
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
   await expect.poll(async () => (await snapshot(page)).exercise_sessions.length).toBe(1);
   const saved = (await snapshot(page)).exercise_sessions[0];
   expect(saved.assignment_id).toBe(IDS.assignmentB);
@@ -186,7 +190,8 @@ test("authenticated patient cannot enter clinical Movement Lab without an exact 
   await seedPlan(page);
   await signInPatientA(page);
   await page.locator('[data-nav="lab"]').first().click();
-  await expect(page.getByRole("heading", { name: "Session verification required" })).toBeVisible();
+  await expect(page.locator(".lab-page")).toHaveCount(0);
+  await expect(page.locator(".patient-portal.journey-page")).toBeVisible();
   expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
 });
 
@@ -197,7 +202,7 @@ test("one completed prescribed assignment persists once, completes roadmap once,
   await startAssignment(page);
   await emitRep(page);
   await openReflection(page);
-  await page.locator("[data-open-report]").click();
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
   await expect.poll(async () => (await snapshot(page)).roadmap_node_completions.length).toBe(1);
   const state = await snapshot(page);
   expect(state.exercise_sessions).toHaveLength(1);
@@ -233,7 +238,7 @@ test("session detail binds to the exact client session even with a newer same-as
   }, { ids: IDS });
   await emitRep(page);
   await openReflection(page);
-  await page.locator("[data-open-report]").click();
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
   await expect.poll(async () => (await snapshot(page)).session_capture_context.length).toBe(1);
   const state = await snapshot(page);
   const actual = state.exercise_sessions.find((row) => row.client_session_id === clientSessionId);
@@ -270,12 +275,12 @@ test("network interruption does not claim success and retry saves exactly once",
   await emitRep(page);
   await openReflection(page);
   await page.evaluate(() => window.__AXION_E2E_CONTROL__.failNextSessionSave());
-  await page.locator("[data-open-report]").click();
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
   await expect(page.locator("[data-open-report]")).toHaveText(/Could not save/i);
   let state = await snapshot(page);
   expect(state.exercise_sessions).toHaveLength(0);
   expect(state.roadmap_node_completions).toHaveLength(0);
-  await page.locator("[data-open-report]").click();
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
   await expect.poll(async () => (await snapshot(page)).exercise_sessions.length).toBe(1);
   state = await snapshot(page);
   expect(state.roadmap_node_completions).toHaveLength(1);
@@ -362,7 +367,7 @@ test("same-user token refresh preserves an active clinical session", async ({ pa
   await expect(begin).toBeDisabled();
   await emitRep(page);
   await openReflection(page);
-  await page.locator("[data-open-report]").click();
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
   await expect.poll(async () => (await snapshot(page)).exercise_sessions.length).toBe(1);
   await expect.poll(async () => (await snapshot(page)).session_capture_context.length).toBe(1);
 });

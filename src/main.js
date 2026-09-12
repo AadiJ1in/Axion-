@@ -3162,6 +3162,41 @@ function clearClinicalSessionIdentity() {
   sessionStartedAt = null;
 }
 
+function renderSafeBlockingState({ title, message, actionLabel, navTarget = null, reload = false }) {
+  const shell = document.createElement("div");
+  shell.className = "app-shell";
+
+  const main = document.createElement("main");
+  main.className = "state-page container-wide";
+
+  const state = document.createElement("div");
+  state.className = "error-state";
+
+  const marker = document.createElement("span");
+  marker.className = "state-safe-marker";
+  marker.setAttribute("aria-hidden", "true");
+  marker.textContent = "AX";
+
+  const heading = document.createElement("h2");
+  heading.textContent = String(title || "Axion unavailable");
+
+  const copy = document.createElement("p");
+  copy.textContent = String(message || "The secure workspace is temporarily unavailable.");
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button button--primary";
+  button.textContent = String(actionLabel || "Continue");
+  if (reload) button.dataset.reload = "";
+  else if (navTarget) button.dataset.nav = String(navTarget);
+
+  state.append(marker, heading, copy, button);
+  main.append(state);
+  shell.append(main);
+  app.replaceChildren(shell);
+  bindEvents();
+}
+
 function showSchemaCompatibilityError(error = null) {
   const code = error?.code || "SCHEMA_VERSION_MISMATCH";
   console.error("AXION_OPERATIONAL_EVENT", { event: "schema_version_mismatch", release: APP_RELEASE, errorCode: code });
@@ -3170,8 +3205,12 @@ function showSchemaCompatibilityError(error = null) {
   clearSetRest();
   clearClinicalSessionIdentity();
   currentView = "unavailable";
-  app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("shield",26)}</span><h2>Axion update in progress</h2><p>${escapeHtml(SCHEMA_UNAVAILABLE_MESSAGE)}</p><button class="button button--primary" data-reload>Try again</button></div></main>`);
-  bindEvents();
+  renderSafeBlockingState({
+    title: "Axion update in progress",
+    message: SCHEMA_UNAVAILABLE_MESSAGE,
+    actionLabel: "Try again",
+    reload: true,
+  });
 }
 
 function showSessionIdentityError(error = null) {
@@ -3184,8 +3223,12 @@ function showSessionIdentityError(error = null) {
   currentAssignment = null;
   currentRoadmapNode = null;
   currentView = "patient";
-  app.innerHTML = layout(`<main class="state-page container-wide"><div class="error-state"><span>${icon("shield",26)}</span><h2>Session verification required</h2><p>${escapeHtml(SESSION_CONTEXT_USER_MESSAGE)}</p><button class="button button--primary" data-nav="patient">Return to treatment plan</button></div></main>`);
-  bindEvents();
+  renderSafeBlockingState({
+    title: "Session verification required",
+    message: SESSION_CONTEXT_USER_MESSAGE,
+    actionLabel: "Return to treatment plan",
+    navTarget: "patient",
+  });
 }
 
 function requireActiveSessionContext() {

@@ -473,7 +473,7 @@ if (isConfigured && supabase) {
   sessionCaptureAuthSubscription = data?.subscription || null;
 }
 
-const timer = window.setInterval(() => {
+function syncClinicalSessionCapture() {
   const lab = document.querySelector(".lab-page");
   if (lab && state.root !== lab) {
     resetForLab(lab);
@@ -486,10 +486,34 @@ const timer = window.setInterval(() => {
   }
   injectAfterContext();
   if (state.finalizing && !state.persistedSessionId) persistSessionDetail().catch(() => {});
-}, 250);
+}
+
+let sessionCaptureSyncScheduled = false;
+function scheduleClinicalSessionCapture() {
+  if (sessionCaptureSyncScheduled) return;
+  sessionCaptureSyncScheduled = true;
+  queueMicrotask(() => {
+    sessionCaptureSyncScheduled = false;
+    syncClinicalSessionCapture();
+  });
+}
+
+const sessionCaptureObserver = new MutationObserver((mutations) => {
+  if (mutations.some((mutation) => [...(mutation.addedNodes || [])].some((node) => node.nodeType === Node.ELEMENT_NODE
+    && (node.matches?.(".lab-page, [data-clinic-calibration], .reflection-card, .report-page")
+      || node.querySelector?.(".lab-page, [data-clinic-calibration], .reflection-card, .report-page"))))) {
+    scheduleClinicalSessionCapture();
+  }
+});
+sessionCaptureObserver.observe(document.documentElement, { childList: true, subtree: true });
+document.addEventListener("axion:clinical-gate-mounted", scheduleClinicalSessionCapture);
+const timer = window.setInterval(scheduleClinicalSessionCapture, 250);
+scheduleClinicalSessionCapture();
 
 window.addEventListener("pagehide", () => {
   window.clearInterval(timer);
+  sessionCaptureObserver.disconnect();
+  document.removeEventListener("axion:clinical-gate-mounted", scheduleClinicalSessionCapture);
   sessionCaptureAuthSubscription?.unsubscribe?.();
 }, { once: true });
 
