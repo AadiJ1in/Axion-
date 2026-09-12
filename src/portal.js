@@ -66,19 +66,31 @@ export async function loadPatientWorkspace(client, userId) {
   let roadmapCompletions = [];
   if (connection?.status === "active") {
     const planResult = await client.from("exercise_plans")
-      .select("id, therapist_id, patient_id, title, instructions, program_label, phase_label, status, start_date, end_date, duration_weeks, sessions_per_week, game_enabled")
+      .select("id, therapist_id, patient_id, title, instructions, program_label, phase_label, status, start_date, end_date, duration_weeks, sessions_per_week, game_enabled, created_at, updated_at")
       .eq("patient_id", userId).eq("status", "active").order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (planResult.error) throw new Error(`Could not load your recovery plan: ${planResult.error.message}`);
     plan = planResult.data;
     if (plan) {
       const [assignmentResult, roadmapResult, nodeResult, nodeAssignmentResult, completionResult] = await Promise.all([
-        client.from("exercise_assignments").select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, rest_seconds, prescribed_side, target_sets, target_repetitions, duration_seconds, instructions, status").eq("plan_id", plan.id).eq("status", "active").order("sequence"),
+        client.from("exercise_assignments").select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, rest_seconds, prescribed_side, target_sets, target_repetitions, duration_seconds, instructions, status, created_at, updated_at").eq("plan_id", plan.id).eq("status", "active").order("sequence"),
         client.from("roadmap_stages").select("id, plan_id, stage_number, title, detail, status, unlock_after_sessions").eq("plan_id", plan.id).order("stage_number"),
-        client.from("roadmap_nodes").select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at").eq("plan_id", plan.id).order("session_number"),
+        client.from("roadmap_nodes").select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at, created_at, updated_at").eq("plan_id", plan.id).order("session_number"),
         client.from("roadmap_node_assignments").select("roadmap_node_id, assignment_id, sequence").order("sequence"),
         client.from("roadmap_node_completions").select("id, roadmap_node_id, patient_id, xp_awarded, completed_at").eq("patient_id", userId).order("completed_at"),
       ]);
       assignments = (await throwIfError(assignmentResult, "Could not load prescribed exercises") || []).map(assignmentDetails);
+      if (assignments.length) {
+        const reviewVersionResult = await client.from("assignment_clinical_review_targets")
+          .select("assignment_id, updated_at")
+          .in("assignment_id", assignments.map((assignment) => assignment.id));
+        if (!reviewVersionResult.error) {
+          const reviewVersions = new Map((reviewVersionResult.data || []).map((row) => [row.assignment_id, row.updated_at]));
+          assignments = assignments.map((assignment) => ({
+            ...assignment,
+            review_target_version: reviewVersions.get(assignment.id) || null,
+          }));
+        }
+      }
       roadmap = await throwIfError(roadmapResult, "Could not load your roadmap") || [];
       roadmapNodes = await throwIfError(nodeResult, "Could not load your session path") || [];
       const nodeIds = new Set(roadmapNodes.map((node) => node.id));
@@ -172,7 +184,7 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
   const assignments = planIds.length
     ? await throwIfError(
       await client.from("exercise_assignments")
-        .select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, rest_seconds, prescribed_side, target_sets, target_repetitions, duration_seconds, instructions, status")
+        .select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, rest_seconds, prescribed_side, target_sets, target_repetitions, duration_seconds, instructions, status, created_at, updated_at")
         .in("plan_id", planIds)
         .order("sequence"),
       "Could not load roadmap exercises"
@@ -205,7 +217,7 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
     .eq("therapist_id", therapistId).order("created_at", { ascending: false }).limit(100);
   const roadmapNodesResult = planIds.length
     ? await client.from("roadmap_nodes")
-      .select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at")
+      .select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at, created_at, updated_at")
       .in("plan_id", planIds).order("session_number")
     : { data: [], error: null };
   const roadmapCompletionsResult = patientIds.length
@@ -379,7 +391,7 @@ export async function overrideRoadmapNode(client, nodeId, reason) {
       overridden_by: authData.user.id,
       overridden_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).eq("id", nodeId).select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at").single(),
+    }).eq("id", nodeId).select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at, created_at, updated_at").single(),
     "Could not unlock that roadmap session"
   );
 }

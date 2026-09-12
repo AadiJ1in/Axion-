@@ -1,0 +1,69 @@
+name: Guarded RC1 finalization
+
+on:
+  push:
+    branches:
+      - feature/rc1-main-hardening-20260911
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: feature/rc1-main-hardening-20260911
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Stabilize the clinical start gate and browser contract
+        run: node scripts/rc1-clinical-gate-repair.mjs
+
+      - name: Stabilize WebKit reflection submission harness
+        run: node scripts/rc1-webkit-report-test-repair.mjs
+
+      - name: Apply DOM-safe blocking-state repair
+        run: node scripts/rc1-codeql-dom-xss-repair.mjs
+
+      - name: Carry review-target revision into patient assignment context
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('src/portal.js')
+          source = path.read_text()
+          old = '''      assignments = (await throwIfError(assignmentResult, "Could not load prescribed exercises") || []).map(assignmentDetails);\n      roadmap = await throwIfError(roadmapResult, "Could not load your roadmap") || [];'''
+          new = '''      assignments = (await throwIfError(assignmentResult, "Could not load prescribed exercises") || []).map(assignmentDetails);\n      if (assignments.length) {\n        const reviewVersionResult = await client.from("assignment_clinical_review_targets")\n          .select("assignment_id, updated_at")\n          .in("assignment_id", assignments.map((assignment) => assignment.id));\n        if (!reviewVersionResult.error) {\n          const reviewVersions = new Map((reviewVersionResult.data || []).map((row) => [row.assignment_id, row.updated_at]));\n          assignments = assignments.map((assignment) => ({\n            ...assignment,\n            review_target_version: reviewVersions.get(assignment.id) || null,\n          }));\n        }\n      }\n      roadmap = await throwIfError(roadmapResult, "Could not load your roadmap") || [];'''
+          if source.count(old) != 1:
+              raise SystemExit(f'portal review-target patch expected one match, found {source.count(old)}')
+          path.write_text(source.replace(old, new))
+
+      - name: Regenerate locked dependency graph
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Run complete RC1 release gate
+        run: npm run release:gate
+
+      - name: Commit only verified finalization changes
+        run: |
+          git config user.name "AadiJ1in"
+          git config user.email "ajtexas2022@gmail.com"
+          git add src/main.js src/portal.js src/clinic-readiness.js src/clinical-session-capture.js tests/e2e/rc1-critical.spec.js scripts/dom-safe-blocking-state-test.mjs package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "No finalization changes to commit"
+            exit 0
+          fi
+          git commit -m "Finalize RC1 clinical gate and immutable review context"
+          git push origin HEAD:feature/rc1-main-hardening-20260911

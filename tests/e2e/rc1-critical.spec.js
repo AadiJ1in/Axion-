@@ -1,0 +1,458 @@
+import { test, expect } from "@playwright/test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const fakeSupabase = path.join(here, "fake-supabase-browser.js");
+const fakeTracker = path.join(here, "fake-movement-tracker-browser.js");
+
+const IDS = Object.freeze({
+  therapist: "10000000-0000-4000-8000-000000000001",
+  patientA: "20000000-0000-4000-8000-000000000001",
+  patientB: "20000000-0000-4000-8000-000000000002",
+  plan: "30000000-0000-4000-8000-000000000001",
+  assignmentA: "40000000-0000-4000-8000-000000000001",
+  assignmentB: "40000000-0000-4000-8000-000000000002",
+  node: "50000000-0000-4000-8000-000000000001",
+});
+
+async function boot(page) {
+  await page.addInitScript({ path: fakeSupabase });
+  await page.addInitScript({ path: fakeTracker });
+  await page.goto("/");
+  const signInEntry = page.locator('[data-nav="auth"]').first();
+  await expect(signInEntry).toBeVisible();
+  await signInEntry.click();
+  await expect(page.locator("#auth-form")).toBeVisible();
+}
+
+async function seedPlan(page, { twoAssignments = false, sameTitle = false, targetReps = 1 } = {}) {
+  await page.evaluate(({ ids, twoAssignments, sameTitle, targetReps }) => {
+    const { db } = window.__AXION_E2E_CONTROL__;
+    const now = new Date().toISOString();
+    db.exercise_plans.push({
+      id: ids.plan,
+      therapist_id: ids.therapist,
+      patient_id: ids.patientA,
+      title: "RC1 exact identity plan",
+      instructions: "Use controlled movement.",
+      program_label: "RC1",
+      phase_label: "Foundation",
+      status: "active",
+      start_date: now.slice(0, 10),
+      end_date: now.slice(0, 10),
+      duration_weeks: 1,
+      sessions_per_week: 1,
+      game_enabled: false,
+      created_at: now,
+      updated_at: now,
+    });
+    const first = {
+      id: ids.assignmentA,
+      plan_id: ids.plan,
+      exercise_key: "bodyweight_squat",
+      display_name: sameTitle ? "Shared display title" : "Bodyweight Squat",
+      sequence: 1,
+      tracking_mode: "pose_reps",
+      exercise_mode: "standard",
+      rest_seconds: 0,
+      prescribed_side: "either",
+      target_sets: 1,
+      target_repetitions: targetReps,
+      duration_seconds: null,
+      instructions: "Controlled squat",
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    };
+    db.exercise_assignments.push(first);
+    if (twoAssignments) {
+      db.exercise_assignments.push({
+        id: ids.assignmentB,
+        plan_id: ids.plan,
+        exercise_key: "heel_raise",
+        display_name: sameTitle ? "Shared display title" : "Heel Raise",
+        sequence: 2,
+        tracking_mode: "pose_reps",
+        exercise_mode: "standard",
+        rest_seconds: 0,
+        prescribed_side: "either",
+        target_sets: 1,
+        target_repetitions: targetReps,
+        duration_seconds: null,
+        instructions: "Controlled heel raise",
+        status: "active",
+        created_at: now,
+        updated_at: now,
+      });
+    }
+    db.roadmap_nodes.push({
+      id: ids.node,
+      plan_id: ids.plan,
+      session_number: 1,
+      week_number: 1,
+      session_in_week: 1,
+      biome: 1,
+      title: "Session 1",
+      detail: "RC1 browser verification",
+      target_date: now.slice(0, 10),
+      unlock_override: false,
+      override_reason: null,
+      overridden_at: null,
+      created_at: now,
+      updated_at: now,
+    });
+    db.roadmap_node_assignments.push({ roadmap_node_id: ids.node, assignment_id: ids.assignmentA, sequence: 1 });
+    if (twoAssignments) db.roadmap_node_assignments.push({ roadmap_node_id: ids.node, assignment_id: ids.assignmentB, sequence: 2 });
+  }, { ids: IDS, twoAssignments, sameTitle, targetReps });
+}
+
+async function signIn(page, email) {
+  await page.locator("#email").fill(email);
+  await page.locator("#password").fill("AxionTest!123");
+  await page.locator("#auth-form").evaluate((form) => form.requestSubmit());
+}
+
+async function signInPatientA(page) {
+  await signIn(page, "patienta@axion.test");
+  await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toBeVisible();
+  await expect(page.locator(".patient-portal.journey-page")).toHaveAttribute("data-clinic-enhanced", "true");
+}
+
+async function startAssignment(page, assignmentId = IDS.assignmentA) {
+  await page.locator(`[data-roadmap-node="${IDS.node}"]`).click();
+  const startButton = page.locator(`[data-start-node-assignment="${assignmentId}"]`);
+  await expect(startButton).toBeVisible();
+  await startButton.click();
+  await expect(page.locator("#finish-session")).toBeVisible();
+
+  const beforePain = page.locator("#session-pain-before");
+  await expect(page.locator("[data-session-before-context]")).toBeVisible();
+  await expect(beforePain).toHaveCount(1);
+  await beforePain.evaluate((input) => {
+    input.value = "0";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator('[data-before-confidence] [data-value="4"]').click();
+  const begin = page.locator("#clinic-begin-exercise");
+  const recovery = page.locator("#camera-recovery");
+  await expect.poll(async () => {
+    if (await recovery.isVisible()) return "recovery";
+    if (await begin.isEnabled()) return "ready";
+    return "waiting";
+  }, { timeout: 8_000 }).not.toBe("waiting");
+  if (await recovery.isVisible()) return;
+  await begin.click();
+}
+
+async function emitRep(page, overrides = {}) {
+  await page.evaluate((rep) => window.__AXION_E2E_TRACKER_CONTROL__.emitRep(rep), overrides);
+  await expect(page.locator("#finish-session")).toBeEnabled();
+}
+
+async function openReflection(page) {
+  await page.locator("#finish-session").click();
+  const afterPain = page.locator("#session-pain-after");
+  await expect(afterPain).toBeVisible();
+  await afterPain.evaluate((input) => {
+    input.value = "0";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator('[data-after-confidence] [data-value="4"]').click();
+  const report = page.locator("[data-open-report]");
+  await expect(report).toBeVisible();
+  await expect(report).toBeEnabled();
+}
+
+async function snapshot(page) {
+  return page.evaluate(() => window.__AXION_E2E_CONTROL__.snapshot());
+}
+
+test("exact assignment id survives duplicate display titles and saves the performed exercise", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page, { twoAssignments: true, sameTitle: true });
+  await signInPatientA(page);
+  await startAssignment(page, IDS.assignmentB);
+  await emitRep(page, { jointAngle: 154, movementRangeDegrees: 26 });
+  await openReflection(page);
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
+  await expect.poll(async () => (await snapshot(page)).exercise_sessions.length).toBe(1);
+  const saved = (await snapshot(page)).exercise_sessions[0];
+  expect(saved.assignment_id).toBe(IDS.assignmentB);
+  expect(saved.exercise_key).toBe("heel_raise");
+  expect(saved.plan_id).toBe(IDS.plan);
+  expect(saved.roadmap_node_id).toBe(IDS.node);
+  expect(saved.session_identity_context.assignment_id).toBe(IDS.assignmentB);
+});
+
+test("authenticated patient cannot enter clinical Movement Lab without an exact roadmap assignment", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await page.locator('[data-nav="lab"]').first().click();
+  await expect(page.locator(".lab-page")).toHaveCount(0);
+  await expect(page.locator(".patient-portal.journey-page")).toBeVisible();
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+});
+
+test("one completed prescribed assignment persists once, completes roadmap once, and awards XP once", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  await emitRep(page);
+  await openReflection(page);
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
+  await expect.poll(async () => (await snapshot(page)).roadmap_node_completions.length).toBe(1);
+  const state = await snapshot(page);
+  expect(state.exercise_sessions).toHaveLength(1);
+  expect(state.roadmap_node_completions).toHaveLength(1);
+  expect(state.profiles.find((profile) => profile.id === IDS.patientA).recovery_xp).toBe(50);
+});
+
+test("session detail binds to the exact client session even with a newer same-assignment decoy", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  const clientSessionId = await page.locator(".lab-page").getAttribute("data-session-client-id");
+  expect(clientSessionId).toBeTruthy();
+  await page.evaluate(({ ids }) => {
+    const { db } = window.__AXION_E2E_CONTROL__;
+    const later = new Date(Date.now() + 60_000).toISOString();
+    db.exercise_sessions.push({
+      id: "60000000-0000-4000-8000-000000000099",
+      patient_id: ids.patientA,
+      plan_id: ids.plan,
+      assignment_id: ids.assignmentA,
+      roadmap_node_id: null,
+      client_session_id: "70000000-0000-4000-8000-000000000099",
+      exercise_key: "bodyweight_squat",
+      repetitions: 1,
+      duration_seconds: 1,
+      movement_summary: {},
+      started_at: later,
+      completed_at: later,
+      created_at: later,
+    });
+  }, { ids: IDS });
+  await emitRep(page);
+  await openReflection(page);
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
+  await expect.poll(async () => (await snapshot(page)).session_capture_context.length).toBe(1);
+  const state = await snapshot(page);
+  const actual = state.exercise_sessions.find((row) => row.client_session_id === clientSessionId);
+  expect(actual).toBeTruthy();
+  expect(state.session_capture_context[0].session_id).toBe(actual.id);
+  expect(state.session_capture_context[0].session_id).not.toBe("60000000-0000-4000-8000-000000000099");
+});
+
+test("duplicate browser submission is idempotent and cannot double-award progress", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  await emitRep(page);
+  await openReflection(page);
+  await page.evaluate(() => {
+    const button = document.querySelector("[data-open-report]");
+    const event = () => new MouseEvent("click", { bubbles: true, cancelable: true });
+    button.dispatchEvent(event());
+    button.dispatchEvent(event());
+  });
+  await expect.poll(async () => (await snapshot(page)).exercise_sessions.length).toBe(1);
+  const state = await snapshot(page);
+  expect(state.exercise_sessions).toHaveLength(1);
+  expect(state.roadmap_node_completions).toHaveLength(1);
+  expect(state.profiles.find((profile) => profile.id === IDS.patientA).recovery_xp).toBe(50);
+});
+
+test("network interruption does not claim success and retry saves exactly once", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  await emitRep(page);
+  await openReflection(page);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.failNextSessionSave());
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
+  await expect(page.locator("[data-open-report]")).toHaveText(/Could not save/i);
+  let state = await snapshot(page);
+  expect(state.exercise_sessions).toHaveLength(0);
+  expect(state.roadmap_node_completions).toHaveLength(0);
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
+  await expect.poll(async () => (await snapshot(page)).exercise_sessions.length).toBe(1);
+  state = await snapshot(page);
+  expect(state.roadmap_node_completions).toHaveLength(1);
+});
+
+test("patient B cannot see or start patient A treatment data", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signIn(page, "patientb@axion.test");
+  await expect(page.locator("#auth-form")).toHaveCount(0);
+  await expect(page.locator("[data-start-assignment]")).toHaveCount(0);
+  await expect(page.getByText("RC1 exact identity plan")).toHaveCount(0);
+  await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toHaveCount(0);
+});
+
+test("therapist MFA blocks clinical workspace until valid second factor", async ({ page }) => {
+  await boot(page);
+  await signIn(page, "therapist@axion.test");
+  await expect(page.locator("#therapist-mfa-form")).toBeVisible();
+  await page.locator("#therapist-mfa-code").fill("000000");
+  await page.locator("#therapist-mfa-form").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#therapist-mfa-message")).toHaveText(/could not be verified/i);
+  await page.locator("#therapist-mfa-code").fill("123456");
+  await page.locator("#therapist-mfa-form").evaluate((form) => form.requestSubmit());
+  await expect(page.locator('[data-therapist-section="overview"]')).toBeVisible();
+});
+
+test("camera denial produces recoverable error and writes no clinical session", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.setFailure("permission_denied"));
+  await startAssignment(page);
+  await expect(page.locator("#camera-recovery")).toBeVisible();
+  await expect(page.locator("#camera-recovery-copy")).toHaveText(/permission was denied/i);
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+});
+
+test("pose-model failure preserves a recoverable UI and writes no clinical session", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.setPoseModelFailure(true));
+  await startAssignment(page);
+  await expect(page.locator("#camera-recovery")).toBeVisible();
+  await expect(page.locator("#camera-recovery-copy")).toHaveText(/movement model stopped responding/i);
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+});
+
+test("tracking interruption pauses game readiness, explains recovery, and does not create a session", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page, { targetReps: 2 });
+  await signInPatientA(page);
+  await startAssignment(page);
+  await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.emitTrackingState({
+    code: "out_of_frame",
+    label: "Step back so your full body is visible.",
+    quality: "Low",
+    confidence: 28,
+  }));
+  await expect(page.locator("#coach-message")).toHaveText(/step back so your full body is visible/i);
+  await expect(page.locator("#body-state")).toHaveClass(/warning/);
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+  await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.emitTrackingState({
+    code: "body_detected",
+    label: "Body detected",
+    quality: "High",
+    confidence: 99,
+  }));
+  await expect(page.locator("#body-state")).toContainText(/body detected/i);
+  await emitRep(page);
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+});
+
+test("same-user token refresh preserves an active clinical session", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  const begin = page.locator("#clinic-begin-exercise");
+  await expect(begin).toBeDisabled();
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.refreshSession());
+  await page.waitForTimeout(350);
+  await expect(begin).toBeDisabled();
+  await emitRep(page);
+  await openReflection(page);
+  await page.locator("[data-open-report]").evaluate((button) => button.click());
+  await expect.poll(async () => (await snapshot(page)).exercise_sessions.length).toBe(1);
+  await expect.poll(async () => (await snapshot(page)).session_capture_context.length).toBe(1);
+});
+
+test("slow patient workspace response cannot restore clinical data after session expiry", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.setTableDelay("exercise_plans", 500));
+  await signIn(page, "patienta@axion.test");
+  await page.waitForTimeout(75);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.expireSession());
+  await expect(page.locator("#auth-form")).toBeVisible();
+  await page.waitForTimeout(650);
+  await expect(page.locator("#auth-form")).toBeVisible();
+  await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toHaveCount(0);
+  await expect(page.getByText("RC1 exact identity plan")).toHaveCount(0);
+});
+
+test("leaving Movement Lab destroys tracker and stale game controller resources", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  const before = await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount);
+  await page.locator('.lab-page [data-nav="patient"]').click();
+  await expect(page.locator('.patient-portal')).toBeVisible();
+  const after = await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount);
+  expect(after).toBe(before + 1);
+  expect(await page.evaluate(() => window.__axionMovementGameController == null)).toBe(true);
+});
+
+test("auth sign-out during an active clinical session clears unsaved treatment state", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page, { targetReps: 2 });
+  await signInPatientA(page);
+  await startAssignment(page);
+  await emitRep(page);
+  const destroyBefore = await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.expireSession());
+  await expect(page.locator("#auth-form")).toBeVisible();
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+  expect(await page.evaluate(() => window.__axionMovementGameController == null)).toBe(true);
+  expect(await page.evaluate((before) => window.__AXION_E2E_TRACKER_CONTROL__.destroyCount > before, destroyBefore)).toBe(true);
+});
+
+test("mobile rotation during Movement Lab preserves the active session without overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page);
+  await seedPlan(page, { targetReps: 2 });
+  await page.evaluate(({ assignmentId, planId }) => {
+    const plan = window.__AXION_E2E_CONTROL__.db.exercise_plans.find((item) => item.id === planId);
+    const assignment = window.__AXION_E2E_CONTROL__.db.exercise_assignments.find((item) => item.id === assignmentId);
+    if (!plan || !assignment) throw new Error("Missing RC1 mobile rotation plan or assignment");
+    plan.game_enabled = true;
+    assignment.exercise_mode = "movement_game";
+  }, { assignmentId: IDS.assignmentA, planId: IDS.plan });
+  await signInPatientA(page);
+  await startAssignment(page);
+  await expect(page.locator("#adventure-canvas")).toBeVisible();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(150);
+  await expect(page.locator(".lab-page")).toBeVisible();
+  await expect(page.locator("#finish-session")).toBeVisible();
+  await expect(page.locator("#adventure-canvas")).toBeVisible();
+  const canvasBox = await page.locator("#adventure-canvas").boundingBox();
+  expect(canvasBox).not.toBeNull();
+  expect(canvasBox.width).toBeLessThanOrEqual(845);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
+  await emitRep(page);
+});
+
+test("expired session returns to sign-in and clears clinical workspace", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.expireSession());
+  await expect(page.locator("#auth-form")).toBeVisible();
+  await expect(page.locator("[data-start-assignment]")).toHaveCount(0);
+});
+
+test("schema mismatch fails closed before patient or therapist workspace is shown", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await page.evaluate(() => window.__AXION_E2E_CONTROL__.setSchemaVersion("202609100003"));
+  await signIn(page, "patienta@axion.test");
+  await expect(page.getByRole("heading", { name: "Axion update in progress" })).toBeVisible();
+  await expect(page.locator("[data-start-assignment]")).toHaveCount(0);
+});
