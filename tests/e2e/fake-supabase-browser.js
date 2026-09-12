@@ -44,7 +44,7 @@
   let aal = "aal1";
   const authListeners = new Set();
   let failNextSessionSave = false;
-  let forceSchemaVersion = "202609100004";
+  let forceSchemaVersion = "axion-rc1-2026-09-11";
   let poseModelFailure = false;
   const tableDelays = new Map();
 
