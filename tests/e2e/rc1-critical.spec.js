@@ -168,6 +168,28 @@ async function snapshot(page) {
   return page.evaluate(() => window.__AXION_E2E_CONTROL__.snapshot());
 }
 
+test("Recovery journey hierarchy stays finite across recurring UI syncs", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  const intros = page.locator("[data-ui-journey-intro]");
+  const atlases = page.locator(".patient-portal.journey-page .journey-atlas");
+  await expect(intros).toHaveCount(1);
+  await expect(atlases).toHaveCount(1);
+  await page.waitForTimeout(2_000);
+  await expect(intros).toHaveCount(1);
+  await expect(atlases).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Your recovery journey" })).toHaveCount(1);
+  const stableOrder = await page.evaluate(() => {
+    const pageRoot = document.querySelector(".patient-portal.journey-page");
+    const support = pageRoot?.querySelector(".roadmap-support-grid");
+    const intro = pageRoot?.querySelector("[data-ui-journey-intro]");
+    const atlas = pageRoot?.querySelector(".journey-atlas");
+    return Boolean(support && intro && atlas && support.nextElementSibling === intro && intro.nextElementSibling === atlas);
+  });
+  expect(stableOrder).toBe(true);
+});
+
 test("exact assignment id survives duplicate display titles and saves the performed exercise", async ({ page }) => {
   await boot(page);
   await seedPlan(page, { twoAssignments: true, sameTitle: true });

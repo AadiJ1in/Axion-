@@ -8,6 +8,11 @@ const polish = fs.readFileSync(new URL("../src/patient-game-polish.js", import.m
 assert.match(polish, /syncUiHierarchy/);
 assert.match(polish, /window\.setInterval\(syncRestExperience, 250\)/);
 assert.doesNotMatch(ui, /MutationObserver/);
+assert.match(ui, /function ensureJourneyIntro\(page\)/, "journey hierarchy must be idempotent");
+assert.match(ui, /page\.querySelectorAll\(\"\[data-ui-journey-intro\]\"\)/, "duplicate journey intros must be collapsed");
+assert.doesNotMatch(ui, /support\?\.after\(atlas\)/, "journey atlas must not be unconditionally moved on every sync tick");
+assert.match(ui, /intro\.previousElementSibling !== anchor/, "journey intro moves only when ordering is wrong");
+assert.match(ui, /atlas\.previousElementSibling !== intro/, "journey atlas moves only when ordering is wrong");
 assert.doesNotMatch(ui, /supabase|exercise_sessions|roadmap_node_completions|rep_metrics/i);
 
 for (const label of ["Today", "Journey", "Progress", "Profile"]) assert.match(ui, new RegExp(`"${label}"`));

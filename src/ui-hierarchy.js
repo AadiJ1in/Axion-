@@ -132,13 +132,17 @@ function stripRestFromDose(node) {
   node.textContent = node.textContent.replace(/\s*·\s*\d+s rest\b/gi, "");
 }
 
-function ensureJourneyIntro(atlas) {
-  if (!atlas || atlas.previousElementSibling?.matches("[data-ui-journey-intro]")) return;
-  const intro = document.createElement("div");
+function ensureJourneyIntro(page) {
+  if (!page) return null;
+  const existing = [...page.querySelectorAll("[data-ui-journey-intro]")];
+  const intro = existing.shift() || document.createElement("div");
+  existing.forEach((node) => node.remove());
   intro.dataset.uiJourneyIntro = "true";
   intro.className = "ui-journey-intro";
-  intro.innerHTML = `<div><span>JOURNEY</span><h2>Your recovery journey</h2><p>See where you are and what unlocks next.</p></div>`;
-  atlas.before(intro);
+  if (!intro.firstElementChild) {
+    intro.innerHTML = `<div><span>JOURNEY</span><h2>Your recovery journey</h2><p>See where you are and what unlocks next.</p></div>`;
+  }
+  return intro;
 }
 
 function simplifyPatientToday() {
@@ -199,9 +203,11 @@ function simplifyPatientToday() {
   if (atlas) {
     atlas.id = "patient-journey";
     atlas.dataset.uiJourneyHero = "true";
-    support?.after(atlas);
-    ensureJourneyIntro(atlas);
-    if (phases) atlas.after(phases);
+    const intro = ensureJourneyIntro(page);
+    const anchor = support || today;
+    if (intro && anchor && intro.previousElementSibling !== anchor) anchor.after(intro);
+    if (intro && atlas.previousElementSibling !== intro) intro.after(atlas);
+    if (phases && phases.previousElementSibling !== atlas) atlas.after(phases);
   }
 
   if (pendingPatientJourney && atlas) {
