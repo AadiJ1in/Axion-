@@ -87,6 +87,15 @@ replaceOnce(
   "remove Journey atlas reparenting",
 );
 
+// Update the static regression to protect the new rule: presentation helpers may
+// decorate Journey, but must not move its major sections after render.
+replaceOnce(
+  "scripts/ui-hierarchy-test.mjs",
+  `assert.match(ui, /intro\\.previousElementSibling !== anchor/, "journey intro moves only when ordering is wrong");\nassert.match(ui, /atlas\\.previousElementSibling !== intro/, "journey atlas moves only when ordering is wrong");`,
+  `assert.doesNotMatch(ui, /today\\.after\\(support\\)/, "journey support must stay in source order");\nassert.doesNotMatch(ui, /anchor\\.after\\(intro\\)|intro\\.after\\(atlas\\)|atlas\\.after\\(phases\\)/, "journey presentation must not reparent major sections");`,
+  "Journey no-reparent static regression",
+);
+
 // The stable source order is intro -> atlas -> support. Assert that order instead of
 // requiring the old DOM-shuffling behavior that caused the cross-browser race.
 replaceOnce(
