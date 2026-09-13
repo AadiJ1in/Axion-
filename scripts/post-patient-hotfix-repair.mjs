@@ -8,6 +8,13 @@ function replaceOnce(path, from, to, label) {
   console.log(`patched ${label}`);
 }
 
+function appendOnce(path, marker, addition, label) {
+  const source = fs.readFileSync(path, "utf8");
+  if (source.includes(marker)) return;
+  fs.writeFileSync(path, `${source.trimEnd()}\n\n${addition.trim()}\n`);
+  console.log(`patched ${label}`);
+}
+
 // The first hotfix pass scheduled presentation work from layout(), which executes
 // before callers assign app.innerHTML. Remove that timing-sensitive hook.
 replaceOnce(
@@ -43,6 +50,23 @@ replaceOnce(
   `    if (target === "report") {\n      if (currentSession?.user && !currentSession.demo) {\n        try { await openRealReport(); }\n        catch (error) { showPortalError(error); }\n      } else reportView();\n    }`,
   `    if (target === "report") {\n      const workspace = currentProfile?.role === "patient" ? patientWorkspaceForCurrentSession() : null;\n      if (currentSession?.user && !currentSession.demo && workspace?.profile?.id) {\n        selectedPatient = workspace.profile;\n        reportSessions = [...(workspace.sessions || [])];\n        reportSafetyEvents = [...(workspace.safetyEvents || [])];\n        therapistNotes = [];\n        reportView();\n      } else if (currentSession?.user && !currentSession.demo) {\n        try { await openRealReport(); }\n        catch (error) { showPortalError(error); }\n      } else reportView();\n    }`,
   "synchronous patient Progress route",
+);
+
+// An authenticated patient with no completed sessions must still be on the Progress
+// destination. Preserve the fail-closed empty state, but mark it semantically as a
+// report page so nav state and story theming remain stable without synthetic data.
+replaceOnce(
+  "src/main.js",
+  `  if (!latestRecorded) {\n    app.innerHTML = layout(\`\n      <main class="state-page container-wide">`,
+  `  if (!latestRecorded) {\n    app.innerHTML = layout(\`\n      <main class="report-page report-page--empty state-page container-wide">`,
+  "empty authenticated Progress page identity",
+);
+
+appendOnce(
+  "src/ui-stability.css",
+  ".report-page--empty .empty-state{",
+  `html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .report-page--empty .empty-state{\n  max-width:760px;margin:clamp(2rem,6vh,5rem) auto;padding:clamp(1.5rem,3vw,2.5rem);\n  color:var(--story-ink)!important;background:rgba(248,243,228,.9)!important;\n  border:1px solid var(--story-line)!important;box-shadow:0 16px 40px rgba(55,49,34,.09)!important;\n}\nhtml[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .report-page--empty .empty-state :is(h2,b,strong){color:var(--story-ink)!important}\nhtml[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .report-page--empty .empty-state :is(p,small){color:var(--story-muted)!important}`,
+  "story-aware empty Progress card",
 );
 
 console.log("post-hotfix render and Progress sequencing repaired");
