@@ -9,6 +9,7 @@ const esc = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
 const state = {
   session: null,
   role: null,
+  authGeneration: 0,
   plans: [],
   assignments: [],
   loadedAt: 0,
@@ -33,11 +34,12 @@ function relativeTime(value) {
 async function authContext() {
   if (!isConfigured || !supabase) return null;
   if (state.session && state.role) return { session: state.session, role: state.role };
+  const authGeneration = state.authGeneration;
   const { data, error } = await supabase.auth.getSession();
   if (error || !data?.session?.user) return null;
   const session = data.session;
   const profile = await supabase.from("profiles").select("role").eq("id", session.user.id).maybeSingle();
-  if (profile.error || !profile.data?.role) return null;
+  if (profile.error || !profile.data?.role || authGeneration !== state.authGeneration) return null;
   state.session = session;
   state.role = profile.data.role;
   return { session, role: profile.data.role };
@@ -49,6 +51,8 @@ async function loadHistory(force = false) {
   if (!context) return;
   if (!force && Date.now() - state.loadedAt < 30000 && state.plans.length) return;
   state.loading = true;
+  const authGeneration = state.authGeneration;
+  const userId = context.session.user.id;
   try {
     let query = supabase.from("exercise_plans")
       .select("id, therapist_id, patient_id, title, program_label, phase_label, instructions, status, start_date, end_date, duration_weeks, sessions_per_week, game_enabled, created_at, updated_at")
@@ -70,6 +74,7 @@ async function loadHistory(force = false) {
       if (assignmentsResult.error) throw assignmentsResult.error;
       assignments = assignmentsResult.data || [];
     }
+    if (authGeneration !== state.authGeneration || state.session?.user?.id !== userId) return;
     state.plans = plans;
     state.assignments = assignments;
     state.loadedAt = Date.now();
@@ -209,8 +214,29 @@ async function sync() {
   if (hasTherapistBuilder) renderTherapist();
 }
 
+let planHistoryAuthSubscription = null;
+if (isConfigured && supabase) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const previousUserId = state.session?.user?.id || null;
+    const nextUserId = session?.user?.id || null;
+    state.session = session || null;
+    if (previousUserId === nextUserId) return;
+    state.role = null;
+    state.authGeneration += 1;
+    state.plans = [];
+    state.assignments = [];
+    state.loadedAt = 0;
+    state.pageKey = null;
+    closeModal();
+  });
+  planHistoryAuthSubscription = data?.subscription || null;
+}
+
 const planHistoryTimer = window.setInterval(sync, 1200);
-window.addEventListener("pagehide", () => window.clearInterval(planHistoryTimer), { once: true });
+window.addEventListener("pagehide", () => {
+  window.clearInterval(planHistoryTimer);
+  planHistoryAuthSubscription?.unsubscribe?.();
+}, { once: true });
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     state.loadedAt = 0;
