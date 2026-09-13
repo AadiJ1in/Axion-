@@ -1,0 +1,84 @@
+/* Stable patient shell and story-aware patient surfaces. Presentation only. */
+:root{
+  --story-paper:#eee6d1;--story-paper-2:#d9c9a5;--story-ink:#23352d;--story-muted:#64736a;
+  --story-deep:#17382f;--story-deep-2:#254c3c;--story-accent:#5f7e69;--story-highlight:#c5a965;--story-line:rgba(73,88,72,.24);
+}
+:root[data-axion-story="path"]{--story-paper:#e9e2cd;--story-paper-2:#ccbfa0;--story-deep:#24372d;--story-accent:#687961;--story-highlight:#b99c65}
+:root[data-axion-story="bridge"]{--story-paper:#eee4c9;--story-paper-2:#d5c092;--story-deep:#153a33;--story-deep-2:#2e584c;--story-accent:#55786b;--story-highlight:#bf9f5f}
+:root[data-axion-story="mill"]{--story-paper:#eadfc7;--story-paper-2:#cfb98e;--story-deep:#3b3928;--story-accent:#7a6848;--story-highlight:#bf8e4c}
+:root[data-axion-story="village"]{--story-paper:#efe1c9;--story-paper-2:#d5ba8f;--story-deep:#3e3526;--story-accent:#80624b;--story-highlight:#c58a55}
+:root[data-axion-story="gate"]{--story-paper:#e4e0c7;--story-paper-2:#bfc4a0;--story-deep:#193a2c;--story-accent:#526f55;--story-highlight:#a9985a}
+:root[data-axion-story="garden"]{--story-paper:#e7e3c8;--story-paper-2:#c0c89e;--story-deep:#174033;--story-accent:#4f7f66;--story-highlight:#b0a55e}
+:root[data-axion-story="climb"]{--story-paper:#e6e3d6;--story-paper-2:#c1c0ae;--story-deep:#263a39;--story-accent:#637b78;--story-highlight:#aaa06b}
+:root[data-axion-story="signal"],:root[data-axion-story="finale"]{--story-paper:#ece5cf;--story-paper-2:#d5c28f;--story-deep:#183830;--story-accent:#65765c;--story-highlight:#d0b65e}
+
+html[data-axion-patient-surface="true"],html[data-axion-patient-surface="true"] body{overflow-x:clip}
+.topbar .nav[data-ui-patient-nav="true"]{flex-wrap:nowrap;align-items:center;min-width:0}
+.topbar .nav[data-ui-patient-nav="true"] button{transition:background-color .12s ease,color .12s ease,border-color .12s ease;transform:none!important;white-space:nowrap}
+.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]{display:flex!important}
+.topbar .nav[data-ui-patient-nav="true"] button.active{color:var(--mint-2);background:rgba(110,240,177,.1)}
+
+/* Never expose an empty black map when the roadmap is shorter than the old fixed viewport. */
+.campaign-world{background:var(--story-deep)!important}
+.campaign-scroll{
+  height:auto!important;min-height:520px!important;max-height:min(70vh,680px)!important;
+  background:
+    linear-gradient(180deg,rgba(15,39,31,.12),rgba(12,33,26,.36)),
+    url('/axion-kingdom-world.webp') center/cover no-repeat,var(--story-deep)!important;
+  scroll-behavior:auto!important;
+}
+.campaign-region{min-height:520px!important;transition:none!important}
+.campaign-scenery{transition:none!important}
+.campaign-cloud{animation:none!important}
+
+/* Progress and Report belong to the active story world instead of the generic dark dashboard. */
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"],
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"]{
+  --text:var(--story-ink);--muted:var(--story-muted);--line:var(--story-line);--line-strong:rgba(72,91,76,.38);
+  --surface:rgba(248,243,228,.9);--surface-2:rgba(239,231,207,.92);--surface-3:rgba(222,210,177,.88);
+  --mint:var(--story-accent);--mint-2:var(--story-deep);--ink:#f8f3e3;
+  color:var(--story-ink);
+  background:
+    linear-gradient(105deg,rgba(243,236,215,.94),rgba(224,210,176,.88)),
+    url('/axion-kingdom-world.webp') center 28%/cover fixed!important;
+}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] :is(.report-header,.ui-progress-intro,.pulse-banner,.report-metrics,.longitudinal-card,.session-rail,.rep-highlight,.ai-note,.heatmap-card,.review-card),
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"] :is(.patient-report-hero,.patient-checkin-card,.patient-report-side>article){
+  color:var(--story-ink)!important;border-color:var(--story-line)!important;background:rgba(248,243,228,.88)!important;box-shadow:0 12px 32px rgba(55,49,34,.08)!important;
+}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] :is(p,small,span,dt),
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"] :is(p,small,label){color:var(--story-muted)}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] :is(h1,h2,h3,b,strong,dd),
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"] :is(h1,h2,h3,b,strong){color:var(--story-ink)}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .section-kicker,
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"] .section-kicker{color:var(--story-accent)!important}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .back-link{color:var(--story-muted)}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"] :is(select,textarea){background:rgba(255,252,242,.8)!important;color:var(--story-ink)!important;border-color:var(--story-line)!important}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"] .patient-report-types span{background:rgba(255,252,242,.75);color:var(--story-muted);border-color:var(--story-line)}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"] .patient-report-types input:checked+span{background:color-mix(in srgb,var(--story-highlight) 24%,white);color:var(--story-ink);border-color:var(--story-highlight)}
+
+/* Profile stays inside the viewport and uses the same world palette. */
+.patient-profile-page{max-width:100%;min-width:0;overflow-x:clip;color:var(--story-ink)}
+.patient-profile-page :is(.profile-hero-card,.profile-dashboard-grid,.avatar-picker-card,.profile-progress-card,.achievement-card,.profile-settings-link,.avatar-choice-grid,.achievement-grid){min-width:0;max-width:100%}
+.patient-profile-page .profile-hero-card{background:linear-gradient(105deg,color-mix(in srgb,var(--story-paper) 94%,transparent),color-mix(in srgb,var(--story-paper-2) 88%,transparent)),url('/axion-kingdom-world.webp') center 18%/cover!important}
+.patient-profile-page .profile-progress-card{background:linear-gradient(130deg,color-mix(in srgb,var(--story-deep) 96%,transparent),color-mix(in srgb,var(--story-deep-2) 90%,transparent)),url('/axion-kingdom-world.webp') center 66%/cover!important}
+.patient-profile-page .avatar-picker-card,.patient-profile-page .achievement-card,.patient-profile-page .profile-settings-link{background:color-mix(in srgb,var(--story-paper) 92%,white)!important}
+
+@media(max-width:1000px){
+  .topbar .nav[data-ui-patient-nav="true"] button{padding:.6rem .62rem}
+  .campaign-scroll{min-height:480px!important;max-height:640px!important}
+  .campaign-region{min-height:480px!important}
+}
+@media(max-width:680px){
+  .campaign-scroll{min-height:430px!important;max-height:560px!important}
+  .campaign-region{min-height:430px!important}
+}
+@media(prefers-reduced-motion:reduce){.campaign-region,.campaign-scenery,.topbar .nav button{transition:none!important}}
+
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .report-page--empty .empty-state{
+  max-width:760px;margin:clamp(2rem,6vh,5rem) auto;padding:clamp(1.5rem,3vw,2.5rem);
+  color:var(--story-ink)!important;background:rgba(248,243,228,.9)!important;
+  border:1px solid var(--story-line)!important;box-shadow:0 16px 40px rgba(55,49,34,.09)!important;
+}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .report-page--empty .empty-state :is(h2,b,strong){color:var(--story-ink)!important}
+html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .report-page--empty .empty-state :is(p,small){color:var(--story-muted)!important}

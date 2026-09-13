@@ -216,7 +216,7 @@ const requirements = [
   [files.rlsIntegrationTest, "Patient could read therapist-only recommendations", "recommendation privacy regression test"],
   [files.rlsIntegrationTest, "Recommendation review changed the prescription", "no-autonomous-prescription regression test"],
   [files.journey, "clinic’s approved contact method", "roadmap communication boundary"],
-  [files.main, '[["patient", "Roadmap", "map"], ["lab", "Movement Lab", "activity"], ["patient-profile", "Profile", "users"], ["report", "Progress", "trophy"], ["patient-report", "Report", "report"]]', "five-destination patient navigation"],
+  [files.main, '[["patient", "Today", "home"], ["lab", "Journey", "map"], ["report", "Progress", "trophy"], ["patient-report", "Report", "report"], ["patient-profile", "Profile", "users"]]', "five-destination patient navigation"],
   [files.main, "function patientProfileView()", "patient achievement and avatar profile"],
   [files.main, "function patientReportView()", "standalone patient pain-report destination"],
   [files.main, "Pain reports never reduce XP", "non-coercive gamification boundary"],

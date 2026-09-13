@@ -229,13 +229,14 @@ function layout(content, { full = false } = {}) {
   const activeRole = currentProfile?.role || demoRole;
   const accountTarget = currentSession?.user ? (activeRole === "patient" ? "patient-profile" : "account") : "auth";
   const nav = activeRole === "patient"
-    ? [["patient", "Roadmap", "map"], ["lab", "Movement Lab", "activity"], ["patient-profile", "Profile", "users"], ["report", "Progress", "trophy"], ["patient-report", "Report", "report"]]
+    ? [["patient", "Today", "home"], ["lab", "Journey", "map"], ["report", "Progress", "trophy"], ["patient-report", "Report", "report"], ["patient-profile", "Profile", "users"]]
     : activeRole === "therapist"
       ? [["therapist", "Overview", "home"], ["report", "Movement reports", "report"]]
       : [["home", "Overview", "home"], ["lab", "Motion Lab", "activity"], ["report", "Movement Report", "report"], ["therapist", "Therapist", "users"]];
   const displayName = currentProfile?.display_name || "";
   const initials = displayName.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "AX";
   const brandTarget = activeRole === "therapist" ? "therapist" : activeRole === "patient" ? "patient" : "home";
+  if (activeRole === "patient" && currentView === "patient") document.documentElement.dataset.axionPatientSection = "today";
   return `
     <div class="app-shell ${full ? "app-shell--full" : ""}">
       <div class="prototype-strip">
@@ -710,7 +711,8 @@ function roadmapCharacterMarkup(key = "pulse") {
 }
 
 function sessionPathMarkup(workspace) {
-  return journeyMapMarkup(workspace, { escapeHtml, icon, missionMarkup: currentRoadmapSessionMarkup(workspace) });
+  const map = journeyMapMarkup(workspace, { escapeHtml, icon, missionMarkup: currentRoadmapSessionMarkup(workspace) });
+  return `<div data-ui-journey-intro="true" class="ui-journey-intro"><div><span>JOURNEY</span><h2>Your recovery journey</h2><p>See where you are and what unlocks next.</p></div></div>${map}`;
 }
 
 function drawSessionPathTrail() {
@@ -1130,7 +1132,7 @@ function realReportView() {
 
   if (!latestRecorded) {
     app.innerHTML = layout(`
-      <main class="state-page container-wide">
+      <main class="report-page report-page--empty state-page container-wide">
         <div class="empty-state">
           <span>${icon("report", 24)}</span>
           <span class="section-kicker">PRIVATE MOVEMENT REPORT</span>
@@ -3353,7 +3355,14 @@ function navigateTo(target) {
       }
     }
     if (target === "report") {
-      if (currentSession?.user && !currentSession.demo) {
+      const workspace = currentProfile?.role === "patient" ? patientWorkspaceForCurrentSession() : null;
+      if (currentSession?.user && !currentSession.demo && workspace?.profile?.id) {
+        selectedPatient = workspace.profile;
+        reportSessions = [...(workspace.sessions || [])];
+        reportSafetyEvents = [...(workspace.safetyEvents || [])];
+        therapistNotes = [];
+        reportView();
+      } else if (currentSession?.user && !currentSession.demo) {
         try { await openRealReport(); }
         catch (error) { showPortalError(error); }
       } else reportView();
@@ -3385,6 +3394,7 @@ function stopDemo() {
 }
 
 function bindEvents() {
+  queueMicrotask(() => window.__axionSyncPresentation?.());
   document.querySelectorAll("[data-nav]").forEach((element) => element.addEventListener("click", () => {
     navigateTo(element.dataset.nav);
   }));
