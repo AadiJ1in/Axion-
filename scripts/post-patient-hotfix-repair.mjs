@@ -69,4 +69,41 @@ appendOnce(
   "story-aware empty Progress card",
 );
 
-console.log("post-hotfix render and Progress sequencing repaired");
+// Do not reparent major Journey sections after render. The legacy presentation layer
+// moved a page-level support card into the atlas and then attempted to move the atlas
+// around that descendant. That creates browser-dependent ordering and visible flicker.
+// Keep only the copy/visibility enhancements and let source markup own structure.
+replaceOnce(
+  "src/ui-hierarchy.js",
+  `  if (support && support.dataset.uiMoved !== "true") {\n    support.dataset.uiMoved = "true";\n    today.after(support);\n    const reward = support.querySelector(".reward-card");`,
+  `  if (support && support.dataset.uiMoved !== "true") {\n    support.dataset.uiMoved = "true";\n    const reward = support.querySelector(".reward-card");`,
+  "remove support-card reparenting",
+);
+
+replaceOnce(
+  "src/ui-hierarchy.js",
+  `    const intro = ensureJourneyIntro(page);\n    const anchor = support || today;\n    if (intro && anchor && intro.previousElementSibling !== anchor) anchor.after(intro);\n    if (intro && atlas.previousElementSibling !== intro) intro.after(atlas);\n    if (phases && phases.previousElementSibling !== atlas) atlas.after(phases);`,
+  `    ensureJourneyIntro(page);`,
+  "remove Journey atlas reparenting",
+);
+
+// The stable source order is intro -> atlas -> support. Assert that order instead of
+// requiring the old DOM-shuffling behavior that caused the cross-browser race.
+replaceOnce(
+  "tests/e2e/rc1-critical.spec.js",
+  `    return Boolean(support && intro && atlas && support.nextElementSibling === intro && intro.nextElementSibling === atlas);`,
+  `    return Boolean(support && intro && atlas && intro.nextElementSibling === atlas && atlas.nextElementSibling === support);`,
+  "Journey stable source-order assertion",
+);
+
+// Starting an exercise is asynchronous. WebKit occasionally delivered the synthetic
+// rep before the UI had completed the Begin Exercise transition. Wait for the same
+// explicit movement-tracking state the patient sees, then emit exactly one rep.
+replaceOnce(
+  "tests/e2e/rc1-critical.spec.js",
+  `  if (await recovery.isVisible()) return;\n  await begin.click();\n}`,
+  `  if (await recovery.isVisible()) return;\n  await begin.click();\n  await expect.poll(async () => {\n    const status = await page.locator("#capture-status").textContent().catch(() => "");\n    const beginText = await begin.textContent().catch(() => "");\n    return /MOVEMENT TRACKING/i.test(status || "") || /Exercise started/i.test(beginText || "");\n  }, { timeout: 8_000 }).toBe(true);\n}`,
+  "cross-browser exercise-start readiness",
+);
+
+console.log("post-hotfix render, Journey structure, Progress, and browser readiness repaired");
