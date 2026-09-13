@@ -24,7 +24,9 @@ jobs:
           cache: npm
 
       - name: Apply patient UI stability repair
-        run: node scripts/patient-ui-stability-hotfix.mjs
+        run: |
+          node scripts/fix-patient-hotfix-script.mjs
+          node scripts/patient-ui-stability-hotfix.mjs
 
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
@@ -39,8 +41,8 @@ jobs:
         run: |
           git config user.name "AadiJ1in"
           git config user.email "ajtexas2022@gmail.com"
-          rm -f scripts/patient-ui-stability-hotfix.mjs .github/workflows/patient-ui-stability-hotfix.yml
-          git add src/main.js src/ui-hierarchy.js src/patient-game-polish.js src/ui-stability.js src/ui-stability.css scripts/ui-hierarchy-test.mjs tests/e2e/rc1-critical.spec.js package.json scripts/patient-ui-stability-hotfix.mjs .github/workflows/patient-ui-stability-hotfix.yml
+          rm -f scripts/patient-ui-stability-hotfix.mjs scripts/fix-patient-hotfix-script.mjs .github/workflows/patient-ui-stability-hotfix.yml
+          git add src/main.js src/ui-hierarchy.js src/patient-game-polish.js src/ui-stability.js src/ui-stability.css scripts/ui-hierarchy-test.mjs tests/e2e/rc1-critical.spec.js package.json scripts/patient-ui-stability-hotfix.mjs scripts/fix-patient-hotfix-script.mjs .github/workflows/patient-ui-stability-hotfix.yml
           if git diff --cached --quiet; then
             echo "No verified UI stability changes to commit"
             exit 0
