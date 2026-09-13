@@ -143,6 +143,11 @@ async function startAssignment(page, assignmentId = IDS.assignmentA) {
   }, { timeout: 8_000 }).not.toBe("waiting");
   if (await recovery.isVisible()) return;
   await begin.click();
+  await expect.poll(async () => {
+    const status = await page.locator("#capture-status").textContent().catch(() => "");
+    const beginText = await begin.textContent().catch(() => "");
+    return /MOVEMENT TRACKING/i.test(status || "") || /Exercise started/i.test(beginText || "");
+  }, { timeout: 8_000 }).toBe(true);
 }
 
 async function emitRep(page, overrides = {}) {
@@ -185,9 +190,56 @@ test("Recovery journey hierarchy stays finite across recurring UI syncs", async 
     const support = pageRoot?.querySelector(".roadmap-support-grid");
     const intro = pageRoot?.querySelector("[data-ui-journey-intro]");
     const atlas = pageRoot?.querySelector(".journey-atlas");
-    return Boolean(support && intro && atlas && support.nextElementSibling === intro && intro.nextElementSibling === atlas);
+    return Boolean(support && intro && atlas && intro.nextElementSibling === atlas && atlas.nextElementSibling === support);
   });
   expect(stableOrder).toBe(true);
+});
+
+test("patient shell stays stable, restores Report, and carries story theme", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+
+  const patientNav = page.locator(".topbar .nav");
+  for (const target of ["patient", "lab", "report", "patient-report", "patient-profile"]) {
+    await expect(patientNav.locator('[data-nav="' + target + '"]')).toBeVisible();
+  }
+  await expect(patientNav.locator('[data-nav="patient-report"]')).toContainText("Report");
+  expect(await patientNav.locator("button.active").count()).toBe(1);
+
+  await page.waitForTimeout(1_250);
+  expect(await patientNav.locator("button.active").count()).toBe(1);
+  await expect(patientNav.locator('[data-nav="patient-report"]')).toBeVisible();
+
+  await patientNav.locator('[data-nav="lab"]').click();
+  await expect(page.locator(".patient-portal.journey-page")).toBeVisible();
+  await expect(patientNav.locator('[data-nav="lab"]')).toHaveClass(/active/);
+  expect(await patientNav.locator("button.active").count()).toBe(1);
+  const mapStyle = await page.locator(".campaign-scroll").evaluate((node) => ({
+    backgroundImage: getComputedStyle(node).backgroundImage,
+    height: node.getBoundingClientRect().height,
+  }));
+  expect(mapStyle.backgroundImage).toContain("axion-kingdom-world.webp");
+  expect(mapStyle.height).toBeGreaterThanOrEqual(420);
+  expect(mapStyle.height).toBeLessThanOrEqual(700);
+
+  await patientNav.locator('[data-nav="patient-report"]').click();
+  await expect(page.locator(".patient-report-page")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-axion-story", /.+/);
+  await expect(page.locator("body")).toHaveAttribute("data-axion-ui-screen", "patient-report");
+
+  await page.locator('.topbar .nav [data-nav="report"]').click();
+  await expect(page.locator(".report-page")).toBeVisible();
+  await expect(page.locator("body")).toHaveAttribute("data-axion-ui-screen", "report");
+  const progressBackground = await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundImage);
+  expect(progressBackground).toContain("axion-kingdom-world.webp");
+  expect(await page.locator(".topbar .nav button.active").count()).toBe(1);
+
+  await page.locator('.topbar .nav [data-nav="patient-profile"]').click();
+  await expect(page.locator(".patient-profile-page")).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(2);
+  expect(await page.locator(".topbar .nav button.active").count()).toBe(1);
 });
 
 test("exact assignment id survives duplicate display titles and saves the performed exercise", async ({ page }) => {

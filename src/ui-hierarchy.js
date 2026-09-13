@@ -16,8 +16,20 @@ function markScreen() {
   else if (document.querySelector(".therapist-page")) body.dataset.axionUiScreen = "therapist";
   else if (document.querySelector(".patient-portal")) body.dataset.axionUiScreen = "patient";
   else if (document.querySelector(".patient-profile-page")) body.dataset.axionUiScreen = "patient-profile";
+  else if (document.querySelector(".patient-report-page")) body.dataset.axionUiScreen = "patient-report";
   else if (document.querySelector(".report-page")) body.dataset.axionUiScreen = "report";
   else delete body.dataset.axionUiScreen;
+}
+
+function setPatientNavActive(view) {
+  const nav = document.querySelector(".topbar .nav");
+  if (!nav?.querySelector('[data-nav="patient"]')) return;
+  nav.querySelectorAll("button[data-nav]").forEach((button) => {
+    const active = button.dataset.nav === view;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
 }
 
 function simplifyPatientNavigation() {
@@ -34,18 +46,27 @@ function simplifyPatientNavigation() {
   buttonLabel(today, "Today");
   buttonLabel(journey, "Journey");
   buttonLabel(progress, "Progress");
+  buttonLabel(report, "Report");
   buttonLabel(profile, "Profile");
   if (journey) journey.dataset.uiPatientJourney = "true";
   if (report) {
-    report.hidden = true;
-    report.setAttribute("aria-hidden", "true");
-    report.tabIndex = -1;
+    report.hidden = false;
+    report.removeAttribute("aria-hidden");
+    report.tabIndex = 0;
   }
 
   if (today) today.style.order = "1";
   if (journey) journey.style.order = "2";
   if (progress) progress.style.order = "3";
-  if (profile) profile.style.order = "4";
+  if (report) report.style.order = "4";
+  if (profile) profile.style.order = "5";
+
+  const activeView = document.querySelector(".patient-report-page") ? "patient-report"
+    : document.querySelector(".patient-profile-page") ? "patient-profile"
+      : document.querySelector(".report-page") ? "report"
+        : document.querySelector(".patient-portal") && document.documentElement.dataset.axionPatientSection === "journey" ? "lab"
+          : "patient";
+  setPatientNavActive(activeView);
 }
 
 function ensureTherapistAccountButton(shell) {
@@ -187,7 +208,6 @@ function simplifyPatientToday() {
   const phases = page.querySelector("[data-clinic-phases]");
   if (support && support.dataset.uiMoved !== "true") {
     support.dataset.uiMoved = "true";
-    today.after(support);
     const reward = support.querySelector(".reward-card");
     if (reward) reward.hidden = true;
     const weekly = support.querySelector(".daily-goal-card");
@@ -203,11 +223,7 @@ function simplifyPatientToday() {
   if (atlas) {
     atlas.id = "patient-journey";
     atlas.dataset.uiJourneyHero = "true";
-    const intro = ensureJourneyIntro(page);
-    const anchor = support || today;
-    if (intro && anchor && intro.previousElementSibling !== anchor) anchor.after(intro);
-    if (intro && atlas.previousElementSibling !== intro) intro.after(atlas);
-    if (phases && phases.previousElementSibling !== atlas) atlas.after(phases);
+    ensureJourneyIntro(page);
   }
 
   if (pendingPatientJourney && atlas) {
@@ -352,6 +368,8 @@ function syncTherapistPatientDetail() {
 }
 
 function openPatientJourney() {
+  document.documentElement.dataset.axionPatientSection = "journey";
+  setPatientNavActive("lab");
   const atlas = document.querySelector("#patient-journey, .journey-atlas");
   if (atlas) {
     atlas.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
@@ -365,6 +383,8 @@ function bindGlobalUiActions() {
   if (document.documentElement.dataset.uiHierarchyBound === "true") return;
   document.documentElement.dataset.uiHierarchyBound = "true";
   document.addEventListener("click", (event) => {
+    const today = event.target.closest?.('.topbar .nav [data-nav="patient"]');
+    if (today) document.documentElement.dataset.axionPatientSection = "today";
     const target = event.target.closest?.("[data-ui-patient-journey], [data-ui-open-journey], [data-ui-therapist-account], [data-ui-detail-target]");
     if (!target) return;
     if (target.dataset.uiPatientJourney !== undefined || target.dataset.uiOpenJourney !== undefined) {

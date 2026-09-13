@@ -6,6 +6,7 @@ import "./plan-version-history.js";
 import "./session-review-notes.js";
 import { syncUiHierarchy } from "./ui-hierarchy.js";
 import { syncUiHierarchyP1 } from "./ui-hierarchy-p1.js";
+import { syncUiStability } from "./ui-stability.js";
 
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
@@ -25,12 +26,24 @@ function restVisible(overlay) {
   return Boolean(overlay && !overlay.classList.contains('hidden'));
 }
 
-function syncRestExperience() {
-  // Reuse this existing lightweight interval for presentation hierarchy too.
-  // Both hierarchy layers are idempotent and do not observe or write clinical state.
+function syncPresentationHierarchy() {
   syncUiHierarchy();
   syncUiHierarchyP1();
+  syncUiStability();
+}
 
+let presentationFrame = 0;
+function schedulePresentationHierarchy() {
+  if (presentationFrame) return;
+  presentationFrame = window.requestAnimationFrame(() => {
+    presentationFrame = 0;
+    syncPresentationHierarchy();
+  });
+}
+
+window.__axionSyncPresentation = schedulePresentationHierarchy;
+
+function syncRestExperience() {
   const overlay = document.querySelector('#set-rest-overlay');
   const viewport = document.querySelector('.adventure-card .adventure-viewport');
   if (overlay && viewport && overlay.parentElement !== viewport) viewport.appendChild(overlay);
@@ -75,9 +88,20 @@ document.addEventListener('click', (event) => {
   }, 80);
 }, true);
 
-// Four lightweight selector checks per second only while the page is open. No
-// recursive DOM watching and no clinical-state writes.
+// The 250ms timer is now rest-overlay only. Presentation hierarchy is event-driven
+// after a render, so signed-in navigation and cards cannot flicker four times/second.
 const polishTimer = window.setInterval(syncRestExperience, 250);
-window.addEventListener('pagehide', () => window.clearInterval(polishTimer), { once:true });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) syncRestExperience(); });
+window.addEventListener('pagehide', () => {
+  window.clearInterval(polishTimer);
+  if (presentationFrame) window.cancelAnimationFrame(presentationFrame);
+}, { once:true });
+window.addEventListener('pageshow', schedulePresentationHierarchy);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    syncRestExperience();
+    schedulePresentationHierarchy();
+  }
+});
+document.addEventListener('click', () => window.setTimeout(schedulePresentationHierarchy, 0));
+syncPresentationHierarchy();
 syncRestExperience();
