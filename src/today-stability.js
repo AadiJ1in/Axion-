@@ -132,9 +132,6 @@ function stabilizeTodayHeader(page) {
 
   if (kicker) kicker.textContent = "TODAY";
   if (title) title.textContent = `Good afternoon, ${pretty}`;
-  // The older hierarchy layer performs this same transformation only after
-  // clinic-readiness resolves. Mark it complete now so it cannot create a
-  // second visual state and shift the dashboard after first paint.
   welcome.dataset.uiSimplified = "true";
 }
 
@@ -167,8 +164,17 @@ function ensurePathwayHeader(page) {
     : "YOUR PATHWAY";
 }
 
+function syncPlanVersionBanner(page, section) {
+  const banner = page.querySelector("[data-plan-version-banner]");
+  if (!banner) return;
+  const visible = section === "journey";
+  banner.hidden = !visible;
+  banner.setAttribute("aria-hidden", visible ? "false" : "true");
+  if (visible) banner.style.removeProperty("display");
+  else banner.style.setProperty("display", "none", "important");
+}
+
 function decorateToday(page) {
-  // Capture therapist identity before changing the patient-facing welcome copy.
   ensureTherapistPanel(page);
   stabilizeTodayHeader(page);
   ensurePathwayHeader(page);
@@ -181,6 +187,7 @@ function setPatientSection(section, { scrollTop = true } = {}) {
   decorateToday(page);
   page.dataset.axionStableSection = normalized;
   document.documentElement.dataset.axionPatientSection = normalized;
+  syncPlanVersionBanner(page, normalized);
   setActiveNav(normalized);
   if (scrollTop) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   if (normalized === "journey") {
@@ -253,7 +260,18 @@ document.addEventListener("click", (event) => {
 }, true);
 
 const appRoot = document.querySelector("#app");
-const observer = appRoot ? new MutationObserver(scheduleSync) : null;
+const observer = appRoot
+  ? new MutationObserver(() => {
+      const page = patientPage();
+      if (page && page.dataset.axionStableSection !== "journey") {
+        // Plan history loads on its own timer. Hide that late banner during the
+        // same mutation microtask so it never receives a Today paint or shifts
+        // the current session dashboard.
+        syncPlanVersionBanner(page, "today");
+      }
+      scheduleSync();
+    })
+  : null;
 observer?.observe(appRoot, { childList: true, subtree: true });
 
 window.addEventListener("pageshow", scheduleSync);
@@ -265,6 +283,6 @@ window.addEventListener("pagehide", () => {
 scheduleSync();
 
 window.__axionTodayStability = Object.freeze({
-  version: 3,
+  version: 4,
   setSection: (section) => setPatientSection(section),
 });
