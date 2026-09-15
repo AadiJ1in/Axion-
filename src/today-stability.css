@@ -1,0 +1,289 @@
+/* Patient Today must be a single deterministic presentation.
+   The full campaign remains available on Journey; clinical/session authority is unchanged. */
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) [data-clinic-today],
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) [data-clinic-phases],
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .ui-journey-intro,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .beacon-world-banner,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-heading,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .beacon-current-mission,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-care-note,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-map-controls,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region-nav,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .campaign-scenery,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .campaign-final-goal,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region > header,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .today-plan {
+  display: none !important;
+}
+
+/* Collapse the campaign shell on Today before any JavaScript enhancement runs.
+   This prevents the large dark/empty map from ever being the first paint. */
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-atlas {
+  display: block !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0 0 1rem !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-body {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: none !important;
+  gap: .85rem !important;
+  min-height: 0 !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-mission {
+  order: 1 !important;
+  position: static !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .beacon-prescription-launch {
+  display: block !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+/* One stable, readable Today card. */
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card {
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: clamp(1.15rem, 2.2vw, 1.6rem) !important;
+  border: 1px solid rgba(31, 73, 59, .16) !important;
+  border-radius: 20px !important;
+  background: linear-gradient(135deg, rgba(255, 253, 246, .98), rgba(244, 240, 221, .96)) !important;
+  color: #183d32 !important;
+  box-shadow: 0 14px 40px rgba(38, 55, 43, .09) !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card > small:first-child {
+  display: inline-block !important;
+  margin-bottom: .35rem !important;
+  color: #447768 !important;
+  font: 700 .72rem/1.2 "DM Mono", monospace !important;
+  letter-spacing: .12em !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card > small:first-child::after {
+  content: " · TODAY";
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card h2 {
+  margin: .15rem 0 .2rem !important;
+  color: #183d32 !important;
+  font-size: clamp(1.55rem, 3vw, 2.15rem) !important;
+  letter-spacing: -.035em !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card > p {
+  margin: 0 0 1rem !important;
+  color: #677b73 !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 1rem !important;
+  min-height: 54px !important;
+  padding: .7rem 0 !important;
+  border-bottom: 1px solid rgba(31, 73, 59, .10) !important;
+  color: #183d32 !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose b {
+  color: #183d32 !important;
+  font-size: .96rem !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose span {
+  color: #70837b !important;
+  font-size: .84rem !important;
+  text-align: right !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card .button {
+  width: min(100%, 260px) !important;
+  min-height: 52px !important;
+  margin-top: 1rem !important;
+  border-radius: 12px !important;
+  background: #1f624a !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card > small:last-child {
+  display: block !important;
+  margin-top: .65rem !important;
+  color: #7b8d85 !important;
+}
+
+/* A compact roadmap preview keeps the exact current roadmap node available for
+   the existing clinical start flow without rendering the full campaign on Today. */
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-world {
+  order: 2 !important;
+  display: block !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .campaign-scroll {
+  width: 100% !important;
+  min-height: 108px !important;
+  height: 108px !important;
+  max-height: 108px !important;
+  margin: 0 !important;
+  padding: .7rem !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(31, 73, 59, .12) !important;
+  border-radius: 16px !important;
+  background-position: center 54% !important;
+  background-size: cover !important;
+  box-shadow: none !important;
+  scroll-behavior: auto !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region {
+  display: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region:has(.journey-node.current),
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region:has(.journey-node.override) {
+  display: block !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node-grid {
+  display: block !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-step {
+  display: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-step:has(.journey-node.current),
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-step:has(.journey-node.override) {
+  display: block !important;
+  position: static !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node.current,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node.override {
+  position: static !important;
+  inset: auto !important;
+  width: 100% !important;
+  min-height: 82px !important;
+  display: grid !important;
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: .85rem !important;
+  margin: 0 !important;
+  padding: .55rem .8rem !important;
+  transform: none !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: rgba(251, 249, 238, .90) !important;
+  color: #183d32 !important;
+  box-shadow: none !important;
+  text-align: left !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node .journey-pawn,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node .journey-node-stars,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node .journey-node-story,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node .journey-node-game {
+  display: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node-core {
+  position: static !important;
+  width: 44px !important;
+  height: 44px !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node-name {
+  display: block !important;
+  position: static !important;
+  margin: 0 !important;
+  color: #183d32 !important;
+  font-size: .95rem !important;
+  font-weight: 800 !important;
+  transform: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .roadmap-support-grid {
+  margin-top: 1rem !important;
+}
+
+/* Journey owns the full campaign presentation. Switching sections only changes
+   this attribute; no patient page rebuild or smooth-scroll transition is needed. */
+.patient-portal.journey-page[data-axion-stable-section="journey"] .clinic-today-recovery,
+.patient-portal.journey-page[data-axion-stable-section="journey"] [data-clinic-phases],
+.patient-portal.journey-page[data-axion-stable-section="journey"] .roadmap-support-grid,
+.patient-portal.journey-page[data-axion-stable-section="journey"] .today-plan {
+  display: none !important;
+}
+
+.patient-portal.journey-page[data-axion-stable-section="journey"] .journey-welcome {
+  margin-bottom: 1rem !important;
+}
+
+@media (max-width: 720px) {
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: .2rem !important;
+  }
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose span {
+    text-align: left !important;
+  }
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .campaign-scroll {
+    height: 96px !important;
+    min-height: 96px !important;
+  }
+}
