@@ -7,6 +7,7 @@ import "./session-review-notes.js";
 import { syncUiHierarchy } from "./ui-hierarchy.js";
 import { syncUiHierarchyP1 } from "./ui-hierarchy-p1.js";
 import { syncUiStability } from "./ui-stability.js";
+import { syncPatientSurfacePolish } from "./patient-surface-polish.js";
 
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
@@ -30,6 +31,7 @@ function syncPresentationHierarchy() {
   syncUiHierarchy();
   syncUiHierarchyP1();
   syncUiStability();
+  syncPatientSurfacePolish();
 }
 
 let presentationFrame = 0;
