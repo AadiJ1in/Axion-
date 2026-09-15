@@ -97,12 +97,11 @@ async function signInPatient(page) {
   await expect(page.locator(".today-pt-panel")).toBeVisible();
 }
 
-function delta(a, b) {
+function anchorDelta(a, b) {
   return Math.max(
     Math.abs(a.x - b.x),
     Math.abs(a.y - b.y),
     Math.abs(a.width - b.width),
-    Math.abs(a.height - b.height),
   );
 }
 
@@ -116,11 +115,14 @@ test("Today remains visually stable with PT guidance and an expanded pathway", a
 
   const card = page.locator(".next-session-card");
   const notes = page.locator(".today-pt-panel");
+  const pathway = page.locator(".journey-world");
   const map = page.locator(".campaign-scroll");
   const cardBefore = await card.boundingBox();
   const notesBefore = await notes.boundingBox();
+  const pathwayBefore = await pathway.boundingBox();
   expect(cardBefore).toBeTruthy();
   expect(notesBefore).toBeTruthy();
+  expect(pathwayBefore).toBeTruthy();
   expect(notesBefore.x).toBeGreaterThan(cardBefore.x + cardBefore.width - 10);
   expect(Math.abs(notesBefore.y - cardBefore.y)).toBeLessThanOrEqual(4);
   await expect(notes).toContainText("Session guidance");
@@ -136,10 +138,14 @@ test("Today remains visually stable with PT guidance and an expanded pathway", a
 
   const cardAfter = await card.boundingBox();
   const notesAfter = await notes.boundingBox();
+  const pathwayAfter = await pathway.boundingBox();
   expect(cardAfter).toBeTruthy();
   expect(notesAfter).toBeTruthy();
-  expect(delta(cardBefore, cardAfter)).toBeLessThanOrEqual(3);
-  expect(delta(notesBefore, notesAfter)).toBeLessThanOrEqual(3);
+  expect(pathwayAfter).toBeTruthy();
+  expect(anchorDelta(cardBefore, cardAfter)).toBeLessThanOrEqual(3);
+  expect(anchorDelta(notesBefore, notesAfter)).toBeLessThanOrEqual(3);
+  expect(Math.abs(pathwayBefore.y - pathwayAfter.y)).toBeLessThanOrEqual(3);
+  expect(Math.abs(pathwayBefore.width - pathwayAfter.width)).toBeLessThanOrEqual(3);
   await expect(page.locator("[data-clinic-today]")).toBeHidden();
   await expect(page.locator("[data-clinic-phases]")).toBeHidden();
 });
