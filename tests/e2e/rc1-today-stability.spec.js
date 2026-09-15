@@ -38,7 +38,7 @@ async function seedPlan(page) {
       start_date: now.slice(0, 10),
       end_date: now.slice(0, 10),
       duration_weeks: 1,
-      sessions_per_week: 1,
+      sessions_per_week: 4,
       game_enabled: false,
       created_at: now,
       updated_at: now,
@@ -61,22 +61,24 @@ async function seedPlan(page) {
       created_at: now,
       updated_at: now,
     });
-    db.roadmap_nodes.push({
-      id: ids.node,
-      plan_id: ids.plan,
-      session_number: 1,
-      week_number: 1,
-      session_in_week: 1,
-      biome: 1,
-      title: "Session 1",
-      detail: "Stable Today browser verification",
-      target_date: now.slice(0, 10),
-      unlock_override: false,
-      override_reason: null,
-      overridden_at: null,
-      created_at: now,
-      updated_at: now,
-    });
+    for (let index = 0; index < 4; index += 1) {
+      db.roadmap_nodes.push({
+        id: index === 0 ? ids.node : `50000000-0000-4000-8000-00000000000${index + 1}`,
+        plan_id: ids.plan,
+        session_number: index + 1,
+        week_number: 1,
+        session_in_week: index + 1,
+        biome: 1,
+        title: `Session ${index + 1}`,
+        detail: index === 0 ? "Stable Today browser verification" : "Upcoming session",
+        target_date: now.slice(0, 10),
+        unlock_override: false,
+        override_reason: null,
+        overridden_at: null,
+        created_at: now,
+        updated_at: now,
+      });
+    }
     db.roadmap_node_assignments.push({
       roadmap_node_id: ids.node,
       assignment_id: ids.assignment,
@@ -92,6 +94,7 @@ async function signInPatient(page) {
   await expect(page.locator(".patient-portal.journey-page")).toBeVisible();
   await expect(page.locator(".next-session-card")).toBeVisible();
   await expect(page.locator(`[data-roadmap-node="${IDS.node}"]`)).toBeVisible();
+  await expect(page.locator(".today-pt-panel")).toBeVisible();
 }
 
 function delta(a, b) {
@@ -103,7 +106,7 @@ function delta(a, b) {
   );
 }
 
-test("Today remains visually stable while async clinic enhancement completes", async ({ page }) => {
+test("Today remains visually stable with PT guidance and an expanded pathway", async ({ page }) => {
   await boot(page);
   await seedPlan(page);
   await signInPatient(page);
@@ -112,20 +115,33 @@ test("Today remains visually stable while async clinic enhancement completes", a
   await expect(root).toHaveAttribute("data-axion-stable-section", "today");
 
   const card = page.locator(".next-session-card");
+  const notes = page.locator(".today-pt-panel");
   const map = page.locator(".campaign-scroll");
-  const before = await card.boundingBox();
-  expect(before).toBeTruthy();
-  expect((await map.boundingBox()).height).toBeLessThanOrEqual(160);
+  const cardBefore = await card.boundingBox();
+  const notesBefore = await notes.boundingBox();
+  expect(cardBefore).toBeTruthy();
+  expect(notesBefore).toBeTruthy();
+  expect(notesBefore.x).toBeGreaterThan(cardBefore.x + cardBefore.width - 10);
+  expect(Math.abs(notesBefore.y - cardBefore.y)).toBeLessThanOrEqual(4);
+  await expect(notes).toContainText("Session guidance");
+  await expect(notes).toContainText("Controlled squat");
+  await expect(page.locator(".today-pathway-header")).toBeVisible();
+  await expect(page.locator(".today-pathway-header")).toContainText("4 SESSIONS");
+  expect((await map.boundingBox()).height).toBeGreaterThanOrEqual(230);
+  expect((await map.boundingBox()).height).toBeLessThanOrEqual(380);
+  expect(await page.locator(".campaign-scroll .journey-step:visible").count()).toBeGreaterThanOrEqual(4);
 
   await expect(root).toHaveAttribute("data-clinic-enhanced", "true");
   await page.waitForTimeout(900);
 
-  const after = await card.boundingBox();
-  expect(after).toBeTruthy();
-  expect(delta(before, after)).toBeLessThanOrEqual(3);
+  const cardAfter = await card.boundingBox();
+  const notesAfter = await notes.boundingBox();
+  expect(cardAfter).toBeTruthy();
+  expect(notesAfter).toBeTruthy();
+  expect(delta(cardBefore, cardAfter)).toBeLessThanOrEqual(3);
+  expect(delta(notesBefore, notesAfter)).toBeLessThanOrEqual(3);
   await expect(page.locator("[data-clinic-today]")).toBeHidden();
   await expect(page.locator("[data-clinic-phases]")).toBeHidden();
-  expect((await map.boundingBox()).height).toBeLessThanOrEqual(160);
 });
 
 test("Today and Journey switch on the existing patient DOM without page rebuild", async ({ page }) => {
@@ -141,16 +157,35 @@ test("Today and Journey switch on the existing patient DOM without page rebuild"
   });
   expect(identity).toBe("same-dom");
 
-  await page.locator('.topbar .nav [data-nav="lab"]').click();
+  await page.locator("[data-open-full-journey]").click();
   await expect(root).toHaveAttribute("data-axion-stable-section", "journey");
   await expect(page.locator('.topbar .nav [data-nav="lab"]')).toHaveClass(/active/);
   expect(await root.getAttribute("data-e2e-stable-identity")).toBe("same-dom");
   expect((await page.locator(".campaign-scroll").boundingBox()).height).toBeGreaterThanOrEqual(420);
+  await expect(page.locator(".today-pt-panel")).toBeHidden();
 
   await page.locator('.topbar .nav [data-nav="patient"]').click();
   await expect(root).toHaveAttribute("data-axion-stable-section", "today");
   await expect(page.locator('.topbar .nav [data-nav="patient"]')).toHaveClass(/active/);
   expect(await root.getAttribute("data-e2e-stable-identity")).toBe("same-dom");
-  expect((await page.locator(".campaign-scroll").boundingBox()).height).toBeLessThanOrEqual(160);
+  expect((await page.locator(".campaign-scroll").boundingBox()).height).toBeGreaterThanOrEqual(230);
   await expect(page.locator(".next-session-card")).toBeVisible();
+  await expect(page.locator(".today-pt-panel")).toBeVisible();
+});
+
+test("Today stacks PT guidance below the session cleanly on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page);
+  await seedPlan(page);
+  await signInPatient(page);
+
+  const card = await page.locator(".next-session-card").boundingBox();
+  const notes = await page.locator(".today-pt-panel").boundingBox();
+  expect(card).toBeTruthy();
+  expect(notes).toBeTruthy();
+  expect(notes.y).toBeGreaterThan(card.y + card.height - 4);
+  expect(card.width).toBeLessThanOrEqual(390);
+  expect(notes.width).toBeLessThanOrEqual(390);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(2);
 });
