@@ -177,6 +177,8 @@ test("Recovery journey hierarchy stays finite across recurring UI syncs", async 
   await boot(page);
   await seedPlan(page);
   await signInPatientA(page);
+  await page.locator('.topbar .nav [data-nav="lab"]').click();
+  await expect(page.locator(".patient-portal.journey-page")).toHaveAttribute("data-axion-stable-section", "journey");
   const intros = page.locator("[data-ui-journey-intro]");
   const atlases = page.locator(".patient-portal.journey-page .journey-atlas");
   await expect(intros).toHaveCount(1);
