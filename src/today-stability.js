@@ -108,8 +108,34 @@ function ensureTherapistPanel(page) {
   }
   panel.append(list);
 
-  const footer = element("p", "today-pt-panel__footer", "Therapist-authored instructions only. Axion does not change your prescribed dose.");
-  panel.append(footer);
+  panel.append(element(
+    "p",
+    "today-pt-panel__footer",
+    "Therapist-authored instructions only. Axion does not change your prescribed dose.",
+  ));
+}
+
+function stabilizeTodayHeader(page) {
+  const welcome = page.querySelector(".journey-welcome");
+  if (!welcome || welcome.dataset.uiSimplified === "true") return;
+
+  const kicker = welcome.querySelector(".section-kicker");
+  const title = welcome.querySelector("h1");
+  const raw = cleanText(kicker?.textContent || "YOUR RECOVERY");
+  const first = raw
+    .replace(/[’']S\s+RECOVERY/i, "")
+    .replace(/^RECOVERY\s+FOR\s+/i, "")
+    .trim();
+  const pretty = first
+    ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
+    : "there";
+
+  if (kicker) kicker.textContent = "TODAY";
+  if (title) title.textContent = `Good afternoon, ${pretty}`;
+  // The older hierarchy layer performs this same transformation only after
+  // clinic-readiness resolves. Mark it complete now so it cannot create a
+  // second visual state and shift the dashboard after first paint.
+  welcome.dataset.uiSimplified = "true";
 }
 
 function ensurePathwayHeader(page) {
@@ -121,7 +147,10 @@ function ensurePathwayHeader(page) {
   if (!header) {
     header = element("div", "today-pathway-header");
     const copy = element("div", "today-pathway-header__copy");
-    copy.append(element("span", "today-pathway-header__eyebrow", "YOUR PATHWAY"), element("h2", "", "Current phase"));
+    copy.append(
+      element("span", "today-pathway-header__eyebrow", "YOUR PATHWAY"),
+      element("h2", "", "Current phase"),
+    );
     const action = element("button", "today-pathway-action", "Open full Journey");
     action.type = "button";
     action.dataset.openFullJourney = "true";
@@ -133,11 +162,15 @@ function ensurePathwayHeader(page) {
     .find((region) => region.querySelector(".journey-node.current, .journey-node.override"));
   const nodeCount = currentRegion?.querySelectorAll(".journey-step").length || 0;
   const eyebrow = header.querySelector(".today-pathway-header__eyebrow");
-  if (eyebrow) eyebrow.textContent = nodeCount ? `YOUR PATHWAY · ${nodeCount} SESSION${nodeCount === 1 ? "" : "S"}` : "YOUR PATHWAY";
+  if (eyebrow) eyebrow.textContent = nodeCount
+    ? `YOUR PATHWAY · ${nodeCount} SESSION${nodeCount === 1 ? "" : "S"}`
+    : "YOUR PATHWAY";
 }
 
 function decorateToday(page) {
+  // Capture therapist identity before changing the patient-facing welcome copy.
   ensureTherapistPanel(page);
+  stabilizeTodayHeader(page);
   ensurePathwayHeader(page);
 }
 
@@ -232,6 +265,6 @@ window.addEventListener("pagehide", () => {
 scheduleSync();
 
 window.__axionTodayStability = Object.freeze({
-  version: 2,
+  version: 3,
   setSection: (section) => setPatientSection(section),
 });
