@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 const patientLabels = ["Today", "Journey", "Progress", "Profile"];
+const requestedWidths = [1440, 1280, 1024, 768, 430, 390, 360, 320];
 const mobileWidths = [430, 390, 360, 320];
 
 async function waitForPresentation(page) {
@@ -61,7 +62,18 @@ test("patient navigation has exactly four primary items and contextual concern a
   await expect(page.locator(".journey-atlas")).toBeHidden();
 });
 
-test("mobile patient navigation remains four-wide without overflow", async ({ page }) => {
+test("patient Today has no horizontal overflow across the requested responsive matrix", async ({ page }) => {
+  for (const width of requestedWidths) {
+    await page.setViewportSize({ width, height: width <= 430 ? 844 : 900 });
+    await page.goto("/?journey-playtest=1");
+    await waitForPresentation(page);
+    await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] button[data-nav]')).toHaveCount(4);
+    await expect(page.locator('.clinic-today-recovery [data-clinic-start-today]')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
+test("mobile patient navigation remains four-wide with 44px targets", async ({ page }) => {
   for (const width of mobileWidths) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/?journey-playtest=1");
@@ -112,4 +124,14 @@ test("primary navigation is keyboard focusable with a visible focus treatment", 
   });
   expect(outline).not.toBeNull();
   expect(outline.style).not.toBe("none");
+});
+
+test("patient Today remains usable at 200 percent zoom", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/?journey-playtest=1");
+  await waitForPresentation(page);
+  await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
+  await expect(page.locator('.clinic-today-recovery [data-clinic-start-today]')).toBeVisible();
+  await expect(page.locator('.ui-report-concern')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
 });
