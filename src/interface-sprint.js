@@ -265,10 +265,10 @@ function syncDemoEntry() {
     const values = copy[role];
     if (!values) return;
     const small = card.querySelector("small");
-    const title = card.querySelector("b");
+    const cardTitle = card.querySelector("b");
     const p = card.querySelector("p");
     if (small) small.textContent = values[0];
-    if (title) title.textContent = values[1];
+    if (cardTitle) cardTitle.textContent = values[1];
     if (p) p.textContent = values[2];
   });
 }
@@ -284,12 +284,15 @@ function contextualizeConcernButton(reportButton) {
   const today = document.querySelector(".patient-portal.journey-page");
   if (today && root.dataset.axionPatientSection !== "journey") {
     let actions = today.querySelector("[data-ui-today-secondary]");
+    const todayCard = today.querySelector("[data-clinic-today]");
+    const welcome = today.querySelector(".journey-welcome");
     if (!actions) {
       actions = document.createElement("div");
       actions.dataset.uiTodaySecondary = "true";
       actions.className = "ui-today-secondary-actions";
-      const todayCard = today.querySelector("[data-clinic-today]");
-      todayCard?.after(actions);
+      (todayCard || welcome)?.after(actions);
+    } else if (todayCard && actions.previousElementSibling !== todayCard) {
+      todayCard.after(actions);
     }
     actions?.appendChild(reportButton);
     return;
@@ -361,7 +364,7 @@ function syncPatientToday() {
       if (session) title.textContent = session;
     }
     if (meta) {
-      const minutes = (meta.textContent || "").match(/~?\s*\d+\s*min/i)?.[0]?.replace("~", "").trim();
+      const minutes = `${title?.dataset?.originalWorkload || ""} ${meta.textContent || ""}`.match(/~?\s*\d+\s*min/i)?.[0]?.replace("~", "").trim();
       if (minutes) meta.textContent = `About ${minutes}`;
     }
   }
@@ -464,6 +467,24 @@ function syncTerminology() {
   });
 }
 
+function syncEmptyStates() {
+  document.querySelectorAll(".report-page .empty-state").forEach((state) => {
+    const title = state.querySelector("h2,h3");
+    const p = state.querySelector("p");
+    if (title && /no (movement )?(sessions|report)|no progress/i.test(title.textContent || "")) {
+      title.textContent = "No sessions yet";
+      if (p) p.textContent = "Complete your first prescribed session to see progress here.";
+    }
+  });
+  const cameraRecovery = document.querySelector("#camera-recovery");
+  if (cameraRecovery) {
+    const title = cameraRecovery.querySelector("h2,h3,b");
+    const p = cameraRecovery.querySelector("p");
+    if (title) title.textContent = "Camera unavailable";
+    if (p) p.textContent = "We couldn't access your camera. Check your browser permission and try again.";
+  }
+}
+
 export function syncInterfaceSprint() {
   if (typeof document === "undefined") return;
   bindInterfaceActions();
@@ -476,6 +497,7 @@ export function syncInterfaceSprint() {
   syncTherapistNavigation();
   syncMovementLab();
   syncTerminology();
+  syncEmptyStates();
 }
 
 if (typeof document !== "undefined") syncInterfaceSprint();
