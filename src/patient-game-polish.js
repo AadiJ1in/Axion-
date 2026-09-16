@@ -4,6 +4,7 @@ import "./clinical-targets.js";
 import "./therapist-review-audit.js";
 import "./plan-version-history.js";
 import "./session-review-notes.js";
+import "./demo-entry.js";
 import { syncUiHierarchy } from "./ui-hierarchy.js";
 import { syncUiHierarchyP1 } from "./ui-hierarchy-p1.js";
 import { syncUiStability } from "./ui-stability.js";
