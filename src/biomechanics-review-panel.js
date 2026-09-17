@@ -31,6 +31,13 @@ function primaryRecoveryCard(primary) {
   const values = element("p", "", `Early baseline ${primary.baseline} → recent ${primary.recent}${primary.improvementPercent === null ? "" : ` · ${primary.improvementPercent}% improvement`}`);
   const evidence = element("small", "", `${primary.sessionCount} ${exercise} sessions${primary.spanDays === null ? "" : ` · ${primary.spanDays.toFixed(1)} day observation span`}`);
   card.append(title, values, evidence);
+  if (primary.recoveryGuard) {
+    const guard = primary.recoveryGuard;
+    const guardText = guard.satisfied
+      ? `${guard.label} remained within the ${guard.maxRelativeDecreasePercent}% recovery guard (${guard.baseline} → ${guard.recent}).`
+      : `${guard.label} declined ${guard.relativeDecreasePercent ?? "—"}% (${guard.baseline} → ${guard.recent}), beyond the ${guard.maxRelativeDecreasePercent}% guard. Symmetry improvement is not treated as recovery.`;
+    card.append(element("small", `biomechanics-recovery-guard${guard.satisfied ? "" : " warning"}`, guardText));
+  }
   return card;
 }
 
@@ -51,6 +58,7 @@ function movementDriftMap(signals) {
   const regionSpecs = [
     { key: "trunk", label: "Trunk", signal: strongestSignal(signals, (item) => item.region === "trunk") },
     { key: "pelvis", label: "Pelvis / stance", signal: strongestSignal(signals, (item) => item.region === "pelvis" || item.region === "lower_limb") },
+    { key: "hips", label: "Hips", signal: strongestSignal(signals, (item) => item.region === "hip") },
     { key: "left-knee", label: "Left knee", signal: strongestSignal(signals, (item) => item.region === "knee" && (item.side === "left" || item.side === "bilateral")) },
     { key: "right-knee", label: "Right knee", signal: strongestSignal(signals, (item) => item.region === "knee" && (item.side === "right" || item.side === "bilateral")) },
   ];
