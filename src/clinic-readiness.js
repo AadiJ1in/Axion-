@@ -714,6 +714,20 @@ function scheduleClinicReadiness() {
 }
 
 const readinessTargetIds = new Set(["body-state", "quality-state", "calibration-overlay", "calibration-title", "camera-recovery"]);
+
+function clinicNeedsPeriodicSync() {
+  if (document.querySelector(".lab-page")) return true;
+  const therapistPage = document.querySelector(".therapist-page");
+  if (therapistPage && therapistPage.dataset.clinicEnhanced !== "true") return true;
+  const patientPage = document.querySelector(".patient-portal.journey-page");
+  if (patientPage && patientPage.dataset.clinicEnhanced !== "true") return true;
+  const reportPage = document.querySelector(".report-page");
+  return Boolean(reportPage
+    && runtime.lastPatientId
+    && runtime.therapistContext
+    && !runtime.therapistContext.synthetic
+    && !reportPage.querySelector("[data-clinic-live-progress]"));
+}
 const clinicObserver = new MutationObserver((mutations) => {
   const relevant = mutations.some((mutation) => {
     const target = mutation.target?.nodeType === Node.ELEMENT_NODE ? mutation.target : mutation.target?.parentElement;
@@ -723,10 +737,13 @@ const clinicObserver = new MutationObserver((mutations) => {
   });
   if (relevant) scheduleClinicReadiness();
 });
-clinicObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+const clinicObserverRoot = document.querySelector("#app") || document.documentElement;
+clinicObserver.observe(clinicObserverRoot, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
 document.addEventListener("axion:tracker-readiness", scheduleClinicReadiness);
 document.addEventListener("axion:clinical-gate-mounted", scheduleClinicReadiness);
-const clinicTimer = window.setInterval(scheduleClinicReadiness, 250);
+const clinicTimer = window.setInterval(() => {
+  if (!document.hidden && clinicNeedsPeriodicSync()) scheduleClinicReadiness();
+}, 250);
 window.addEventListener("pagehide", () => {
   window.clearInterval(clinicTimer);
   clinicObserver.disconnect();
