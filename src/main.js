@@ -1,5 +1,6 @@
 import { isConfigured, supabase } from "./supabase.js";
 import { createMovementTracker } from "./pose.js";
+import { createAdaptiveMovementIntelligence, supportsAdaptiveMovementIntelligence } from "./movement-intelligence.js";
 import { getMovementProfile } from "./movement-profiles.js";
 import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "./movement-game.js";
 import { ownsActiveAssignment } from "./squat-camera.js";
@@ -134,6 +135,8 @@ let activeSessionContext = null;
 let selectedPatient = null;
 let onboardingStep = 0;
 let tracker = null;
+let movementIntelligence = null;
+let latestAiMovement = null;
 let demoTimer = null;
 let calibrationTimer = null;
 let demoTimeouts = [];
@@ -164,6 +167,9 @@ let lastTwinPoints = null;
 function destroyMovementTracker() {
   const activeTracker = tracker;
   tracker = null;
+  movementIntelligence?.reset?.();
+  movementIntelligence = null;
+  latestAiMovement = null;
   if (!activeTracker) return;
   try {
     if (typeof activeTracker.destroy === "function") activeTracker.destroy();
@@ -2064,6 +2070,10 @@ async function initializeLab() {
   sessionSafetyEvents = [];
   updateSyntheticTwin(0);
   const activeProfile = getMovementProfile(currentAssignment.exercise_key, currentAssignment.tracking_mode);
+  movementIntelligence = supportsAdaptiveMovementIntelligence(currentAssignment.exercise_key)
+    ? createAdaptiveMovementIntelligence()
+    : null;
+  latestAiMovement = null;
   movementGameController = createMovementGameController({
     exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
     targetReps: demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10),
@@ -2080,10 +2090,20 @@ async function initializeLab() {
     trackingMode: currentAssignment.tracking_mode,
     prescribedSide: currentAssignment?.prescribed_side || "either",
     onCalibration: ({ progress, status }) => updateCalibration(progress, status),
-    onPose: (points) => { updateTwinFromLandmarks(points); movementGameController?.updateCameraPose(points); },
+    onPose: (points) => {
+      updateTwinFromLandmarks(points);
+      movementGameController?.updateCameraPose(points);
+      movementIntelligence?.observe(points);
+    },
+    onRepStart: () => movementIntelligence?.startRep(),
+    onRepDiscard: () => movementIntelligence?.discardRep(),
     onTiming: (trace) => { pendingPerformanceTrace = trace; },
     onTrackingState: handleTrackingState,
-    onRep: acceptValidatedRep,
+    onRep: (rep) => {
+      const aiMovement = movementIntelligence?.finishRep?.() || null;
+      latestAiMovement = aiMovement;
+      acceptValidatedRep(aiMovement ? { ...rep, aiMovement } : rep);
+    },
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
       if (setRestEndsAt || movementGameController?.getState().safetyFlagged || doseProgress(currentAssignment, sessionReps.length).done) return;
       const sideLabel = measurementSide ? `${measurementSide} ` : "";
@@ -2106,7 +2126,14 @@ async function initializeLab() {
         measurementSide,
         activeProfile.signal,
       );
-      setText("#coach-message", message);
+      const aiMessage = latestAiMovement?.status === "baseline_learning"
+        ? ` · ${latestAiMovement.message}`
+        : latestAiMovement?.status === "baseline_ready"
+          ? " · AI movement baseline ready."
+          : latestAiMovement?.status === "analyzed"
+            ? ` · ${latestAiMovement.message}`
+            : "";
+      setText("#coach-message", `${message}${aiMessage}`);
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
       gameTrackingReady = Number.isFinite(movementRange) && !["calibrating", "positioning"].includes(stage);
       movementGameController?.setCameraReady(gameTrackingReady);
@@ -2564,6 +2591,8 @@ function updateLiveSession() {
 function resetLab() {
   if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return;
   clearSetRest(); stopDemo(); gameTrackingReady = false; backgroundPaused = false; tracker?.reset?.(); sessionReps = [];
+  movementIntelligence?.reset?.();
+  latestAiMovement = null;
   sessionSafetyEvents = [];
   movementGameController?.consume({ type: MOVEMENT_EVENT.RESET });
   tracker?.resume?.();
@@ -2753,6 +2782,7 @@ async function saveSessionSummary(reps, feedback = {}) {
         prescribed_reps_per_set: context.prescribedReps,
         prescribed_hold_seconds: context.prescribedHoldSeconds,
         prescribed_rest_seconds: context.restSeconds,
+        movement_intelligence: movementIntelligence?.sessionSummary?.() || null,
         adventure: movementGameController?.getState().mode === "game" ? {
           version: 2,
           perspective: context.exerciseKey === "bodyweight_squat" ? "live_camera" : "world",
