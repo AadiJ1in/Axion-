@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.9.0";
+export const COMPENSATION_ENGINE_VERSION = "0.10.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -226,7 +226,7 @@ function replicationByExercise(points, config, worseningDirection, relativeThres
       baselineSessions: 1,
       recentSessions: Math.min(2, Math.max(1, config.minSessionsPerExercise - 1)),
     });
-    if (!summary) continue;
+    if (!summary || summary.spanDays < config.minObservationSpanDays) continue;
     const relativeDrift = driftFraction(summary, worseningDirection);
     const absoluteDrift = directionalAbsoluteDrift(summary, worseningDirection);
     const slopeMatches = worseningDirection === "decrease"
