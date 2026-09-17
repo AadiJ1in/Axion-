@@ -56,10 +56,14 @@ export async function loadBiomechanicsHistory({
   const { data, error } = await supabase.from("movement_biomechanics_sessions")
     .select("session_id, exercise_key, created_at, tracking_quality, features, compensation_analysis")
     .eq("patient_id", patientId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(safeLimit);
   if (error) throw error;
-  return (data || [])
+
+  // The database returns the latest bounded window first so a long-running
+  // patient does not get stuck analyzing their oldest sessions forever. Reverse
+  // the selected window back into chronological order for trend calculations.
+  return [...(data || [])].reverse()
     .filter((row) => !featureDefinitionVersion || row?.features?.definitionVersion === featureDefinitionVersion)
     .flatMap(rowObservations);
 }
