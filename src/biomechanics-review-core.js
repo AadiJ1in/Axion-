@@ -60,6 +60,7 @@ export function biomechanicsReviewPresentation(row = {}) {
     sessionCount: Math.max(0, Number(signal?.summary?.sessionCount || 0)),
     exerciseCount: Math.max(0, Number(signal?.summary?.exerciseCount || 0)),
     correlation: finite(signal?.temporal?.correlation),
+    correlationMethod: String(signal?.temporal?.method || "unknown"),
     score: Math.max(0, Math.min(100, Number(signal?.score || 0))),
     crossExerciseSatisfied: Boolean(signal?.crossExerciseSatisfied),
   })) : [];
