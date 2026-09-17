@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.2.0";
+export const COMPENSATION_ENGINE_VERSION = "0.2.1";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -145,6 +145,13 @@ function driftFraction(summary, worseningDirection) {
   return Math.max(0, summary.relativeDelta);
 }
 
+function directionalAbsoluteDrift(summary, worseningDirection) {
+  if (!summary) return 0;
+  if (worseningDirection === "decrease") return Math.max(0, -summary.absoluteDelta);
+  if (worseningDirection === "away_from_zero") return Math.abs(summary.absoluteDelta);
+  return Math.max(0, summary.absoluteDelta);
+}
+
 function alignedSeries(primaryPoints, secondaryPoints) {
   const secondaryBySession = new Map(secondaryPoints.map((point) => [point.sessionId, point]));
   const pairs = primaryPoints.map((primary) => ({ primary, secondary: secondaryBySession.get(primary.sessionId) }))
@@ -226,7 +233,7 @@ export function detectCompensationMigration({
 
     const worseningDirection = related.worseningDirection || "increase";
     const drift = driftFraction(summary, worseningDirection);
-    const absoluteDrift = Math.abs(summary.absoluteDelta);
+    const absoluteDrift = directionalAbsoluteDrift(summary, worseningDirection);
     if (drift < config.minSecondaryRelativeDrift && absoluteDrift < config.minSecondaryAbsoluteDrift) continue;
 
     const temporal = temporalCoupling(primaryPoints, points, primaryDirection, worseningDirection);
