@@ -78,4 +78,37 @@ assert.equal(primaryRange.value, 74);
 assert.equal(primaryRange.unit, "deg");
 assert.equal(insertedRow.features.metrics.some((metric) => "landmarks" in metric || "coordinates" in metric), false);
 
+for (const exerciseKey of ["bodyweight_squat", "half_squat", "sit_to_stand", "forward_lunge", "step_up", "lateral_step_up"]) {
+  assert.ok(LOWER_BODY_COMPENSATION_GRAPH.byExercise[exerciseKey], `missing graph for ${exerciseKey}`);
+}
+
+const stepSession = {
+  ...session,
+  id: "44444444-4444-4444-8444-444444444444",
+  assignment_id: "55555555-5555-4555-8555-555555555555",
+  exercise_key: "step_up",
+  movement_summary: {
+    average_symmetry_delta: 4.2,
+    average_signal_excursion: 18,
+    measurement_unit: "%",
+  },
+};
+
+const stepResult = await persistSessionBiomechanics({
+  supabase,
+  patientId: stepSession.patient_id,
+  session: stepSession,
+  frames: [metricFrame(0), metricFrame(1), metricFrame(2)],
+  primaryMetric: LOWER_BODY_COMPENSATION_GRAPH.byExercise.step_up.primaryMetric,
+  relatedMetrics: LOWER_BODY_COMPENSATION_GRAPH.byExercise.step_up.relatedMetrics,
+  featureDefinitionVersion: "whole-body-screen-proxy-v1",
+});
+
+assert.equal(stepResult.saved, true);
+const stepSymmetry = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_symmetry_delta");
+const stepRange = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_range");
+assert.equal(stepSymmetry.unit, "%");
+assert.equal(stepRange.unit, "%");
+assert.equal(stepRange.value, 18);
+
 console.log("compensation biomechanics persistence service tests passed");
