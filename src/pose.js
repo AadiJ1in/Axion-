@@ -1,4 +1,5 @@
 import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
+import { createRepBiomechanicsAccumulator, extractBiomechanicsFrame } from "./biomechanics.js";
 import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
 
 const MODEL_URL =
@@ -196,6 +197,8 @@ export async function createMovementTracker(options) {
   let activeFrames = 0;
   let lastActiveMovementAt = 0;
   const repHistory = [];
+  const repBiomechanics = createRepBiomechanicsAccumulator();
+  let latestBiomechanicsFrame = null;
 
   async function initialize() {
     onTrackingState({ code: "model_loading", label: "Loading movement model", quality: null });
@@ -301,6 +304,7 @@ export async function createMovementTracker(options) {
     symmetrySamples = [];
     holdLastFrame = null;
     activeFrames = 0;
+    repBiomechanics.reset();
     onUpdate({
       reps,
       stage,
@@ -319,6 +323,7 @@ export async function createMovementTracker(options) {
     const symmetryDelta = symmetrySamples.length
       ? symmetrySamples.reduce((sum, value) => sum + value, 0) / symmetrySamples.length
       : null;
+    const biomechanics = repBiomechanics.finish(now);
     const rep = {
       index: reps,
       depthAngle: Math.round(peakAngle ?? baselineAngle ?? 180),
@@ -331,6 +336,7 @@ export async function createMovementTracker(options) {
       symmetryDelta: symmetryDelta === null ? null : Number(symmetryDelta.toFixed(1)),
       capturedAt: now,
       measurementSide: peakMeasurementSide || latestMeasurementSide,
+      biomechanics,
     };
     repHistory.push(rep);
     onRep(rep, [...repHistory]);
@@ -338,9 +344,10 @@ export async function createMovementTracker(options) {
     peakAngle = null;
     peakDelta = 0;
     symmetrySamples = [];
+    repBiomechanics.reset();
   }
 
-  function updateState(metrics, now) {
+  function updateState(metrics, now, biomechanicsFrame = null) {
     if (!calibrated) {
       calibrate(metrics, now);
       onUpdate({ reps, stage: "calibrating", angle: metrics.value, jointAngle: metrics.value === null ? null : Math.round(metrics.value), angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: metrics.symmetryDelta, message: `Hold still while Axion calibrates. ${profile.cameraHint}` });
@@ -389,6 +396,7 @@ export async function createMovementTracker(options) {
     }
 
     if (repStart) {
+      repBiomechanics.push(biomechanicsFrame);
       if (movementDelta >= peakDelta) {
         peakMeasurementSide = measurementSide;
         peakDelta = movementDelta;
@@ -402,6 +410,8 @@ export async function createMovementTracker(options) {
     if (cycle.started) {
       peakMeasurementSide = measurementSide;
       repStart = now;
+      repBiomechanics.start(now);
+      repBiomechanics.push(biomechanicsFrame);
       peakAngle = displayValue;
       peakDelta = movementDelta;
       symmetrySamples = metrics.symmetryDelta === null ? [] : [metrics.symmetryDelta];
@@ -414,6 +424,7 @@ export async function createMovementTracker(options) {
       peakAngle = null;
       peakDelta = 0;
       symmetrySamples = [];
+      repBiomechanics.reset();
     }
 
     let message = "Ready for the next rep.";
@@ -492,11 +503,17 @@ export async function createMovementTracker(options) {
         pauseMeasurement(landmarks ? `Reposition for a clearer ${profile.label.toLowerCase()} view. Rep counting is paused.` : `Return to frame. ${profile.cameraHint}`);
         rafId = requestAnimationFrame(frame); return;
       }
-      const measurementLandmarks = result.worldLandmarks?.[0] || landmarks;
+      const worldLandmarks = result.worldLandmarks?.[0] || null;
+      const measurementLandmarks = worldLandmarks || landmarks;
       const metrics = measurementLandmarks ? measureMovementSignal(measurementLandmarks, profile) : { value: null, left: null, right: null, symmetryDelta: null };
+      latestBiomechanicsFrame = extractBiomechanicsFrame({
+        imageLandmarks: landmarks,
+        worldLandmarks,
+        timestampMs: now,
+      });
       const movementAt = performance.now();
       onTiming({ id: ++timingSequence, cameraFrameAt, poseAt, movementAt });
-      updateState(metrics, now);
+      updateState(metrics, now, latestBiomechanicsFrame);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -527,7 +544,7 @@ export async function createMovementTracker(options) {
   }
 
   function reset() {
-    calibrated = false; calibrationStart = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; baselineAngle = null; baselineLeft = null; baselineRight = null; lastVideoTime = -1; sessionStart = performance.now(); onCalibration({ progress: 0, status: "Learning a fresh session baseline" }); reps = 0; stage = "up"; repCycle.reset(); repStart = null; peakAngle = null; peakDelta = 0; symmetrySamples = []; noPoseFrames = 0; latestAngle = null; latestSymmetryDelta = null; latestMovementRange = null; latestMeasurementSide = null; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; repHistory.length = 0;
+    calibrated = false; calibrationStart = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; baselineAngle = null; baselineLeft = null; baselineRight = null; lastVideoTime = -1; sessionStart = performance.now(); onCalibration({ progress: 0, status: "Learning a fresh session baseline" }); reps = 0; stage = "up"; repCycle.reset(); repStart = null; peakAngle = null; peakDelta = 0; symmetrySamples = []; noPoseFrames = 0; latestAngle = null; latestSymmetryDelta = null; latestMovementRange = null; latestMeasurementSide = null; latestBiomechanicsFrame = null; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; repHistory.length = 0; repBiomechanics.reset();
     onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: "Session reset." });
   }
   function stop() {
@@ -550,7 +567,7 @@ export async function createMovementTracker(options) {
   function pause() { if (!running) return; running = false; if (rafId !== null) cancelAnimationFrame(rafId); rafId = null; repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
   function resume() { if (running || !stream?.active) return; running = true; lastVideoTime = -1; frame(); }
 
-  return { start, stop, destroy, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint }) };
+  return { start, stop, destroy, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint, biomechanicsFrame: latestBiomechanicsFrame ? { ...latestBiomechanicsFrame, features: { ...latestBiomechanicsFrame.features }, quality: { ...latestBiomechanicsFrame.quality } } : null }) };
 }
 
 export const createSquatTracker = createMovementTracker;
