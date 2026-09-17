@@ -8,12 +8,12 @@ assert.equal(humanizeBiomechanicsMetric("custom_signal"), "Custom Signal");
 const candidate = biomechanicsReviewPresentation({
   sample_count: 84,
   tracking_quality: 0.91,
-  features: { definitionVersion: "whole-body-screen-proxy-v1" },
+  features: { definitionVersion: "whole-body-world-v2" },
   compensation_analysis: {
     status: "candidate",
     score: 78,
     signals: [{
-      metric: { metricKey: "trunk_lateral_lean_relative_deg", region: "trunk", side: "midline", unit: "deg" },
+      metric: { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", unit: "deg" },
       summary: { baseline: 4.2, recent: 12.8, relativeDelta: 2.0476, sessionCount: 7, exerciseCount: 2 },
       temporal: { correlation: 0.81, method: "spearman_rank" },
       score: 78,
@@ -34,7 +34,8 @@ assert.equal(candidate.score, 78);
 assert.equal(candidate.showScore, true);
 assert.equal(candidate.sampleCount, 84);
 assert.equal(candidate.trackingQualityPercent, 91);
-assert.match(candidate.acquisition, /2D/);
+assert.match(candidate.acquisition, /world-coordinate/i);
+assert.equal(candidate.signals[0].label, "3D trunk–pelvis lateral deviation");
 assert.equal(candidate.signals[0].baseline, "4.20°");
 assert.equal(candidate.signals[0].recent, "12.8°");
 assert.equal(candidate.signals[0].exerciseCount, 2);
@@ -61,7 +62,13 @@ assert.equal(building.signals.length, 0);
 console.log("biomechanics clinician review presentation tests passed");
 
 const world = biomechanicsReviewPresentation({
-  features: { definitionVersion: "whole-body-world-v1" },
+  features: { definitionVersion: "whole-body-world-v2" },
   compensation_analysis: { status: "stable", score: 0, signals: [] },
 });
 assert.match(world.acquisition, /world-coordinate/i);
+
+const legacy = biomechanicsReviewPresentation({
+  features: { definitionVersion: "whole-body-screen-proxy-v1" },
+  compensation_analysis: { status: "stable", score: 0, signals: [] },
+});
+assert.match(legacy.acquisition, /2D/);
