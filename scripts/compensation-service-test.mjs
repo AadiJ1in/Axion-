@@ -50,6 +50,7 @@ const result = await persistSessionBiomechanics({
   patientId: session.patient_id,
   session,
   frames: [metricFrame(0), metricFrame(1), metricFrame(2)],
+  acceptedSampleCount: 120,
   primaryMetric: LOWER_BODY_COMPENSATION_GRAPH.byExercise.bodyweight_squat.primaryMetric,
   relatedMetrics: LOWER_BODY_COMPENSATION_GRAPH.byExercise.bodyweight_squat.relatedMetrics,
   featureDefinitionVersion: "whole-body-screen-proxy-v1",
@@ -62,7 +63,9 @@ assert.deepEqual(containsFilters.at(-1), {
 });
 assert.ok(insertedRow);
 assert.equal(insertedRow.session_id, session.id);
-assert.equal(insertedRow.sample_count, 3);
+assert.equal(insertedRow.sample_count, 120);
+assert.equal(insertedRow.features.retainedSampleCount, 3);
+assert.equal(insertedRow.features.totalAcceptedSampleCount, 120);
 assert.equal(insertedRow.rep_count, 10);
 assert.equal(insertedRow.primary_symmetry_delta, 8.5);
 assert.equal(insertedRow.primary_movement_range, 74);
