@@ -85,6 +85,7 @@ export function biomechanicsReviewPresentation(row = {}) {
       : "Pose-derived movement features";
   const primaryMetric = analysis?.primary?.metric || null;
   const primarySummary = analysis?.primary?.summary || null;
+  const guard = analysis?.primary?.recoveryGuard || null;
   const primary = primaryMetric && primarySummary ? {
     label: humanizeBiomechanicsMetric(primaryMetric.metricKey),
     exerciseKey: primaryMetric.exerciseKey || null,
@@ -96,6 +97,14 @@ export function biomechanicsReviewPresentation(row = {}) {
       : Math.round(Number(analysis.primary.improvementFraction) * 100),
     sessionCount: Math.max(0, Number(primarySummary.sessionCount || 0)),
     spanDays: finite(primarySummary.spanDays) === null ? null : Number(primarySummary.spanDays),
+    recoveryGuard: guard ? {
+      label: humanizeBiomechanicsMetric(guard?.metric?.metricKey),
+      baseline: formatValue(guard?.summary?.baseline, guard?.metric?.unit),
+      recent: formatValue(guard?.summary?.recent, guard?.metric?.unit),
+      relativeDecreasePercent: finite(guard?.relativeDecrease) === null ? null : Math.round(Number(guard.relativeDecrease) * 100),
+      maxRelativeDecreasePercent: finite(guard?.maxRelativeDecrease) === null ? null : Math.round(Number(guard.maxRelativeDecrease) * 100),
+      satisfied: Boolean(guard?.satisfied),
+    } : null,
   } : null;
 
   return {
