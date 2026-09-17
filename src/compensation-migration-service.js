@@ -88,6 +88,45 @@ export async function analyzePatientCompensation({
   });
 }
 
+function sessionSummaryMetrics(session, trackingQuality, prescribedSide) {
+  const summary = session?.movement_summary || {};
+  const quality = Number.isFinite(Number(trackingQuality)) ? Number(trackingQuality) : 1;
+  const symmetry = finite(summary.average_symmetry_delta);
+  const movementRange = finite(summary.average_joint_movement_range_degrees ?? summary.average_signal_excursion);
+  const metrics = [];
+  if (symmetry !== null) {
+    metrics.push({
+      metricKey: "primary_movement_symmetry_delta",
+      region: "primary_movement",
+      side: "bilateral",
+      value: symmetry,
+      unit: "deg",
+      quality,
+      context: {
+        source: "verified_session_summary",
+        aggregation: "session_mean",
+        exerciseKey: session.exercise_key,
+      },
+    });
+  }
+  if (movementRange !== null) {
+    metrics.push({
+      metricKey: "primary_movement_range_deg",
+      region: "primary_movement",
+      side: ["left", "right"].includes(prescribedSide) ? prescribedSide : "bilateral",
+      value: movementRange,
+      unit: "deg",
+      quality,
+      context: {
+        source: "verified_session_summary",
+        aggregation: "session_mean",
+        exerciseKey: session.exercise_key,
+      },
+    });
+  }
+  return metrics;
+}
+
 export async function persistSessionBiomechanics({
   supabase,
   patientId,
@@ -105,9 +144,14 @@ export async function persistSessionBiomechanics({
     return { saved: false, reason: "verified_session_required", metrics: [], analysis: null };
   }
 
-  const metrics = aggregateBiomechanicsFrames(frames, { minQuality });
-  if (!metrics.length) return { saved: false, reason: "no_reliable_biomechanics", metrics: [], analysis: null };
+  const frameMetrics = aggregateBiomechanicsFrames(frames, { minQuality });
+  if (!frameMetrics.length) return { saved: false, reason: "no_reliable_biomechanics", metrics: [], analysis: null };
 
+  const trackingQuality = average(frameMetrics.map((metric) => metric.quality));
+  const metrics = [
+    ...frameMetrics,
+    ...sessionSummaryMetrics(session, trackingQuality, prescribedSide),
+  ];
   const occurredAt = session.completed_at || session.created_at || session.started_at || new Date().toISOString();
   const currentObservations = metrics.map((metric) => ({
     sessionId: session.id,
@@ -136,12 +180,13 @@ export async function persistSessionBiomechanics({
 
   const features = {
     definitionVersion: featureDefinitionVersion,
-    aggregation: "median",
+    aggregation: "median_active_phase_plus_verified_session_summary",
     sessionCompletedAt: occurredAt,
     metrics: metrics.map(metricPayload),
   };
-  const trackingQuality = average(metrics.map((metric) => metric.quality));
-  const symmetry = metrics.find((metric) => metric.metricKey === "knee_flexion_asymmetry_deg")?.value ?? null;
+  const symmetry = finite(session?.movement_summary?.average_symmetry_delta)
+    ?? frameMetrics.find((metric) => metric.metricKey === "knee_flexion_asymmetry_deg")?.value
+    ?? null;
 
   const row = {
     session_id: session.id,
@@ -168,20 +213,33 @@ export async function persistSessionBiomechanics({
   return { saved: true, reason: "saved", metrics, analysis };
 }
 
+const sharedLowerBodyRelatedMetrics = Object.freeze([
+  { metricKey: "trunk_lateral_lean_deg", region: "trunk", side: "midline", worseningDirection: "increase" },
+  { metricKey: "pelvic_obliquity_deg", region: "pelvis", side: "bilateral", worseningDirection: "increase" },
+  { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "left", worseningDirection: "increase" },
+  { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "right", worseningDirection: "increase" },
+  { metricKey: "lateral_weight_shift_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase" },
+]);
+
+function primarySymmetryMetric(exerciseKey) {
+  return {
+    metricKey: "primary_movement_symmetry_delta",
+    region: "primary_movement",
+    side: "bilateral",
+    improvementDirection: "decrease",
+    exerciseKey,
+  };
+}
+
 export const LOWER_BODY_COMPENSATION_GRAPH = Object.freeze({
-  kneeAsymmetry: {
-    primaryMetric: {
-      metricKey: "knee_flexion_asymmetry_deg",
-      region: "knee",
-      side: "bilateral",
-      improvementDirection: "decrease",
-    },
-    relatedMetrics: [
-      { metricKey: "trunk_lateral_lean_deg", region: "trunk", side: "midline", worseningDirection: "increase" },
-      { metricKey: "pelvic_obliquity_deg", region: "pelvis", side: "bilateral", worseningDirection: "increase" },
-      { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "left", worseningDirection: "increase" },
-      { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "right", worseningDirection: "increase" },
-      { metricKey: "lateral_weight_shift_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase" },
-    ],
-  },
+  byExercise: Object.freeze({
+    bodyweight_squat: Object.freeze({
+      primaryMetric: primarySymmetryMetric("bodyweight_squat"),
+      relatedMetrics: sharedLowerBodyRelatedMetrics,
+    }),
+    forward_lunge: Object.freeze({
+      primaryMetric: primarySymmetryMetric("forward_lunge"),
+      relatedMetrics: sharedLowerBodyRelatedMetrics,
+    }),
+  }),
 });
