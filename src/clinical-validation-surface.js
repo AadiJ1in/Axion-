@@ -42,11 +42,11 @@ function buildClinicalValidationSection() {
         <span class="section-kicker">VALIDATION FIRST</span>
         <h2 id="clinical-validation-heading">A working prototype. Claims still have to earn their evidence.</h2>
       </div>
-      <p>Axion currently supports 93 tracked exercises, patient-specific calibration, longitudinal comparison, therapist workflows, local pose estimation, and no raw-camera storage in the prototype. Its camera-derived movement metrics remain experimental and are not yet clinically validated.</p>
+      <p>Axion currently supports 93 tracked exercises, on-device AI pose estimation, patient-specific calibration, an experimental adaptive movement model for bodyweight squats, longitudinal comparison, therapist workflows, and no raw-camera storage in the prototype. Its camera-derived movement metrics and adaptive analysis remain experimental and are not yet clinically validated.</p>
     </div>
 
     <div class="clinical-validation-boundaries" aria-label="Current product boundaries">
-      <div><b>What works today</b><p>Therapist-directed plans, patient sessions, movement tracking, adherence context, longitudinal review, and protected session summaries.</p></div>
+      <div><b>What works today</b><p>Therapist-directed plans, patient sessions, on-device pose AI, patient-specific squat movement signatures, adherence context, longitudinal review, and protected session summaries.</p></div>
       <div><b>What is not established</b><p>Clinical efficacy, reference-level biomechanical accuracy, diagnostic capability, injury prediction, or universal reliability across camera conditions.</p></div>
       <div><b>Known camera limitation</b><p>Small, occluded, or low-amplitude movements may be below normal webcam pose-estimation resolution and can require clinician observation.</p></div>
     </div>
