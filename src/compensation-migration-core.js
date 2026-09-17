@@ -8,6 +8,7 @@ export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   baselineSessions: 2,
   recentSessions: 3,
   minExercises: 2,
+  minSessionsPerExercise: 3,
   minQuality: 0.55,
   minPrimaryRelativeImprovement: 0.15,
   minSecondaryRelativeDrift: 0.12,
@@ -159,6 +160,44 @@ function directionalAbsoluteDrift(summary, worseningDirection) {
   return Math.max(0, summary.absoluteDelta);
 }
 
+function replicationByExercise(points, config, worseningDirection, relativeThreshold, absoluteThreshold) {
+  const groups = new Map();
+  points.forEach((point) => {
+    const key = point.exerciseKey || "unknown";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(point);
+  });
+
+  const evidence = [];
+  for (const [exerciseKey, exercisePoints] of groups) {
+    if (exercisePoints.length < config.minSessionsPerExercise) continue;
+    const summary = summarizeMetric(exercisePoints, {
+      ...config,
+      minSessions: config.minSessionsPerExercise,
+      baselineSessions: 1,
+      recentSessions: Math.min(2, Math.max(1, config.minSessionsPerExercise - 1)),
+    });
+    if (!summary) continue;
+    const relativeDrift = driftFraction(summary, worseningDirection);
+    const absoluteDrift = directionalAbsoluteDrift(summary, worseningDirection);
+    const slopeMatches = worseningDirection === "decrease"
+      ? summary.slope < 0
+      : summary.slope > 0;
+    if (!slopeMatches) continue;
+    if (relativeDrift < relativeThreshold && absoluteDrift < absoluteThreshold) continue;
+    evidence.push({
+      exerciseKey,
+      sessionCount: summary.sessionCount,
+      baseline: summary.baseline,
+      recent: summary.recent,
+      absoluteDelta: summary.absoluteDelta,
+      relativeDelta: summary.relativeDelta,
+      slope: summary.slope,
+    });
+  }
+  return evidence;
+}
+
 function alignedSeries(primaryPoints, secondaryPoints) {
   const secondaryBySession = new Map(secondaryPoints.map((point) => [point.sessionId, point]));
   const pairs = primaryPoints.map((primary) => ({ primary, secondary: secondaryBySession.get(primary.sessionId) }))
@@ -194,8 +233,8 @@ function signalExplanation(primary, secondary, primarySummary, secondarySummary,
   const primaryChange = Math.round(Math.abs(primarySummary.relativeDelta) * 100);
   const secondaryChange = Math.round(Math.abs(secondarySummary.relativeDelta) * 100);
   const replication = crossExerciseSatisfied
-    ? `The secondary pattern is replicated across ${secondarySummary.exerciseCount} exercise types.`
-    : `The secondary pattern is currently limited to ${secondarySummary.exerciseCount} exercise type and remains a monitoring signal.`;
+    ? "The secondary pattern is replicated with sufficient within-exercise history across multiple exercise types."
+    : "The secondary pattern does not yet have sufficient within-exercise replication across multiple exercise types and remains a monitoring signal.";
   return `${primaryLabel} improved approximately ${primaryChange}% from its early-session baseline while ${secondaryLabel} drifted approximately ${secondaryChange}% in a potentially compensatory direction. ${replication} This is a longitudinal movement-pattern signal for clinician review, not an injury diagnosis. Score ${score}/100.`;
 }
 
@@ -256,10 +295,18 @@ export function detectCompensationMigration({
       drift / Math.max(relativeThreshold * 2, 0.01),
       absoluteDrift / Math.max(absoluteThreshold * 2, 0.0001),
     ), 0, 1);
-    const exerciseConsistency = clamp(summary.exerciseCount / Math.max(config.minExercises, 1), 0, 1);
+    const replicationEvidence = replicationByExercise(
+      points,
+      config,
+      worseningDirection,
+      relativeThreshold,
+      absoluteThreshold,
+    );
+    const replicatedExerciseCount = replicationEvidence.length;
+    const exerciseConsistency = clamp(replicatedExerciseCount / Math.max(config.minExercises, 1), 0, 1);
     const coupling = temporal.coupling;
     const score = scoreSignal({ persistence, magnitude, coupling, exerciseConsistency });
-    const crossExerciseSatisfied = summary.exerciseCount >= config.minExercises;
+    const crossExerciseSatisfied = replicatedExerciseCount >= config.minExercises;
 
     if (temporal.correlation !== null && temporal.correlation < config.minTemporalCorrelation && score < config.candidateScore) continue;
 
@@ -279,6 +326,8 @@ export function detectCompensationMigration({
       temporal,
       score,
       crossExerciseSatisfied,
+      replicatedExerciseCount,
+      replicationEvidence,
       explanation: signalExplanation(primaryMetric, related, primarySummary, summary, score, crossExerciseSatisfied),
     });
   }
