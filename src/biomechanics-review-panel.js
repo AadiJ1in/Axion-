@@ -21,10 +21,15 @@ function signalCard(signal) {
   const card = element("article", "biomechanics-review-signal");
   const head = element("header");
   const label = element("b", "", `${signal.side ? `${signal.side} ` : ""}${signal.label}`);
-  const score = element("small", "", `${signal.score}/100 signal`);
+  const score = element("small", "", `Pattern score ${signal.score}/100`);
   head.append(label, score);
   const values = element("p", "", `Early baseline ${signal.baseline} → recent ${signal.recent}${signal.relativeChangePercent === null ? "" : ` · ${signal.relativeChangePercent}% directional change`}`);
-  const evidence = element("p", "", `${signal.sessionCount} sessions · ${signal.exerciseCount} exercise type${signal.exerciseCount === 1 ? "" : "s"}${signal.correlation === null ? "" : ` · temporal r=${signal.correlation.toFixed(2)}`}`);
+  const correlationLabel = signal.correlation === null
+    ? ""
+    : signal.correlationMethod === "spearman_rank"
+      ? ` · temporal ρ=${signal.correlation.toFixed(2)}`
+      : ` · temporal r=${signal.correlation.toFixed(2)}`;
+  const evidence = element("p", "", `${signal.sessionCount} sessions · ${signal.exerciseCount} exercise type${signal.exerciseCount === 1 ? "" : "s"}${correlationLabel}`);
   card.append(head, values, evidence);
   if (!signal.crossExerciseSatisfied) {
     card.append(element("small", "", "Requires replication in another exercise before candidate status."));
@@ -75,7 +80,7 @@ function buildPanel(row) {
       ? "Current acquisition: 2D camera-derived movement proxy reconstructed from Axion's Movement Twin. Use this as research/prototype evidence only until the feature set is validated against reference biomechanics and real clinical outcomes."
       : `Current acquisition: ${view.acquisition}. Interpret alongside symptoms, task setup, examination findings, and camera consistency.`,
   ));
-  panel.append(element("small", "biomechanics-review-disclaimer", view.disclaimer));
+  panel.append(element("small", "biomechanics-review-disclaimer", `${view.disclaimer} Pattern score is a heuristic research score, not an injury probability.`));
   return panel;
 }
 
