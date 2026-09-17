@@ -31,6 +31,8 @@ assert.equal(snapshot.sample_count, 30);
 assert.equal(snapshot.rep_count, 3);
 assert.equal(snapshot.features.capture.raw_video_stored, false);
 assert.equal(snapshot.features.capture.raw_landmarks_stored, false);
+assert.equal(snapshot.features.reps, undefined, "per-rep pose summaries should not be duplicated into longitudinal storage");
+assert.ok(JSON.stringify(snapshot.features).length < 24576, "persisted feature payload must stay below the database size guard");
 
 const metric = (value) => ({ median: value, p90: value });
 function migrationRow(index) {
