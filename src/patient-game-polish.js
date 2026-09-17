@@ -14,6 +14,7 @@ import { syncClinicalValidationSurface } from "./clinical-validation-surface.js"
 import { syncTodayRoadmapEntry } from "./today-roadmap-entry.js";
 import { syncTherapistReviewCopy } from "./therapist-review-copy.js";
 import {
+  bindExerciseStartContinuity,
   captureCameraRecoveryState,
   restoreCameraRecoveryState,
   syncJourneyIntroPlacement,
@@ -68,6 +69,7 @@ function schedulePresentationHierarchy() {
 }
 
 window.__axionSyncPresentation = schedulePresentationHierarchy;
+bindExerciseStartContinuity();
 
 function syncRestExperience() {
   const overlay = document.querySelector('#set-rest-overlay');
