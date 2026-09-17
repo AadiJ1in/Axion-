@@ -5,6 +5,7 @@ import {
 } from "../src/compensation-migration-service.js";
 
 let insertedRow = null;
+let containsFilters = [];
 const supabase = {
   from(table) {
     assert.equal(table, "movement_biomechanics_sessions");
@@ -12,6 +13,7 @@ const supabase = {
       select() { return this; },
       eq() { return this; },
       order() { return this; },
+      contains(column, value) { containsFilters.push({ column, value }); return this; },
       async limit() { return { data: [], error: null }; },
       async insert(row) {
         insertedRow = row;
@@ -54,6 +56,10 @@ const result = await persistSessionBiomechanics({
 });
 
 assert.equal(result.saved, true);
+assert.deepEqual(containsFilters.at(-1), {
+  column: "features",
+  value: { definitionVersion: "whole-body-screen-proxy-v1" },
+});
 assert.ok(insertedRow);
 assert.equal(insertedRow.session_id, session.id);
 assert.equal(insertedRow.sample_count, 3);
