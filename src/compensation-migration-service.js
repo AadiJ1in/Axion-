@@ -253,6 +253,14 @@ function primarySymmetryMetric(exerciseKey, unit) {
     unit,
     improvementDirection: "decrease",
     exerciseKey,
+    recoveryGuard: {
+      metricKey: "primary_movement_range",
+      region: "primary_movement",
+      side: "any",
+      unit,
+      exerciseKey,
+      maxRelativeDecrease: 0.15,
+    },
   };
 }
 
