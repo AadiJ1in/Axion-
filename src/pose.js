@@ -147,6 +147,8 @@ export async function createMovementTracker(options) {
     onUpdate = () => {},
     onPose = () => {},
     onRep = () => {},
+    onRepStart = () => {},
+    onRepDiscard = () => {},
     onCalibration = () => {},
     onTrackingState = () => {},
     onTiming = () => {},
@@ -401,6 +403,7 @@ export async function createMovementTracker(options) {
     const cycle = repCycle.update(movementDelta, now);
     stage = cycle.stage;
     if (cycle.started) {
+      onRepStart({ startedAt: now, exerciseKey: profile.exerciseKey });
       peakMeasurementSide = measurementSide;
       repStart = now;
       peakAngle = displayValue;
@@ -411,6 +414,7 @@ export async function createMovementTracker(options) {
       reps += 1;
       finishRep(now);
     } else if (cycle.discarded) {
+      onRepDiscard({ discardedAt: now, exerciseKey: profile.exerciseKey });
       repStart = null;
       peakAngle = null;
       peakDelta = 0;
