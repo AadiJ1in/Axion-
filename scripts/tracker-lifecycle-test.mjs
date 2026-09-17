@@ -1,8 +1,12 @@
 // Exercise the actual tracker lifecycle with deterministic device/model doubles.
 // These tests do not claim to evaluate the neural model's real-world accuracy.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { FilesetResolver, PoseLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
 import { createMovementTracker } from '../src/pose.js';
+const poseSource = readFileSync('src/pose.js', 'utf8');
+assert.ok(poseSource.includes('import("@mediapipe/tasks-vision")'), 'MediaPipe must load only when the movement tracker is initialized');
+assert.ok(!poseSource.includes('from "@mediapipe/tasks-vision"'), 'MediaPipe must not remain in the eager application bundle');
 import { chooseMediapipeDelegate, resolveMediapipeConfig } from '../src/mediapipe-config.js';
 
 assert.equal(resolveMediapipeConfig({baseUrl:'/'},{}).wasmRoot, '/mediapipe');
