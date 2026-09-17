@@ -1,4 +1,6 @@
 import "./clinical-session-capture.js";
+import "./biomechanics-session-bridge.js";
+import "./biomechanics-review-panel.js";
 import "./clinic-readiness.js";
 import "./clinical-targets.js";
 import "./therapist-review-audit.js";
