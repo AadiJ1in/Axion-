@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.7.0";
+export const COMPENSATION_ENGINE_VERSION = "0.8.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -111,6 +111,7 @@ function matchesMetric(item, metric = {}) {
   if (metricIdentity(item) !== metricIdentity(metric)) return false;
   if (metric.exerciseKey && item.exerciseKey !== metric.exerciseKey) return false;
   if (Array.isArray(metric.exerciseKeys) && metric.exerciseKeys.length && !metric.exerciseKeys.includes(item.exerciseKey)) return false;
+  if (metric.unit && item.unit !== metric.unit) return false;
   return true;
 }
 
