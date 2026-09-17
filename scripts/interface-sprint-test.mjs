@@ -4,14 +4,20 @@ import { readFileSync } from 'node:fs';
 const js = readFileSync('src/interface-sprint.js', 'utf8');
 const css = readFileSync('src/interface-sprint.css', 'utf8');
 const patientPolish = readFileSync('src/patient-surface-polish.js', 'utf8');
+const patientReportsNav = readFileSync('src/patient-reports-nav.js', 'utf8');
+const gamePolish = readFileSync('src/patient-game-polish.js', 'utf8');
 
 const patientBlock = js.match(/PATIENT_PRIMARY_NAV = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] || '';
 const therapistBlock = js.match(/THERAPIST_PRIMARY_NAV = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] || '';
 const publicBlock = js.match(/PUBLIC_PRIMARY_NAV = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] || '';
 
 assert.equal((patientBlock.match(/\["/g) || []).length, 4, 'patient primary navigation must contain exactly four destinations');
-for (const label of ['Today', 'Journey', 'Progress', 'Profile']) assert.ok(patientBlock.includes(`"${label}"`), `patient navigation must include ${label}`);
+for (const label of ['Today', 'Journey', 'Progress', 'Profile']) assert.ok(patientBlock.includes(`"${label}"`), `patient base navigation must include ${label}`);
+assert.ok(patientBlock.includes('["report", "Progress"]'), 'quantitative report view must remain wired as a primary patient destination');
 assert.ok(!patientBlock.includes('patient-report'), 'Report a concern must not be a permanent patient tab');
+assert.ok(patientReportsNav.includes('"Reports"'), 'patient-facing quantitative destination must be labeled Reports');
+assert.ok(patientReportsNav.includes('[data-nav="report"]'), 'Reports label must target the quantitative report destination');
+assert.ok(gamePolish.includes('syncInterfaceSprint();\n  syncPatientReportsNavigation();'), 'Reports label must run after interface sprint relabeling');
 
 assert.equal((therapistBlock.match(/\["/g) || []).length, 4, 'therapist primary navigation must contain exactly four destinations');
 for (const label of ['Overview', 'Patients', 'Plans', 'Exercise Library']) assert.ok(therapistBlock.includes(`"${label}"`), `therapist navigation must include ${label}`);
@@ -37,4 +43,4 @@ assert.ok(css.includes('prefers-reduced-motion:reduce'), 'reduced motion must be
 assert.ok(patientPolish.includes('MAX_JOURNEY_MISSIONS_PER_REGION = 8'), 'journey regions must cap presentation chunks at eight missions');
 assert.ok(patientPolish.includes('MIN_JOURNEY_MISSIONS_PER_REGION = 3'), 'journey regions should prefer at least three missions per chapter');
 
-console.log('Interface navigation, terminology, responsive, accessibility, active-session, and journey-density contracts passed.');
+console.log('Interface navigation, restored patient Reports label, terminology, responsive, accessibility, active-session, and journey-density contracts passed.');

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const patientLabels = ["Today", "Journey", "Progress", "Profile"];
+const patientLabels = ["Today", "Journey", "Reports", "Profile"];
 const requestedWidths = [1440, 1280, 1024, 768, 430, 390, 360, 320];
 const mobileWidths = [430, 390, 360, 320];
 
@@ -38,13 +38,15 @@ test("public site explains rehabilitation first and exposes clear demos", async 
   await expect(page.locator('[data-demo-role="therapist"]')).toContainText("Experience as Therapist");
 });
 
-test("patient navigation has exactly four primary items and contextual concern action", async ({ page }) => {
+test("patient navigation restores Reports as a primary quantitative destination", async ({ page }) => {
   await page.goto("/?journey-playtest=1");
   await waitForPresentation(page);
 
   const nav = page.locator('.topbar .nav[data-ui-patient-nav="true"]');
   await expect(nav.locator('button[data-nav]')).toHaveCount(4);
   await expect(nav.locator('button[data-nav] span')).toHaveText(patientLabels);
+  await expect(nav.locator('[data-nav="report"]')).toHaveText(/Reports/i);
+  await expect(nav.locator('[data-nav="report"]')).toHaveAttribute("data-ui-patient-reports", "true");
   await expect(nav.locator('[data-nav="patient-report"]')).toHaveCount(0);
   await expect(page.locator('.ui-report-concern')).toBeVisible();
   await expect(page.locator('.ui-report-concern')).toHaveText(/Report a concern/i);
