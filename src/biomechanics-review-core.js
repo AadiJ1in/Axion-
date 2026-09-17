@@ -13,7 +13,7 @@ const METRIC_LABELS = Object.freeze({
   lateral_weight_shift_proxy: "Lateral weight-shift proxy",
   pelvis_over_stance_offset_proxy: "Pelvis-over-stance offset proxy",
   primary_movement_symmetry_delta: "Primary movement symmetry delta",
-  primary_movement_range_deg: "Primary movement range",
+  primary_movement_range: "Primary movement range",
 });
 
 export function humanizeBiomechanicsMetric(metricKey = "") {
@@ -53,6 +53,7 @@ export function biomechanicsReviewPresentation(row = {}) {
 
   const signals = Array.isArray(analysis.signals) ? analysis.signals.slice(0, 4).map((signal) => ({
     label: humanizeBiomechanicsMetric(signal?.metric?.metricKey),
+    region: String(signal?.metric?.region || "unknown"),
     side: signal?.metric?.side && signal.metric.side !== "unspecified" ? String(signal.metric.side) : null,
     baseline: formatValue(signal?.summary?.baseline, signal?.metric?.unit),
     recent: formatValue(signal?.summary?.recent, signal?.metric?.unit),
@@ -69,8 +70,22 @@ export function biomechanicsReviewPresentation(row = {}) {
   const acquisition = definitionVersion.includes("screen-proxy")
     ? "2D camera-derived movement proxy"
     : definitionVersion.includes("world")
-      ? "MediaPipe world-landmark derived movement features"
+      ? "MediaPipe world-coordinate kinematic features"
       : "Pose-derived movement features";
+  const primaryMetric = analysis?.primary?.metric || null;
+  const primarySummary = analysis?.primary?.summary || null;
+  const primary = primaryMetric && primarySummary ? {
+    label: humanizeBiomechanicsMetric(primaryMetric.metricKey),
+    exerciseKey: primaryMetric.exerciseKey || null,
+    unit: primaryMetric.unit || null,
+    baseline: formatValue(primarySummary.baseline, primaryMetric.unit),
+    recent: formatValue(primarySummary.recent, primaryMetric.unit),
+    improvementPercent: finite(analysis?.primary?.improvementFraction) === null
+      ? null
+      : Math.round(Number(analysis.primary.improvementFraction) * 100),
+    sessionCount: Math.max(0, Number(primarySummary.sessionCount || 0)),
+    spanDays: finite(primarySummary.spanDays) === null ? null : Number(primarySummary.spanDays),
+  } : null;
 
   return {
     status,
@@ -79,6 +94,7 @@ export function biomechanicsReviewPresentation(row = {}) {
     score,
     showScore: status === "candidate" || status === "monitoring",
     signals,
+    primary,
     acquisition,
     sampleCount: Math.max(0, Number(row?.sample_count || 0)),
     trackingQualityPercent: finite(row?.tracking_quality) === null ? null : Math.round(Number(row.tracking_quality) * 100),
