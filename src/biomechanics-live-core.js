@@ -41,23 +41,32 @@ export function shouldCaptureBiomechanics({
 }
 
 export function twinSnapshotToLandmarks(snapshot = {}, {
-  width = 320,
-  height = 420,
   quality = 1,
+  xOffset = 40,
+  xScale = 240,
+  yOffset = 22,
+  yScale = 350,
+  mirroredX = true,
 } = {}) {
-  const safeWidth = Math.max(1, Number(width) || 320);
-  const safeHeight = Math.max(1, Number(height) || 420);
+  const safeXScale = Math.max(1, Number(xScale) || 240);
+  const safeYScale = Math.max(1, Number(yScale) || 350);
   const visibility = clamp(Number(quality) || 0, 0, 1);
   const landmarks = Array.from({ length: 33 }, () => null);
 
+  // updateTwinFromLandmarks() renders the normalized pose as:
+  //   screenX = 40 + (1 - poseX) * 240
+  //   screenY = 22 + poseY * 350
+  // Reverse that exact transform here so the biomechanics layer works in the
+  // original normalized pose geometry rather than the stretched SVG viewBox.
   for (const [name, index] of Object.entries(TWIN_LANDMARK_MAP)) {
     const raw = snapshot[name];
-    const x = Number(raw?.x);
-    const y = Number(raw?.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const screenX = Number(raw?.x);
+    const screenY = Number(raw?.y);
+    if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) continue;
+    const transformedX = (screenX - Number(xOffset || 0)) / safeXScale;
     landmarks[index] = {
-      x: x / safeWidth,
-      y: y / safeHeight,
+      x: mirroredX ? 1 - transformedX : transformedX,
+      y: (screenY - Number(yOffset || 0)) / safeYScale,
       z: 0,
       visibility,
     };
