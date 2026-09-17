@@ -10,7 +10,8 @@ const therapistBlock = js.match(/THERAPIST_PRIMARY_NAV = Object\.freeze\(\[([\s\
 const publicBlock = js.match(/PUBLIC_PRIMARY_NAV = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] || '';
 
 assert.equal((patientBlock.match(/\["/g) || []).length, 4, 'patient primary navigation must contain exactly four destinations');
-for (const label of ['Today', 'Journey', 'Progress', 'Profile']) assert.ok(patientBlock.includes(`"${label}"`), `patient navigation must include ${label}`);
+for (const label of ['Today', 'Journey', 'Reports', 'Profile']) assert.ok(patientBlock.includes(`"${label}"`), `patient navigation must include ${label}`);
+assert.ok(patientBlock.includes('["report", "Reports"]'), 'objective quantitative patient report must remain a primary destination');
 assert.ok(!patientBlock.includes('patient-report'), 'Report a concern must not be a permanent patient tab');
 
 assert.equal((therapistBlock.match(/\["/g) || []).length, 4, 'therapist primary navigation must contain exactly four destinations');
@@ -37,4 +38,4 @@ assert.ok(css.includes('prefers-reduced-motion:reduce'), 'reduced motion must be
 assert.ok(patientPolish.includes('MAX_JOURNEY_MISSIONS_PER_REGION = 8'), 'journey regions must cap presentation chunks at eight missions');
 assert.ok(patientPolish.includes('MIN_JOURNEY_MISSIONS_PER_REGION = 3'), 'journey regions should prefer at least three missions per chapter');
 
-console.log('Interface navigation, terminology, responsive, accessibility, active-session, and journey-density contracts passed.');
+console.log('Interface navigation, patient reports, terminology, responsive, accessibility, active-session, and journey-density contracts passed.');
