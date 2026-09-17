@@ -230,19 +230,20 @@ export async function persistSessionBiomechanics({
 // scale. They are engineering gates for longitudinal review signals, not
 // clinically validated diagnostic cutoffs.
 const sharedLowerBodyRelatedMetrics = Object.freeze([
-  { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5 },
-  { metricKey: "shoulder_pelvis_axis_mismatch_3d_deg", region: "trunk", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3 },
-  { metricKey: "hip_flexion_asymmetry_3d_deg", region: "hip", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3 },
-  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "left", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
-  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "right", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
-  { metricKey: "pelvis_over_stance_offset_3d_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
+  { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5 },
+  { metricKey: "shoulder_pelvis_axis_mismatch_3d_deg", region: "trunk", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3 },
+  { metricKey: "hip_flexion_asymmetry_3d_deg", region: "hip", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3 },
+  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "left", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
+  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "right", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
+  { metricKey: "pelvis_over_stance_offset_3d_proxy", region: "lower_limb", side: "bilateral", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
 ]);
 
-function primarySymmetryMetric(exerciseKey) {
+function primarySymmetryMetric(exerciseKey, unit) {
   return {
     metricKey: "primary_movement_symmetry_delta",
     region: "primary_movement",
     side: "bilateral",
+    unit,
     improvementDirection: "decrease",
     exerciseKey,
   };
@@ -251,27 +252,27 @@ function primarySymmetryMetric(exerciseKey) {
 export const LOWER_BODY_COMPENSATION_GRAPH = Object.freeze({
   byExercise: Object.freeze({
     bodyweight_squat: Object.freeze({
-      primaryMetric: primarySymmetryMetric("bodyweight_squat"),
+      primaryMetric: primarySymmetryMetric("bodyweight_squat", "deg"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
     half_squat: Object.freeze({
-      primaryMetric: primarySymmetryMetric("half_squat"),
+      primaryMetric: primarySymmetryMetric("half_squat", "deg"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
     sit_to_stand: Object.freeze({
-      primaryMetric: primarySymmetryMetric("sit_to_stand"),
+      primaryMetric: primarySymmetryMetric("sit_to_stand", "deg"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
     forward_lunge: Object.freeze({
-      primaryMetric: primarySymmetryMetric("forward_lunge"),
+      primaryMetric: primarySymmetryMetric("forward_lunge", "deg"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
     step_up: Object.freeze({
-      primaryMetric: primarySymmetryMetric("step_up"),
+      primaryMetric: primarySymmetryMetric("step_up", "%"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
     lateral_step_up: Object.freeze({
-      primaryMetric: primarySymmetryMetric("lateral_step_up"),
+      primaryMetric: primarySymmetryMetric("lateral_step_up", "%"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
   }),
