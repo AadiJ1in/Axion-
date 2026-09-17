@@ -7,7 +7,7 @@
 function restoreJourneyNodes(root = document) {
   root.querySelectorAll('[data-ui-roadmap-node-id]').forEach((node) => {
     const id = node.dataset.uiRoadmapNodeId;
-    if (id && !node.hasAttribute('data-roadmap-node')) node.setAttribute('data-roadmap-node', id);
+    if (id) node.setAttribute('data-roadmap-node', id);
     delete node.dataset.uiRoadmapNodeId;
   });
   root.querySelectorAll('[data-clinic-start-today][data-roadmap-node]').forEach((button) => {
@@ -20,17 +20,21 @@ export function syncTodayRoadmapEntry() {
   if (!page) return;
 
   const section = document.documentElement.dataset.axionPatientSection || 'today';
+  const mappedStart = page.querySelector('[data-clinic-start-today][data-roadmap-node]');
+  const mappedJourneyNode = page.querySelector('[data-ui-roadmap-node-id]');
+
   if (section === 'journey') {
-    restoreJourneyNodes(page);
+    if (mappedStart || mappedJourneyNode) restoreJourneyNodes(page);
     return;
   }
 
   const start = page.querySelector('[data-clinic-start-today]');
   const nodeId = start?.dataset.clinicStartToday;
   if (!start || !nodeId) return;
+  if (start.getAttribute('data-roadmap-node') === nodeId) return;
 
-  // Restore any prior mapping first so repeated render syncs remain finite.
-  restoreJourneyNodes(page);
+  // Clean up a stale mapping only when the active session actually changed.
+  if (mappedStart || mappedJourneyNode) restoreJourneyNodes(page);
 
   const node = page.querySelector(`.journey-atlas [data-roadmap-node="${CSS.escape(nodeId)}"]`);
   if (!node) return;
