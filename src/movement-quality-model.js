@@ -1,6 +1,6 @@
 import { MODEL_FEATURES_V1, buildModelFeatureVector } from "./biomechanics.js";
 
-const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = (value) => value === null || value === undefined || value === "" ? null : (Number.isFinite(Number(value)) ? Number(value) : null);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export const MOVEMENT_QUALITY_MODEL_SCHEMA_VERSION = 1;
