@@ -1,4 +1,5 @@
 import "./clinical-session-capture.js";
+import "./compensation-migration.js";
 import "./clinic-readiness.js";
 import "./clinical-targets.js";
 import "./therapist-review-audit.js";
