@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.2.1";
+export const COMPENSATION_ENGINE_VERSION = "0.3.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -65,6 +65,13 @@ function linearSlope(points) {
 
 function metricIdentity(metric = {}) {
   return [metric.metricKey, metric.region || "unknown", metric.side || "unspecified"].join("|");
+}
+
+function matchesMetric(item, metric = {}) {
+  if (metricIdentity(item) !== metricIdentity(metric)) return false;
+  if (metric.exerciseKey && item.exerciseKey !== metric.exerciseKey) return false;
+  if (Array.isArray(metric.exerciseKeys) && metric.exerciseKeys.length && !metric.exerciseKeys.includes(item.exerciseKey)) return false;
+  return true;
 }
 
 export function normalizeMovementObservation(raw = {}) {
@@ -181,7 +188,8 @@ function scoreSignal({ persistence, magnitude, coupling, exerciseConsistency }) 
 }
 
 function signalExplanation(primary, secondary, primarySummary, secondarySummary, score, crossExerciseSatisfied) {
-  const primaryLabel = `${primary.side || ""} ${primary.region || ""} ${primary.metricKey}`.replace(/\s+/g, " ").trim();
+  const exercise = primary.exerciseKey ? `${primary.exerciseKey} ` : "";
+  const primaryLabel = `${exercise}${primary.side || ""} ${primary.region || ""} ${primary.metricKey}`.replace(/\s+/g, " ").trim();
   const secondaryLabel = `${secondary.side || ""} ${secondary.region || ""} ${secondary.metricKey}`.replace(/\s+/g, " ").trim();
   const primaryChange = Math.round(Math.abs(primarySummary.relativeDelta) * 100);
   const secondaryChange = Math.round(Math.abs(secondarySummary.relativeDelta) * 100);
@@ -203,7 +211,7 @@ export function detectCompensationMigration({
   }
 
   const normalized = observations.map(normalizeMovementObservation).filter(Boolean);
-  const primaryRaw = normalized.filter((item) => metricIdentity(item) === metricIdentity(primaryMetric));
+  const primaryRaw = normalized.filter((item) => matchesMetric(item, primaryMetric));
   const primaryPoints = collapseBySession(primaryRaw, config.minQuality);
   const primarySummary = summarizeMetric(primaryPoints, config);
   if (!primarySummary) {
@@ -226,7 +234,7 @@ export function detectCompensationMigration({
   const signals = [];
   for (const related of relatedMetrics) {
     if (!related?.metricKey) continue;
-    const relatedRaw = normalized.filter((item) => metricIdentity(item) === metricIdentity(related));
+    const relatedRaw = normalized.filter((item) => matchesMetric(item, related));
     const points = collapseBySession(relatedRaw, config.minQuality);
     const summary = summarizeMetric(points, config);
     if (!summary) continue;
@@ -252,6 +260,7 @@ export function detectCompensationMigration({
         region: related.region || "unknown",
         side: related.side || "unspecified",
         unit: related.unit || points[0]?.unit || null,
+        exerciseKey: related.exerciseKey || null,
       },
       summary,
       temporal,
@@ -279,6 +288,7 @@ export function detectCompensationMigration({
         region: primaryMetric.region || "unknown",
         side: primaryMetric.side || "unspecified",
         unit: primaryMetric.unit || primaryPoints[0]?.unit || null,
+        exerciseKey: primaryMetric.exerciseKey || null,
       },
       summary: primarySummary,
       improvementFraction: primaryImprovement,
