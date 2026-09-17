@@ -46,6 +46,11 @@ assert.ok(keys.has("trunk_lateral_lean_deg"));
 assert.ok(keys.has("pelvic_obliquity_deg"));
 assert.ok(keys.has("knee_flexion_asymmetry_deg"));
 assert.ok(keys.has("lateral_weight_shift_proxy"));
+assert.ok(keys.has("trunk_pelvis_lateral_deviation_3d_deg"));
+assert.ok(keys.has("shoulder_pelvis_axis_mismatch_3d_deg"));
+assert.ok(keys.has("hip_flexion_asymmetry_3d_deg"));
+assert.ok(keys.has("knee_mediolateral_offset_3d_proxy"));
+assert.ok(keys.has("pelvis_over_stance_offset_3d_proxy"));
 assert.ok(metrics.every((metric) => metric.quality >= 0.9));
 
 const worldLandmarks = landmarks.map((point, index) => point ? {
@@ -67,6 +72,50 @@ assert.ok(worldFrame.metrics.length >= 8);
 assert.ok(worldFrame.metrics.every((metric) => metric.context.source === "pose_world"));
 assert.ok(worldFrame.metrics.every((metric) => metric.context.acquisition === WORLD_BIOMECHANICS_DEFINITION));
 assert.equal(worldFrame.metrics.some((metric) => "landmarks" in metric || "coordinates" in metric), false);
+
+function rotateRigid(point) {
+  if (!point) return null;
+  const yaw = 0.61;
+  const roll = -0.37;
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
+  const cr = Math.cos(roll);
+  const sr = Math.sin(roll);
+  const yawed = {
+    x: (cy * point.x) + (sy * point.z),
+    y: point.y,
+    z: (-sy * point.x) + (cy * point.z),
+  };
+  return {
+    ...point,
+    x: (cr * yawed.x) - (sr * yawed.y),
+    y: (sr * yawed.x) + (cr * yawed.y),
+    z: yawed.z,
+  };
+}
+
+const rotatedMetrics = extractWholeBodyBiomechanics(worldLandmarks.map(rotateRigid), {
+  source: "pose_world",
+  cameraView: "rigid_rotation_test",
+});
+const originalByKey = new Map(worldFrame.metrics.map((metric) => [`${metric.metricKey}|${metric.side}`, metric]));
+const rotatedByKey = new Map(rotatedMetrics.map((metric) => [`${metric.metricKey}|${metric.side}`, metric]));
+for (const identity of [
+  "trunk_pelvis_lateral_deviation_3d_deg|midline",
+  "shoulder_pelvis_axis_mismatch_3d_deg|bilateral",
+  "hip_flexion_asymmetry_3d_deg|bilateral",
+  "knee_mediolateral_offset_3d_proxy|left",
+  "knee_mediolateral_offset_3d_proxy|right",
+  "pelvis_over_stance_offset_3d_proxy|bilateral",
+  "knee_flexion_asymmetry_deg|bilateral",
+]) {
+  const original = originalByKey.get(identity);
+  const rotated = rotatedByKey.get(identity);
+  assert.ok(original && rotated, `missing invariant metric ${identity}`);
+  assert.ok(Math.abs(original.value - rotated.value) < 1e-8, `${identity} changed under rigid 3D rotation`);
+  assert.equal(original.context.invariant3d === true || identity === "knee_flexion_asymmetry_deg|bilateral", true);
+}
+
 assert.equal(createWorldBiomechanicsFrame(worldLandmarks, {
   trackingQuality: 0.93,
   stage: "up",
