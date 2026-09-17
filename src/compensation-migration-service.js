@@ -60,9 +60,6 @@ export async function loadBiomechanicsHistory({
     .limit(safeLimit);
   if (error) throw error;
 
-  // The database returns the latest bounded window first so a long-running
-  // patient does not get stuck analyzing their oldest sessions forever. Reverse
-  // the selected window back into chronological order for trend calculations.
   return [...(data || [])].reverse()
     .filter((row) => !featureDefinitionVersion || row?.features?.definitionVersion === featureDefinitionVersion)
     .flatMap(rowObservations);
@@ -217,12 +214,16 @@ export async function persistSessionBiomechanics({
   return { saved: true, reason: "saved", metrics, analysis };
 }
 
+// Candidate scoring deliberately uses body-relative features where possible.
+// This reduces false drift from a camera that is slightly rolled between home
+// sessions. Raw camera-horizontal angles are still stored for research display,
+// but they do not drive candidate status.
 const sharedLowerBodyRelatedMetrics = Object.freeze([
-  { metricKey: "trunk_lateral_lean_deg", region: "trunk", side: "midline", worseningDirection: "increase" },
-  { metricKey: "pelvic_obliquity_deg", region: "pelvis", side: "bilateral", worseningDirection: "increase" },
+  { metricKey: "trunk_lateral_lean_relative_deg", region: "trunk", side: "midline", worseningDirection: "increase" },
+  { metricKey: "shoulder_pelvis_obliquity_delta_deg", region: "trunk", side: "bilateral", worseningDirection: "increase" },
   { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "left", worseningDirection: "increase" },
   { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "right", worseningDirection: "increase" },
-  { metricKey: "lateral_weight_shift_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase" },
+  { metricKey: "pelvis_over_stance_offset_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase" },
 ]);
 
 function primarySymmetryMetric(exerciseKey) {
