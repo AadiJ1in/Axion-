@@ -21,13 +21,12 @@ const state = {
   assignment: null,
   samples: [],
   started: false,
+  finalized: false,
   persistedSessionId: null,
   persistInFlight: false,
   session: undefined,
   sessionCheckedAt: 0,
   authGeneration: 0,
-  reviewSessionId: null,
-  progressPatientId: null,
 };
 
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
@@ -59,8 +58,20 @@ function resetForLab(root) {
   state.assignment = null;
   state.samples = [];
   state.started = false;
+  state.finalized = false;
   state.persistedSessionId = null;
   state.persistInFlight = false;
+}
+
+function startCaptureFromGate(target) {
+  if (target?.dataset?.sessionCaptureStarted !== "true") return;
+  const lab = target.closest?.(".lab-page") || document.querySelector(".lab-page");
+  if (lab && state.root !== lab) resetForLab(lab);
+  if (!state.root) return;
+  state.started = true;
+  state.finalized = false;
+  state.samples = [];
+  resolveAssignment().catch(() => {});
 }
 
 async function resolveAssignment() {
@@ -99,9 +110,8 @@ function currentRepCount() {
 function twinPoints() {
   const svg = document.querySelector("#movement-twin");
   if (!svg) return null;
-  const ids = ["ls", "rs", "lh", "rh", "lk", "rk", "la", "ra"];
   const points = {};
-  for (const id of ids) {
+  for (const id of ["ls", "rs", "lh", "rh", "lk", "rk", "la", "ra"]) {
     const node = svg.querySelector(`#joint-${id}`);
     const x = finite(node?.getAttribute("cx"));
     const y = finite(node?.getAttribute("cy"));
@@ -111,48 +121,41 @@ function twinPoints() {
   return points;
 }
 
-function isReliableFrame(quality) {
+function reliableFrame(quality) {
   if (document.querySelector("#body-state")?.classList.contains("warning")) return false;
-  const qualityText = document.querySelector("#quality-state")?.textContent || "";
-  if (/low/i.test(qualityText)) return false;
+  if (/low/i.test(document.querySelector("#quality-state")?.textContent || "")) return false;
   return quality === null || quality >= 0.62;
 }
 
 function samplePoseFrame() {
   const lab = document.querySelector(".lab-page");
-  if (!lab) return;
-  if (state.root !== lab) resetForLab(lab);
+  if (lab && state.root !== lab) resetForLab(lab);
+
+  // Fallback in case a valid clinical begin click occurred between polling ticks.
   const begin = document.querySelector("#clinic-begin-exercise");
-  if (!state.started && begin?.dataset.sessionCaptureStarted === "true") {
-    state.started = true;
-    state.samples = [];
-    resolveAssignment().catch(() => {});
-  }
-  if (!state.started || state.persistedSessionId || state.samples.length >= MAX_SAMPLES) return;
+  if (!state.started && begin?.dataset.sessionCaptureStarted === "true") startCaptureFromGate(begin);
+  if (!state.started || state.finalized || state.samples.length >= MAX_SAMPLES) return;
 
   const quality = trackingQuality();
-  if (!isReliableFrame(quality)) return;
-  const points = twinPoints();
-  if (!points) return;
-  const features = extractPoseFeatures(points);
+  if (!reliableFrame(quality)) return;
+  const features = extractPoseFeatures(twinPoints());
   if (!features) return;
 
   const range = numericText(document.querySelector("#live-tempo")?.textContent);
   const symmetry = numericText(document.querySelector("#live-symmetry")?.textContent);
   const coachState = document.querySelector("#coach-state")?.textContent || "";
-  const active = /motion|moving|hold|active|down/i.test(coachState) || (range !== null && Math.abs(range) > 1.5);
   state.samples.push({
     capturedAt: Date.now(),
     repIndex: Math.max(1, currentRepCount() + 1),
     trackingQuality: quality,
     primaryMovementRange: range,
     primarySymmetryDelta: symmetry,
-    active,
+    active: /motion|moving|hold|active|down/i.test(coachState) || (range !== null && Math.abs(range) > 1.5),
     features,
   });
 }
 
-async function newestSavedSession() {
+async function savedSession() {
   const session = await authSession();
   if (!session?.user || !state.assignmentId || !state.clientSessionId) return null;
   const generation = state.authGeneration;
@@ -177,7 +180,7 @@ async function patientHistory(patientId) {
   return error ? [] : (data || []);
 }
 
-function rowFromSnapshot(saved, assignment, snapshot) {
+function currentHistoryRow(saved, assignment, snapshot) {
   return {
     session_id: saved.id,
     patient_id: saved.patient_id,
@@ -197,7 +200,7 @@ function rowFromSnapshot(saved, assignment, snapshot) {
 }
 
 async function persistSnapshot() {
-  if (!state.started || state.persistedSessionId || state.persistInFlight || !supabase) return;
+  if (!state.started || state.finalized || state.persistInFlight || !supabase) return;
   if (!document.querySelector(".report-page")) return;
   state.persistInFlight = true;
   try {
@@ -212,23 +215,27 @@ async function persistSnapshot() {
       prescribedSide: assignment.prescribed_side,
     });
     if (snapshot.sample_count < MIN_PERSISTED_SAMPLES) {
+      state.finalized = true;
       showCaptureReceipt({ insufficient: true, sampleCount: snapshot.sample_count });
       return;
     }
 
     let saved = null;
     for (let attempt = 0; attempt < 20 && !saved; attempt += 1) {
-      saved = await newestSavedSession();
+      saved = await savedSession();
       if (!saved) await sleep(450);
     }
     if (!saved || generation !== state.authGeneration || state.session?.user?.id !== userId) return;
 
     const history = await patientHistory(userId);
     if (generation !== state.authGeneration || state.session?.user?.id !== userId) return;
-    const current = rowFromSnapshot(saved, assignment, snapshot);
-    const withoutCurrent = history.filter((row) => row.session_id !== saved.id);
-    const analysis = evaluateCompensationMigration([...withoutCurrent, current]);
-    const row = {
+    const current = currentHistoryRow(saved, assignment, snapshot);
+    const analysis = evaluateCompensationMigration([
+      ...history.filter((row) => row.session_id !== saved.id),
+      current,
+    ]);
+
+    const { error } = await supabase.from("movement_biomechanics_sessions").insert({
       session_id: current.session_id,
       patient_id: current.patient_id,
       assignment_id: current.assignment_id,
@@ -243,13 +250,13 @@ async function persistSnapshot() {
       primary_symmetry_delta: current.primary_symmetry_delta,
       features: current.features,
       compensation_analysis: analysis,
-    };
-    const { error } = await supabase.from("movement_biomechanics_sessions").insert(row);
+    });
     if (error && error.code !== "23505") {
       console.warn("Movement-chain snapshot persistence unavailable", error);
       return;
     }
     state.persistedSessionId = saved.id;
+    state.finalized = true;
     showCaptureReceipt({ sampleCount: snapshot.sample_count, analysis });
   } finally {
     state.persistInFlight = false;
@@ -273,16 +280,14 @@ function showCaptureReceipt({ insufficient = false, sampleCount = 0, analysis = 
   (report.querySelector(".report-header") || report).after(receipt);
 }
 
-function metricValue(row, key, field = "p90") {
+function metricValue(row, key) {
   const metric = row?.features?.session?.[key];
-  return finite(metric?.[field] ?? metric?.median ?? metric?.mean);
+  return finite(metric?.p90 ?? metric?.median ?? metric?.mean);
 }
 
 function levelClass(score) {
   const value = Number(score) || 0;
-  if (value >= 70) return "high";
-  if (value >= 40) return "moderate";
-  return "low";
+  return value >= 70 ? "high" : value >= 40 ? "moderate" : "low";
 }
 
 function chainMarkup(regions = {}) {
@@ -329,10 +334,9 @@ async function analysisThroughSession(row) {
   if (!row?.patient_id) return evaluateCompensationMigration([]);
   const history = await patientHistory(row.patient_id);
   const cutoff = new Date(row.created_at || 0).getTime();
-  const bounded = Number.isFinite(cutoff)
+  return evaluateCompensationMigration(Number.isFinite(cutoff)
     ? history.filter((item) => new Date(item.created_at || 0).getTime() <= cutoff)
-    : history;
-  return evaluateCompensationMigration(bounded);
+    : history);
 }
 
 async function enhanceSessionReview(sessionId) {
@@ -347,11 +351,13 @@ async function enhanceSessionReview(sessionId) {
     modal = document.querySelector(".clinic-session-modal");
   }
   if (!modal || modal.querySelector("[data-compensation-session-review]") || generation !== state.authGeneration || state.session?.user?.id !== userId) return;
+
   const { data: row, error } = await supabase.from("movement_biomechanics_sessions")
     .select("session_id, patient_id, exercise_key, prescribed_side, sample_count, tracking_quality, primary_movement_range, primary_symmetry_delta, features, created_at")
     .eq("session_id", sessionId)
     .maybeSingle();
   if (error || !row || !modal.isConnected || generation !== state.authGeneration || state.session?.user?.id !== userId) return;
+
   const analysis = await analysisThroughSession(row);
   if (!modal.isConnected || generation !== state.authGeneration || state.session?.user?.id !== userId) return;
   const block = document.createElement("section");
@@ -382,26 +388,32 @@ async function enhanceProgress(patientId) {
     modal = document.querySelector("#clinic-progress-modal");
   }
   if (!modal || modal.querySelector("[data-compensation-progress]") || generation !== state.authGeneration || state.session?.user?.id !== userId) return;
+
   const history = await patientHistory(patientId);
   if (!history.length || !modal.isConnected || generation !== state.authGeneration || state.session?.user?.id !== userId) return;
-  const analysis = evaluateCompensationMigration(history);
   const block = document.createElement("div");
   block.dataset.compensationProgress = "true";
-  block.innerHTML = analysisMarkup(analysis);
+  block.innerHTML = analysisMarkup(evaluateCompensationMigration(history));
   modal.querySelector("header")?.after(block);
 }
 
+// clinical-session-capture is loaded before this module and uses a capture-phase
+// gate. Invalid starts call stopImmediatePropagation, so only a validated start
+// reaches this listener. Running in capture phase also means we record the start
+// before the main UI can transition away from the gate button.
 document.addEventListener("click", (event) => {
-  const target = event.target.closest?.(".checkin-row[data-clinic-session-id], [data-clinic-progress-patient]");
+  const target = event.target.closest?.("#clinic-begin-exercise, .checkin-row[data-clinic-session-id], [data-clinic-progress-patient]");
   if (!target) return;
-  if (target.matches(".checkin-row[data-clinic-session-id]")) {
-    state.reviewSessionId = target.dataset.clinicSessionId;
-    window.setTimeout(() => enhanceSessionReview(state.reviewSessionId).catch(() => {}), 80);
+  if (target.id === "clinic-begin-exercise") {
+    startCaptureFromGate(target);
+    return;
+  }
+  if (target.dataset.clinicSessionId) {
+    window.setTimeout(() => enhanceSessionReview(target.dataset.clinicSessionId).catch(() => {}), 80);
     return;
   }
   if (target.dataset.clinicProgressPatient) {
-    state.progressPatientId = target.dataset.clinicProgressPatient;
-    window.setTimeout(() => enhanceProgress(state.progressPatientId).catch(() => {}), 80);
+    window.setTimeout(() => enhanceProgress(target.dataset.clinicProgressPatient).catch(() => {}), 80);
   }
 }, true);
 
@@ -415,8 +427,6 @@ if (isConfigured && supabase) {
     if (previousUser === nextUser) return;
     state.authGeneration += 1;
     resetForLab(null);
-    state.reviewSessionId = null;
-    state.progressPatientId = null;
     document.querySelectorAll("[data-compensation-capture-receipt], [data-compensation-session-review], [data-compensation-progress]").forEach((node) => node.remove());
   });
   authSubscription = data?.subscription || null;
@@ -426,7 +436,7 @@ const sampleTimer = window.setInterval(samplePoseFrame, SAMPLE_INTERVAL_MS);
 const persistenceTimer = window.setInterval(() => {
   const lab = document.querySelector(".lab-page");
   if (lab && state.root !== lab) resetForLab(lab);
-  if (state.started && document.querySelector(".report-page") && !state.persistedSessionId) {
+  if (state.started && !state.finalized && document.querySelector(".report-page")) {
     persistSnapshot().catch((error) => console.warn("Compensation migration capture unavailable", error));
   }
 }, 500);
