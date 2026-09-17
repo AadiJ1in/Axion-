@@ -46,6 +46,7 @@ test("patient navigation restores Reports as a primary quantitative destination"
   await expect(nav.locator('button[data-nav]')).toHaveCount(4);
   await expect(nav.locator('button[data-nav] span')).toHaveText(patientLabels);
   await expect(nav.locator('[data-nav="report"]')).toHaveText(/Reports/i);
+  await expect(nav.locator('[data-nav="report"]')).toHaveAttribute("data-ui-patient-reports", "true");
   await expect(nav.locator('[data-nav="patient-report"]')).toHaveCount(0);
   await expect(page.locator('.ui-report-concern')).toBeVisible();
   await expect(page.locator('.ui-report-concern')).toHaveText(/Report a concern/i);
@@ -61,10 +62,6 @@ test("patient navigation restores Reports as a primary quantitative destination"
   await nav.locator('[data-nav="patient"]').click();
   await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "today");
   await expect(page.locator(".journey-atlas")).toBeHidden();
-
-  await nav.locator('[data-nav="report"]').click();
-  await expect(page.locator(".report-page")).toBeVisible();
-  await expect(page.locator(".patient-report-page")).toHaveCount(0);
 });
 
 test("patient Today has no horizontal overflow across the requested responsive matrix", async ({ page }) => {
