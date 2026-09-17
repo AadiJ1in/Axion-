@@ -242,11 +242,20 @@ export function detectCompensationMigration({
     const worseningDirection = related.worseningDirection || "increase";
     const drift = driftFraction(summary, worseningDirection);
     const absoluteDrift = directionalAbsoluteDrift(summary, worseningDirection);
-    if (drift < config.minSecondaryRelativeDrift && absoluteDrift < config.minSecondaryAbsoluteDrift) continue;
+    const relativeThreshold = Number.isFinite(Number(related.minRelativeDrift))
+      ? Math.max(0, Number(related.minRelativeDrift))
+      : config.minSecondaryRelativeDrift;
+    const absoluteThreshold = Number.isFinite(Number(related.minAbsoluteDrift))
+      ? Math.max(0, Number(related.minAbsoluteDrift))
+      : config.minSecondaryAbsoluteDrift;
+    if (drift < relativeThreshold && absoluteDrift < absoluteThreshold) continue;
 
     const temporal = temporalCoupling(primaryPoints, points, primaryDirection, worseningDirection);
     const persistence = clamp(summary.sessionCount / Math.max(config.minSessions + 3, 1), 0, 1);
-    const magnitude = clamp(Math.max(drift / Math.max(config.minSecondaryRelativeDrift * 2, 0.01), absoluteDrift / Math.max(config.minSecondaryAbsoluteDrift * 2, 0.01)), 0, 1);
+    const magnitude = clamp(Math.max(
+      drift / Math.max(relativeThreshold * 2, 0.01),
+      absoluteDrift / Math.max(absoluteThreshold * 2, 0.0001),
+    ), 0, 1);
     const exerciseConsistency = clamp(summary.exerciseCount / Math.max(config.minExercises, 1), 0, 1);
     const coupling = temporal.coupling;
     const score = scoreSignal({ persistence, magnitude, coupling, exerciseConsistency });
@@ -261,6 +270,10 @@ export function detectCompensationMigration({
         side: related.side || "unspecified",
         unit: related.unit || points[0]?.unit || null,
         exerciseKey: related.exerciseKey || null,
+        thresholds: {
+          minRelativeDrift: relativeThreshold,
+          minAbsoluteDrift: absoluteThreshold,
+        },
       },
       summary,
       temporal,
