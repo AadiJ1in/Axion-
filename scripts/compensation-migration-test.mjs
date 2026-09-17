@@ -228,4 +228,40 @@ const related = [
   assert.equal(result.status, "stable");
 }
 
+{
+  const observations = [];
+  const relatedMany = Array.from({ length: 6 }, (_, index) => ({
+    metricKey: `secondary_drift_${index + 1}`,
+    region: index % 2 === 0 ? "trunk" : "lower_limb",
+    side: "bilateral",
+    worseningDirection: "increase",
+    minRelativeDrift: 0.1,
+    minAbsoluteDrift: 1,
+  }));
+  for (let i = 0; i < 10; i += 1) {
+    const exercise = i % 2 === 0 ? "squat" : "step_down";
+    observations.push(observation(i + 1, exercise, "right_knee_asymmetry", "knee", "right", 30 - i * 2.5));
+    relatedMany.forEach((metric, index) => {
+      observations.push(observation(
+        i + 1,
+        exercise,
+        metric.metricKey,
+        metric.region,
+        metric.side,
+        4 + i * (1.6 + index * 0.12),
+      ));
+    });
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: primary,
+    relatedMetrics: relatedMany,
+  });
+  assert.equal(result.status, "candidate");
+  assert.equal(result.signals.length, 4);
+  assert.ok(result.signals.every((signal) => signal.replicationEvidence.length <= 4));
+  assert.ok(result.candidateMetric);
+  assert.ok(Buffer.byteLength(JSON.stringify(result), "utf8") < 16384);
+}
+
 console.log("compensation migration engine tests passed");
