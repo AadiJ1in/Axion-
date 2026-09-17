@@ -94,6 +94,7 @@ function sessionSummaryMetrics(session, trackingQuality, prescribedSide) {
   const quality = Number.isFinite(Number(trackingQuality)) ? Number(trackingQuality) : 1;
   const symmetry = finite(summary.average_symmetry_delta);
   const movementRange = finite(summary.average_joint_movement_range_degrees ?? summary.average_signal_excursion);
+  const measurementUnit = String(summary.measurement_unit || "deg");
   const metrics = [];
   if (symmetry !== null) {
     metrics.push({
@@ -101,7 +102,7 @@ function sessionSummaryMetrics(session, trackingQuality, prescribedSide) {
       region: "primary_movement",
       side: "bilateral",
       value: symmetry,
-      unit: "deg",
+      unit: measurementUnit,
       quality,
       context: {
         source: "verified_session_summary",
@@ -112,11 +113,11 @@ function sessionSummaryMetrics(session, trackingQuality, prescribedSide) {
   }
   if (movementRange !== null) {
     metrics.push({
-      metricKey: "primary_movement_range_deg",
+      metricKey: "primary_movement_range",
       region: "primary_movement",
       side: ["left", "right"].includes(prescribedSide) ? prescribedSide : "bilateral",
       value: movementRange,
-      unit: "deg",
+      unit: measurementUnit,
       quality,
       context: {
         source: "verified_session_summary",
