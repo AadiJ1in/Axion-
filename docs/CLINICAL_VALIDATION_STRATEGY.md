@@ -129,11 +129,11 @@ Do not treat these outcomes as established benefits until a study actually demon
 
 ## Market context
 
-Hinge Health’s 2025 S-1/A stated that its analysis of 2023 health-claims data estimated approximately **$661 billion** in annual U.S. spending on MSK conditions. Use this only as third-party market context and attribute it to Hinge Health’s filing rather than presenting it as Axion’s independent estimate.
+Hinge Health’s 2025 SEC prospectus cites a commissioned Health Advances LLC MSK total-addressable-market report estimating approximately **$661 billion** in annual aggregate direct U.S. spending on MSK conditions in 2023. Use this only as attributed third-party market context rather than presenting it as Axion’s independent estimate.
 
 SEC reference:
 
-- https://www.sec.gov/Archives/edgar/data/1673743/000119312525112887/d829170ds1a.htm
+- https://www.sec.gov/Archives/edgar/data/1673743/000119312525125262/d829170d424b4.htm
 
 Do not use an unverified 103 million patient figure in product copy unless the exact source and population definition are established.
 
