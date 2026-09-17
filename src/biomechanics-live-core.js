@@ -1,3 +1,5 @@
+import { extractWholeBodyBiomechanics } from "./biomechanics-feature-core.js";
+
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const TWIN_LANDMARK_MAP = Object.freeze({
@@ -15,6 +17,8 @@ const TWIN_LANDMARK_MAP = Object.freeze({
 
 export const LIVE_BIOMECHANICS_MIN_QUALITY = 0.62;
 export const LIVE_BIOMECHANICS_PHASES = Object.freeze(["IN MOTION", "HOLDING", "LIVE"]);
+export const WORLD_BIOMECHANICS_ACTIVE_STAGES = Object.freeze(["down", "hold"]);
+export const WORLD_BIOMECHANICS_DEFINITION = "whole-body-world-v1";
 
 export function parseTrackingQuality(text = "") {
   const value = String(text);
@@ -40,6 +44,46 @@ export function shouldCaptureBiomechanics({
   );
 }
 
+export function createWorldBiomechanicsFrame(landmarks, {
+  trackingQuality = null,
+  stage = "",
+  calibrated = false,
+  exerciseKey = null,
+  capturedAt = null,
+  minQuality = LIVE_BIOMECHANICS_MIN_QUALITY,
+} = {}) {
+  const quality = Number(trackingQuality);
+  if (!Array.isArray(landmarks)
+      || landmarks.length < 29
+      || !calibrated
+      || !WORLD_BIOMECHANICS_ACTIVE_STAGES.includes(String(stage))
+      || !Number.isFinite(quality)
+      || quality < minQuality) return null;
+
+  const metrics = extractWholeBodyBiomechanics(landmarks, {
+    source: "pose_world",
+    cameraView: "mediapipe_world_coordinates",
+  }).map((metric) => ({
+    ...metric,
+    quality: Math.min(Number(metric.quality ?? 1), quality),
+    context: {
+      ...(metric.context || {}),
+      acquisition: WORLD_BIOMECHANICS_DEFINITION,
+      exerciseKey: exerciseKey || null,
+      captureStage: String(stage),
+    },
+  }));
+  if (!metrics.length) return null;
+
+  return {
+    definitionVersion: WORLD_BIOMECHANICS_DEFINITION,
+    capturedAt: Number.isFinite(Number(capturedAt)) ? Number(capturedAt) : null,
+    trackingQuality: quality,
+    exerciseKey: exerciseKey || null,
+    metrics,
+  };
+}
+
 export function twinSnapshotToLandmarks(snapshot = {}, {
   quality = 1,
   xOffset = 40,
@@ -56,8 +100,9 @@ export function twinSnapshotToLandmarks(snapshot = {}, {
   // updateTwinFromLandmarks() renders the normalized pose as:
   //   screenX = 40 + (1 - poseX) * 240
   //   screenY = 22 + poseY * 350
-  // Reverse that exact transform here so the biomechanics layer works in the
-  // original normalized pose geometry rather than the stretched SVG viewBox.
+  // Reverse that exact transform here for deterministic compatibility tests and
+  // historical prototype data. Production capture now uses MediaPipe world
+  // landmarks directly and does not depend on this rendered SVG transform.
   for (const [name, index] of Object.entries(TWIN_LANDMARK_MAP)) {
     const raw = snapshot[name];
     const screenX = Number(raw?.x);
