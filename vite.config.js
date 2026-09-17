@@ -37,4 +37,10 @@ export default defineConfig({
     host: "127.0.0.1",
     strictPort: true,
   },
+  preview: {
+    // Railway health checks arrive with a generated service host. Vite preview
+    // rejects unknown hosts with HTTP 403 by default, so allow the deployment
+    // platform host while keeping this setting scoped to preview serving only.
+    allowedHosts: true,
+  },
 });
