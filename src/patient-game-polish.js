@@ -13,6 +13,11 @@ import { syncInterfaceSprint } from "./interface-sprint.js";
 import { syncClinicalValidationSurface } from "./clinical-validation-surface.js";
 import { syncTodayRoadmapEntry } from "./today-roadmap-entry.js";
 import { syncTherapistReviewCopy } from "./therapist-review-copy.js";
+import {
+  captureCameraRecoveryState,
+  restoreCameraRecoveryState,
+  syncJourneyIntroPlacement,
+} from "./release-regression-repair.js";
 
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
@@ -45,7 +50,10 @@ function syncPresentationHierarchy() {
   syncUiHierarchyP1();
   syncUiStability();
   syncPatientSurfacePolish();
+  const recoveryState = captureCameraRecoveryState();
   syncInterfaceSprint();
+  restoreCameraRecoveryState(recoveryState);
+  syncJourneyIntroPlacement();
   syncClinicalValidationSurface();
   syncLateClinicPresentation();
 }
