@@ -8,13 +8,15 @@ const stability = fs.readFileSync(new URL("../src/ui-stability.js", import.meta.
 const stabilityCss = fs.readFileSync(new URL("../src/ui-stability.css", import.meta.url), "utf8");
 
 assert.match(polish, /syncUiHierarchy/);
-assert.match(polish, /window\.setInterval\(syncRestExperience, 250\)/);
+assert.match(polish, /REST_SYNC_INTERVAL_MS = 250/);
+assert.match(polish, /startPolishTimer\(\)/);
 const restFunction = polish.slice(polish.indexOf("function syncRestExperience"), polish.indexOf("document.addEventListener('click'"));
 assert.doesNotMatch(restFunction, /syncUiHierarchy\(|syncUiHierarchyP1\(/, "250ms rest timer must never mutate global UI hierarchy");
 assert.match(polish, /function syncPresentationHierarchy\(\)/);
 assert.match(stability, /getActiveBeaconStory/);
 assert.match(stabilityCss, /axion-kingdom-world\.webp/);
 assert.match(stabilityCss, /campaign-cloud\{animation:none!important/);
+assert.doesNotMatch(stabilityCss, /cover fixed/, "patient story surfaces must not force fixed-background repaints");
 assert.doesNotMatch(ui, /MutationObserver/);
 assert.match(ui, /function ensureJourneyIntro\(page\)/, "journey hierarchy must be idempotent");
 assert.match(ui, /page\.querySelectorAll\(\"\[data-ui-journey-intro\]\"\)/, "duplicate journey intros must be collapsed");
