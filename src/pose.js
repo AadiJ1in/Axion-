@@ -1,8 +1,19 @@
 import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
-import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { chooseMediapipeDelegate, resolveMediapipeConfig } from "./mediapipe-config.js";
 
 const verifiedModelUrls = new Map();
+let visionModulePromise;
+
+async function loadVisionModule() {
+  if (!visionModulePromise) {
+    visionModulePromise = import("@mediapipe/tasks-vision").catch((error) => {
+      visionModulePromise = null;
+      throw error;
+    });
+  }
+  return visionModulePromise;
+}
+
 
 async function verifiedModelUrl(model) {
   const cacheKey = `${model.url}#${model.sha256}`;
@@ -194,12 +205,14 @@ export async function createMovementTracker(options) {
 
   async function initialize() {
     onTrackingState({ code: "model_loading", label: "Loading movement model", quality: null });
-    trackerApi.DrawingUtils = DrawingUtils;
-    trackerApi.PoseLandmarker = PoseLandmarker;
-    const [vision, modelAssetPath] = await Promise.all([
-      FilesetResolver.forVisionTasks(mediapipeConfig.wasmRoot),
+    const [visionModule, modelAssetPath] = await Promise.all([
+      loadVisionModule(),
       verifiedModelUrl(mediapipeConfig.model),
     ]);
+    const { DrawingUtils, FilesetResolver, PoseLandmarker } = visionModule;
+    trackerApi.DrawingUtils = DrawingUtils;
+    trackerApi.PoseLandmarker = PoseLandmarker;
+    const vision = await FilesetResolver.forVisionTasks(mediapipeConfig.wasmRoot);
     const options = {
       baseOptions: {
         modelAssetPath,
