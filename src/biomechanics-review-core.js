@@ -40,6 +40,8 @@ function formatValue(value, unit) {
 export function biomechanicsReviewPresentation(row = {}) {
   const analysis = row?.compensation_analysis || {};
   const status = String(analysis.status || "insufficient_data");
+  const reason = String(analysis.reason || "");
+  const secondaryEvidenceOnly = status === "insufficient_data" && reason === "primary_metric_not_configured";
   const score = Math.max(0, Math.min(100, Number(analysis.score || 0)));
   const title = status === "candidate"
     ? "Compensation migration candidate"
@@ -47,14 +49,18 @@ export function biomechanicsReviewPresentation(row = {}) {
       ? "Movement pattern to monitor"
       : status === "stable"
         ? "No sustained compensation migration detected"
-        : "Longitudinal baseline is still building";
+        : secondaryEvidenceOnly
+          ? "Movement evidence captured for longitudinal comparison"
+          : "Longitudinal baseline is still building";
   const badge = status === "candidate"
     ? "CLINICIAN REVIEW"
     : status === "monitoring"
       ? "MONITOR"
       : status === "stable"
         ? "STABLE"
-        : "BUILDING BASELINE";
+        : secondaryEvidenceOnly
+          ? "EVIDENCE CAPTURED"
+          : "BUILDING BASELINE";
 
   const signals = Array.isArray(analysis.signals) ? analysis.signals.slice(0, 4).map((signal) => ({
     label: humanizeBiomechanicsMetric(signal?.metric?.metricKey),
@@ -94,6 +100,7 @@ export function biomechanicsReviewPresentation(row = {}) {
 
   return {
     status,
+    reason,
     title,
     badge,
     score,
