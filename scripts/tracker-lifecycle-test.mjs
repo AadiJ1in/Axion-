@@ -2,9 +2,24 @@
 // These tests do not claim to evaluate the neural model's real-world accuracy.
 import assert from 'node:assert/strict';
 import { FilesetResolver, PoseLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
-import { createMovementTracker, resolveMediapipeRuntimeUrl } from '../src/pose.js';
-assert.equal(resolveMediapipeRuntimeUrl('/'), '/mediapipe');
-assert.equal(resolveMediapipeRuntimeUrl('/Axion-/'), '/Axion-/mediapipe', 'GitHub Pages resolves MediaPipe under the app base path');
+import { createMovementTracker } from '../src/pose.js';
+import { chooseMediapipeDelegate, resolveMediapipeConfig } from '../src/mediapipe-config.js';
+
+assert.equal(resolveMediapipeConfig({baseUrl:'/'},{}).wasmRoot, '/mediapipe');
+assert.equal(resolveMediapipeConfig({baseUrl:'/Axion-'},{}).wasmRoot, '/Axion-/mediapipe', 'GitHub Pages resolves MediaPipe under the app base path');
+assert.equal(resolveMediapipeConfig({wasmRoot:'https://cdn.example.test/mp-wasm'},{}).wasmRoot, 'https://cdn.example.test/mp-wasm', 'WASM root can be configured without changing tracker code');
+assert.equal(resolveMediapipeConfig({delegate:'cpu'},{}).delegate, 'cpu');
+assert.equal(chooseMediapipeDelegate('auto',{webgl:true}), 'GPU');
+assert.equal(chooseMediapipeDelegate('auto',{webgl:true,forceCpu:true}), 'CPU');
+assert.throws(
+  () => resolveMediapipeConfig({modelUrl:'/models/custom.task'},{}),
+  /SHA256/,
+  'custom models require an integrity hash rather than silently bypassing verification',
+);
+const customHash='a'.repeat(64);
+const customConfig=resolveMediapipeConfig({modelUrl:'/models/custom.task',modelSha256:customHash},{});
+assert.equal(customConfig.model.url,'/models/custom.task');
+assert.equal(customConfig.model.sha256,customHash);
 let now = 100, nextFrame = 0, failInference = false, closed = 0;
 const frames = new Map(), streams = [], states = [], errors = [], calibrations = [];
 Object.defineProperty(globalThis, 'performance', {value:{now:()=>now},configurable:true});
@@ -19,7 +34,8 @@ const points = Array.from({length:33},()=>({x:.5,y:.5,z:0,visibility:1}));
 for(const [hip,knee,ankle] of [[23,25,27],[24,26,28]]){
   points[hip]={x:.5,y:.3,z:0,visibility:1};points[knee]={x:.5,y:.6,z:0,visibility:1};points[ankle]={x:.5,y:.9,z:0,visibility:1};
 }
-FilesetResolver.forVisionTasks=async()=>({});
+const wasmRoots=[];
+FilesetResolver.forVisionTasks=async(root)=>{wasmRoots.push(root);return {};};
 const delegates=[];
 PoseLandmarker.createFromOptions=async(_vision,options)=>{delegates.push(options.baseOptions.delegate);return {detectForVideo(){if(failInference)throw Error('GPU context lost');return {landmarks:[points],worldLandmarks:[points]};},close(){closed++;}};};
 DrawingUtils.prototype.drawConnectors=()=>{};
@@ -32,6 +48,7 @@ const canvas={width:640,height:480,getContext:()=>({clearRect(){}})};
 const tracker=await createMovementTracker({video,canvas,onTrackingState:s=>states.push(s.code),onError:e=>errors.push(e),onCalibration:c=>calibrations.push(c)});
 async function step(ms=100){now+=ms;video.currentTime+=ms/1000;const callbacks=[...frames.values()];frames.clear();for(const fn of callbacks)await fn();}
 await tracker.start();
+assert.equal(wasmRoots[0],'/mediapipe','tracker consumes the resolved local runtime root');
 for(let i=0;i<35;i++)await step();
 assert.equal(tracker.getMetrics().calibrated,true,'stable stance completes real tracker calibration');
 assert.equal(frames.size,1,'one active tracking loop');
