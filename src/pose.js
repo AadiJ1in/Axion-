@@ -297,6 +297,7 @@ export async function createMovementTracker(options) {
 
   function pauseMeasurement(message) {
     repCycle.cancelPending();
+    onRepDiscard({ reason: "tracking_interrupted", exerciseKey: profile.exerciseKey });
     stage = calibrated ? "positioning" : "calibrating";
     repStart = null;
     peakAngle = null;
