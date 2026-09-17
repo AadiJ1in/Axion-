@@ -37,7 +37,15 @@ export function syncJourneyIntroPlacement() {
     intro = document.createElement("div");
     intro.dataset.uiJourneyIntro = "true";
     intro.className = "ui-journey-intro";
+  }
+
+  // Earlier presentation passes can leave behind an empty intro shell. Rebuild
+  // only the descriptive wrapper when its accessible heading is missing.
+  const heading = intro.querySelector("h2");
+  if (!heading) {
     intro.innerHTML = `<div><span>JOURNEY</span><h2>Your recovery journey</h2><p>See where you are and what unlocks next.</p></div>`;
+  } else {
+    heading.textContent = "Your recovery journey";
   }
 
   if (intro.nextElementSibling !== atlas) atlas.before(intro);
