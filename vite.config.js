@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const mediapipeRuntimeFiles = [
@@ -25,6 +25,22 @@ export default defineConfig({
     },
     {
       name: "bundle-mediapipe-runtime",
+      configureServer(server) {
+        // Vite dev does not expose arbitrary node_modules assets at /mediapipe.
+        // Serve only the four pinned MediaPipe runtime files so local demos use
+        // the exact same URL contract as production.
+        const sourceDir = resolve("node_modules/@mediapipe/tasks-vision/wasm");
+        server.middlewares.use("/mediapipe", (req, res, next) => {
+          const requested = decodeURIComponent((req.url || "").split("?")[0]).replace(/^\\/+/, "");
+          if (!mediapipeRuntimeFiles.includes(requested)) return next();
+          const source = resolve(sourceDir, requested);
+          if (!existsSync(source)) return next();
+          res.statusCode = 200;
+          res.setHeader("Content-Type", requested.endsWith(".wasm") ? "application/wasm" : "text/javascript; charset=utf-8");
+          res.setHeader("Cache-Control", "no-store");
+          res.end(readFileSync(source));
+        });
+      },
       closeBundle() {
         const outputDir = resolve("dist/mediapipe");
         const sourceDir = resolve("node_modules/@mediapipe/tasks-vision/wasm");
