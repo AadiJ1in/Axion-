@@ -1,0 +1,113 @@
+/* Patient Today contrast repair.
+   Loaded after the clinic-readiness layer so the patient summary uses a
+   deliberately light, high-contrast clinical palette instead of the legacy
+   dark glass treatment. */
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-recovery{
+  border-color:#c7ded2!important;
+  background:#f7fbf8!important;
+  box-shadow:0 16px 40px rgba(23,54,43,.08)!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy{
+  background:#f7fbf8!important;
+  color:#18352b!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy>span{
+  color:#167a58!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy h2,
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy li b{
+  color:#17372c!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy>p,
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy li small{
+  color:#536d62!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy li{
+  background:#ffffff!important;
+  border-color:#d4e4dc!important;
+  color:#17372c!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy li>span{
+  border-color:#98b9a9!important;
+  background:#f4faf6!important;
+  color:#176d50!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy li.done{
+  opacity:1!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy li.done>span{
+  border-color:#73bd99!important;
+  background:#e4f6ed!important;
+  color:#115c42!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy button{
+  background:#58dfa6!important;
+  color:#0c2f22!important;
+  border:1px solid #3fc98e!important;
+  box-shadow:0 7px 18px rgba(36,145,99,.16)!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy button:hover:not(:disabled){
+  background:#45d397!important;
+  border-color:#32b97f!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-copy button:focus-visible{
+  outline:3px solid #176d50!important;
+  outline-offset:3px!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status{
+  border-left-color:#c7ded2!important;
+  background:#edf7f1!important;
+  color:#17372c!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status>small{
+  color:#597267!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status>b{
+  color:#16382c!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status>span,
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status dt{
+  color:#526b60!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status dd{
+  color:#17372c!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status>i{
+  background:#d5e6dd!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status>i u{
+  background:#45cc91!important;
+}
+
+.patient-portal[data-ui-patient-today="true"] .clinic-today-status dl div{
+  border-top-color:#c7d9d0!important;
+}
+
+@media(max-width:760px){
+  .patient-portal[data-ui-patient-today="true"] .clinic-today-recovery{
+    grid-template-columns:1fr!important;
+  }
+  .patient-portal[data-ui-patient-today="true"] .clinic-today-status{
+    border-left:0!important;
+    border-top:1px solid #c7ded2!important;
+  }
+}
