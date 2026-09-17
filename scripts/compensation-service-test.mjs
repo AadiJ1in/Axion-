@@ -94,8 +94,11 @@ assert.equal(primaryRange.value, 74);
 assert.equal(primaryRange.unit, "deg");
 assert.equal(insertedRow.features.metrics.some((metric) => "landmarks" in metric || "coordinates" in metric), false);
 
-for (const exerciseKey of ["bodyweight_squat", "half_squat", "sit_to_stand", "forward_lunge", "step_up", "lateral_step_up"]) {
-  assert.ok(LOWER_BODY_COMPENSATION_GRAPH.byExercise[exerciseKey], `missing graph for ${exerciseKey}`);
+for (const exerciseKey of ["bodyweight_squat", "half_squat", "sit_to_stand"]) {
+  assert.ok(LOWER_BODY_COMPENSATION_GRAPH.byExercise[exerciseKey], `missing bilateral recovery graph for ${exerciseKey}`);
+}
+for (const exerciseKey of ["forward_lunge", "step_up", "lateral_step_up"]) {
+  assert.equal(LOWER_BODY_COMPENSATION_GRAPH.byExercise[exerciseKey], undefined, `${exerciseKey} must not use bilateral symmetry as a recovery anchor`);
 }
 
 const stepSession = {
@@ -115,12 +118,14 @@ const stepResult = await persistSessionBiomechanics({
   patientId: stepSession.patient_id,
   session: stepSession,
   frames: [metricFrame(0), metricFrame(1), metricFrame(2)],
-  primaryMetric: LOWER_BODY_COMPENSATION_GRAPH.byExercise.step_up.primaryMetric,
-  relatedMetrics: LOWER_BODY_COMPENSATION_GRAPH.byExercise.step_up.relatedMetrics,
+  primaryMetric: null,
+  relatedMetrics: [],
   featureDefinitionVersion: "whole-body-world-v2",
 });
 
 assert.equal(stepResult.saved, true);
+assert.equal(stepResult.analysis.status, "insufficient_data");
+assert.equal(stepResult.analysis.reason, "primary_metric_not_configured");
 const stepSymmetry = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_symmetry_delta");
 const stepRange = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_range");
 assert.equal(stepSymmetry.unit, "%");
