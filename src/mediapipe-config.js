@@ -13,7 +13,7 @@ function nonEmpty(value) {
 function appRelativeRoot(baseUrl, child) {
   const base = nonEmpty(baseUrl) || "/";
   const normalized = base.endsWith("/") ? base : `${base}/`;
-  return `${normalized}${child}`.replace(/\/+/g, "/");
+  return normalized === "/" ? `/${child}` : `${normalized}${child}`;
 }
 
 function normalizeDelegate(value) {
