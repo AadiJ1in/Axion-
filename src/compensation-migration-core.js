@@ -20,9 +20,7 @@ const FEATURE_KEYS = Object.freeze([
   "knee_medial_asymmetry_ratio",
 ]);
 
-// Thresholds are signal-change gates for longitudinal review, not clinical
-// injury thresholds. They intentionally represent meaningful pose drift before
-// the engine surfaces a pattern to a clinician.
+// These are review-signal gates, not clinical injury thresholds.
 export const COMPENSATION_SIGNAL_THRESHOLDS = Object.freeze({
   trunk_lean_deg: 5,
   pelvic_obliquity_deg: 3,
@@ -41,35 +39,16 @@ const SIGNAL_LABELS = Object.freeze({
   knee_medial_asymmetry_ratio: "Knee medial-drift asymmetry",
 });
 
-function normalizedPoint(value) {
-  if (Array.isArray(value) && value.length >= 2) {
-    const x = finite(value[0]);
-    const y = finite(value[1]);
-    return x === null || y === null ? null : { x, y };
-  }
-  if (value && typeof value === "object") {
-    const x = finite(value.x);
-    const y = finite(value.y);
-    return x === null || y === null ? null : { x, y };
-  }
-  return null;
-}
-
 function point(points, key) {
-  return normalizedPoint(points?.[key]);
+  const value = points?.[key];
+  const x = Array.isArray(value) ? finite(value[0]) : finite(value?.x);
+  const y = Array.isArray(value) ? finite(value[1]) : finite(value?.y);
+  return x === null || y === null ? null : { x, y };
 }
 
-function midpoint(a, b) {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-function distance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function horizontalDistance(a, b) {
-  return Math.abs(a.x - b.x);
-}
+const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const horizontalDistance = (a, b) => Math.abs(a.x - b.x);
 
 function percentile(values, ratio) {
   const numbers = values.map(finite).filter(Number.isFinite).sort((a, b) => a - b);
@@ -89,8 +68,7 @@ function mean(values) {
 }
 
 function linearSlope(values) {
-  const numbers = values.map(finite);
-  const pairs = numbers.map((value, index) => ({ x: index, y: value })).filter((item) => item.y !== null);
+  const pairs = values.map((value, index) => ({ x: index, y: finite(value) })).filter((item) => item.y !== null);
   if (pairs.length < 2) return null;
   const xMean = mean(pairs.map((item) => item.x));
   const yMean = mean(pairs.map((item) => item.y));
@@ -126,9 +104,6 @@ function kneeMedialRatio({ hip, knee, ankle, anatomicalRightSign, side }) {
   const predicted = expectedKneeX(hip, knee, ankle);
   const anatomicalDelta = (knee.x - predicted) * anatomicalRightSign;
   const limbLength = Math.max(EPSILON, distance(hip, knee) + distance(knee, ankle));
-  // Anatomical medial direction is rightward for the left limb and leftward
-  // for the right limb. Positive means the knee moved medially relative to a
-  // hip-to-ankle line; negative means it moved laterally.
   const medial = side === "left" ? anatomicalDelta : -anatomicalDelta;
   return medial / limbLength;
 }
@@ -152,19 +127,13 @@ export function extractPoseFeatures(points = {}) {
   const torsoVertical = Math.max(Math.abs(hipMid.y - shoulderMid.y), shoulderWidth * 0.25, EPSILON);
   const anatomicalRightSign = Math.sign(rh.x - lh.x) || Math.sign(rs.x - ls.x) || 1;
 
-  const trunkHorizontal = (shoulderMid.x - hipMid.x) * anatomicalRightSign;
-  const trunkSigned = Math.atan2(trunkHorizontal, torsoVertical) * DEG;
+  const trunkSigned = Math.atan2((shoulderMid.x - hipMid.x) * anatomicalRightSign, torsoVertical) * DEG;
   const pelvicSigned = Math.atan2(rh.y - lh.y, Math.max(horizontalDistance(lh, rh), EPSILON)) * DEG;
   const shoulderSigned = Math.atan2(rs.y - ls.y, Math.max(horizontalDistance(ls, rs), EPSILON)) * DEG;
 
-  // A 65/35 hip/shoulder center is a deliberately simple optical center proxy.
-  // It is not a center-of-pressure or force measurement.
-  const bodyCenter = {
-    x: hipMid.x * 0.65 + shoulderMid.x * 0.35,
-    y: hipMid.y * 0.65 + shoulderMid.y * 0.35,
-  };
-  const lateralShiftRatio = ((bodyCenter.x - ankleMid.x) * anatomicalRightSign) / stanceWidth;
-
+  // Optical center proxy only; this is not a force or center-of-pressure measurement.
+  const bodyCenterX = hipMid.x * 0.65 + shoulderMid.x * 0.35;
+  const lateralShiftRatio = ((bodyCenterX - ankleMid.x) * anatomicalRightSign) / stanceWidth;
   const leftKneeMedial = kneeMedialRatio({ hip: lh, knee: lk, ankle: la, anatomicalRightSign, side: "left" });
   const rightKneeMedial = kneeMedialRatio({ hip: rh, knee: rk, ankle: ra, anatomicalRightSign, side: "right" });
 
@@ -202,38 +171,19 @@ export function summarizePoseSamples(samples = []) {
   return summary;
 }
 
-function aggregateRepFeatures(samples) {
-  const groups = new Map();
-  for (const sample of samples) {
-    const rep = Math.max(1, Math.min(1000, Number(sample?.repIndex) || 1));
-    const current = groups.get(rep) || [];
-    current.push(sample.features);
-    groups.set(rep, current);
-  }
-  return [...groups.entries()].sort((a, b) => a[0] - b[0]).slice(0, 100).map(([rep, features]) => ({
-    rep,
-    features: summarizePoseSamples(features),
-  }));
-}
-
 export function buildBiomechanicsSnapshot(samples = [], meta = {}) {
   const clean = samples.filter((sample) => sample?.features && typeof sample.features === "object");
   const active = clean.filter((sample) => sample.active === true);
-  // Prefer motion frames. If the exercise did not expose a reliable active-state
-  // signal, fall back to every reliable pose frame rather than fabricating data.
   const analysisSamples = active.length >= Math.min(20, Math.max(8, clean.length * 0.2)) ? active : clean;
-  const quality = percentile(analysisSamples.map((sample) => sample.trackingQuality), 0.5);
-  const primaryMovementRange = percentile(analysisSamples.map((sample) => sample.primaryMovementRange), 0.5);
-  const primarySymmetryDelta = percentile(analysisSamples.map((sample) => sample.primarySymmetryDelta), 0.5);
   const repCount = Math.max(0, ...analysisSamples.map((sample) => Number(sample.repIndex) || 0));
 
   return {
     feature_schema_version: COMPENSATION_FEATURE_SCHEMA_VERSION,
     sample_count: analysisSamples.length,
     rep_count: repCount,
-    tracking_quality: quality,
-    primary_movement_range: primaryMovementRange,
-    primary_symmetry_delta: primarySymmetryDelta,
+    tracking_quality: percentile(analysisSamples.map((sample) => sample.trackingQuality), 0.5),
+    primary_movement_range: percentile(analysisSamples.map((sample) => sample.primaryMovementRange), 0.5),
+    primary_symmetry_delta: percentile(analysisSamples.map((sample) => sample.primarySymmetryDelta), 0.5),
     features: {
       capture: {
         source: "movement_twin_pose_projection",
@@ -245,8 +195,9 @@ export function buildBiomechanicsSnapshot(samples = [], meta = {}) {
         exercise_key: meta.exerciseKey || null,
         prescribed_side: meta.prescribedSide || "either",
       },
+      // Session-level summaries are intentionally the only persisted biomechanics payload.
+      // Existing rep_metrics owns per-rep clinical movement data.
       session: summarizePoseSamples(analysisSamples.map((sample) => sample.features)),
-      reps: aggregateRepFeatures(analysisSamples),
     },
   };
 }
@@ -285,8 +236,7 @@ function crossExerciseSupport(rows, key, threshold) {
     const latest = percentile(values.slice(-Math.min(2, values.length)), 0.5);
     if (baseline !== null && latest !== null && latest - baseline >= threshold * 0.5) supported += 1;
   }
-  if (!eligible) return 0;
-  return clamp(supported / Math.min(2, eligible), 0, 1);
+  return eligible ? clamp(supported / Math.min(2, eligible), 0, 1) : 0;
 }
 
 function burdenRegions(candidates) {
@@ -346,29 +296,30 @@ export function evaluateCompensationMigration(history = [], options = {}) {
   const candidates = [];
   for (const [key, threshold] of Object.entries(COMPENSATION_SIGNAL_THRESHOLDS)) {
     const series = rows.map((row) => featureValue(row, key));
-    const usable = series.filter(Number.isFinite);
-    if (usable.length < minimumSessions) continue;
+    if (series.filter(Number.isFinite).length < minimumSessions) continue;
     const baseline = percentile(baselineRows.map((row) => featureValue(row, key)), 0.5);
     const latest = percentile(recentRows.map((row) => featureValue(row, key)), 0.5);
     if (baseline === null || latest === null) continue;
+
     const drift = latest - baseline;
-    const magnitude = clamp(drift / threshold, 0, 2);
+    const magnitude = clamp(drift / threshold, 0, 1);
     const slope = linearSlope(series);
     const trend = slope === null ? 0 : clamp(slope / (threshold / Math.max(2, rows.length - 1)), 0, 1);
     const relationshipRaw = deficitValues.length >= minimumSessions ? pearson(deficitSeries, series) : null;
     const relationship = relationshipRaw === null ? 0 : clamp(-relationshipRaw, 0, 1);
     const postBaseline = rows.slice(baselineCount).map((row) => featureValue(row, key)).filter(Number.isFinite);
-    const persistent = postBaseline.length
+    const persistence = postBaseline.length
       ? postBaseline.filter((value) => value >= baseline + threshold * 0.5).length / postBaseline.length
       : 0;
     const exerciseSupport = crossExerciseSupport(rows, key, threshold);
-    const raw = (0.31 * clamp(magnitude, 0, 1))
-      + (0.28 * persistent)
+    const raw = (0.31 * magnitude)
+      + (0.28 * persistence)
       + (0.22 * relationship)
       + (0.11 * trend)
       + (0.08 * exerciseSupport);
     const signalScore = Math.round(clamp(raw * 100, 0, 100));
     if (signalScore < 18 && drift < threshold * 0.35) continue;
+
     candidates.push({
       key,
       label: SIGNAL_LABELS[key] || key,
@@ -376,7 +327,7 @@ export function evaluateCompensationMigration(history = [], options = {}) {
       latest,
       change: drift,
       threshold,
-      persistence: persistent,
+      persistence,
       correlation_with_primary_deficit: relationshipRaw,
       cross_exercise_support: exerciseSupport,
       signalScore,
@@ -389,15 +340,11 @@ export function evaluateCompensationMigration(history = [], options = {}) {
   const breadth = top.length ? Math.min(1, top.filter((item) => item.signalScore >= 35).length / 3) : 0;
   const topMean = top.length ? mean(top.map((item) => item.signalScore)) : 0;
   let score = Math.round(clamp((0.56 * strongest) + (0.29 * topMean) + (0.15 * breadth * 100), 0, 100));
-  // A migration label requires evidence that the original deficit is improving.
-  // Without it, the system can still surface redistribution for review, but the
-  // score is damped and the copy does not claim migration from the primary site.
   score = Math.round(score * (improvementEvidence ? (0.8 + 0.2 * improvementStrength) : 0.72));
-  const status = statusFor(score, improvementEvidence);
 
   return {
     analysis_version: COMPENSATION_ANALYSIS_VERSION,
-    status,
+    status: statusFor(score, improvementEvidence),
     score,
     session_count: rows.length,
     primary_improvement: deficitImprovement === null ? null : {
@@ -410,7 +357,7 @@ export function evaluateCompensationMigration(history = [], options = {}) {
     },
     signals: top,
     regions: burdenRegions(candidates),
-    disclaimer: "Pose-derived movement redistribution signal for clinician review. It does not measure joint force, diagnose injury, or predict that an injury will occur.",
+    disclaimer: "Pose-derived movement redistribution signal for clinician review. It is not a diagnosis or injury prediction and does not measure joint force.",
   };
 }
 
