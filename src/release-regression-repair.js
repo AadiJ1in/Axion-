@@ -1,6 +1,57 @@
 // Narrow release-gate repairs for presentation-only UI behavior.
 // This module does not touch auth, persistence, prescriptions, or movement scoring.
 
+let startedLabIdentity = null;
+let exerciseContinuityBound = false;
+
+function labIdentity() {
+  if (typeof document === "undefined") return null;
+  const page = document.querySelector(".lab-page");
+  if (!page) return null;
+  const client = String(page.dataset.sessionClientId || "").trim();
+  const assignment = String(page.dataset.sessionAssignmentId || "").trim();
+  const plan = String(page.dataset.sessionPlanId || "").trim();
+  if (!client || !assignment) return null;
+  return `${client}:${assignment}:${plan}`;
+}
+
+function restoreStartedExerciseSession() {
+  if (!startedLabIdentity || labIdentity() !== startedLabIdentity) return;
+  const begin = document.querySelector("#clinic-begin-exercise");
+  if (!begin) return;
+  const status = document.querySelector("#capture-status");
+  if (/Exercise started/i.test(begin.textContent || "") || /MOVEMENT TRACKING/i.test(status?.textContent || "")) return;
+  if (!begin.disabled) begin.click();
+}
+
+export function bindExerciseStartContinuity() {
+  if (exerciseContinuityBound || typeof document === "undefined") return;
+  exerciseContinuityBound = true;
+
+  document.addEventListener("click", (event) => {
+    const target = event.target.closest?.("#clinic-begin-exercise, #finish-session, [data-start-node-assignment], [data-start-assignment]");
+    if (!target) return;
+
+    if (target.id === "clinic-begin-exercise") {
+      // clinic-readiness registers first and handles this click earlier on the
+      // same capture target. Record continuity only after that handler has
+      // actually changed the UI into the started state.
+      queueMicrotask(() => {
+        const status = document.querySelector("#capture-status")?.textContent || "";
+        const beginText = document.querySelector("#clinic-begin-exercise")?.textContent || "";
+        if (/MOVEMENT TRACKING/i.test(status) || /Exercise started/i.test(beginText)) startedLabIdentity = labIdentity();
+      });
+      return;
+    }
+
+    startedLabIdentity = null;
+  }, true);
+
+  const restore = () => queueMicrotask(restoreStartedExerciseSession);
+  document.addEventListener("axion:clinical-gate-mounted", restore);
+  document.addEventListener("axion:tracker-readiness", restore);
+}
+
 export function captureCameraRecoveryState() {
   if (typeof document === "undefined") return null;
   const panel = document.querySelector("#camera-recovery");
