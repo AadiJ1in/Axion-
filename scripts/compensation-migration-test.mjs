@@ -230,6 +230,41 @@ const related = [
 
 {
   const observations = [];
+  const symmetry = [24, 21, 18, 14, 10, 7, 5];
+  const movementRange = [82, 80, 76, 64, 55, 47, 41];
+  const trunk = [4, 5, 7, 9, 12, 15, 17];
+  for (let i = 0; i < symmetry.length; i += 1) {
+    observations.push(observation(i + 1, "squat", "right_knee_asymmetry", "knee", "right", symmetry[i]));
+    observations.push(observation(i + 1, "squat", "primary_movement_range", "primary_movement", "bilateral", movementRange[i]));
+    observations.push(observation(i + 1, "squat", "trunk_lean", "trunk", "midline", trunk[i]));
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: {
+      ...primary,
+      exerciseKey: "squat",
+      unit: "deg",
+      recoveryGuard: {
+        metricKey: "primary_movement_range",
+        region: "primary_movement",
+        side: "any",
+        unit: "deg",
+        exerciseKey: "squat",
+        maxRelativeDecrease: 0.15,
+      },
+    },
+    relatedMetrics: [related[0]],
+  });
+  assert.equal(result.status, "monitoring");
+  assert.equal(result.reason, "primary_recovery_confounded_by_range_loss");
+  assert.equal(result.score, 0);
+  assert.equal(result.signals.length, 0);
+  assert.equal(result.primary.recoveryGuard.satisfied, false);
+  assert.ok(result.primary.recoveryGuard.relativeDecrease > 0.15);
+}
+
+{
+  const observations = [];
   const relatedMany = Array.from({ length: 6 }, (_, index) => ({
     metricKey: `secondary_drift_${index + 1}`,
     region: index % 2 === 0 ? "trunk" : "lower_limb",
