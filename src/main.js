@@ -2095,14 +2095,21 @@ async function initializeLab() {
       movementGameController?.updateCameraPose(points);
       movementIntelligence?.observe(points);
     },
-    onRepStart: () => movementIntelligence?.startRep(),
-    onRepDiscard: () => movementIntelligence?.discardRep(),
+    onRepStart: () => {
+      latestAiMovement = null;
+      movementIntelligence?.startRep();
+    },
+    onRepDiscard: () => {
+      movementIntelligence?.discardRep();
+      latestAiMovement = null;
+    },
     onTiming: (trace) => { pendingPerformanceTrace = trace; },
     onTrackingState: handleTrackingState,
     onRep: (rep) => {
       const aiMovement = movementIntelligence?.finishRep?.() || null;
       latestAiMovement = aiMovement;
-      acceptValidatedRep(aiMovement ? { ...rep, aiMovement } : rep);
+      if (aiMovement) rep.aiMovement = aiMovement;
+      acceptValidatedRep(rep);
     },
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
       if (setRestEndsAt || movementGameController?.getState().safetyFlagged || doseProgress(currentAssignment, sessionReps.length).done) return;
