@@ -37,7 +37,7 @@ assert.ok(Number.isFinite(one.l_knee));
 assert.ok(Number.isFinite(one.r_hip));
 assert.ok(Number.isFinite(one.trunk_flex));
 
-const summary = summarizeSquatFrames(repFrames());
+const summary = summarizeSquatFrames(repFrames().map(squatFrameFeatures));
 assert.ok(summary.frameCount >= 20);
 assert.ok(summary.features.l_knee_rom > 0);
 assert.ok(summary.features.r_hip_rom > 0);
