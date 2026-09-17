@@ -1,8 +1,8 @@
 import { aggregateBiomechanicsFrames } from "./biomechanics-feature-core.js";
 import { detectCompensationMigration } from "./compensation-migration-core.js";
 
-export const BIOMECHANICS_FEATURE_SCHEMA_VERSION = 2;
-export const COMPENSATION_ANALYSIS_VERSION = 2;
+export const BIOMECHANICS_FEATURE_SCHEMA_VERSION = 3;
+export const COMPENSATION_ANALYSIS_VERSION = 3;
 
 function assertClient(supabase) {
   if (!supabase?.from) throw new Error("A configured Supabase client is required.");
@@ -230,11 +230,12 @@ export async function persistSessionBiomechanics({
 // scale. They are engineering gates for longitudinal review signals, not
 // clinically validated diagnostic cutoffs.
 const sharedLowerBodyRelatedMetrics = Object.freeze([
-  { metricKey: "trunk_lateral_lean_relative_deg", region: "trunk", side: "midline", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5 },
-  { metricKey: "shoulder_pelvis_obliquity_delta_deg", region: "trunk", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5 },
-  { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "left", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
-  { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "right", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
-  { metricKey: "pelvis_over_stance_offset_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
+  { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5 },
+  { metricKey: "shoulder_pelvis_axis_mismatch_3d_deg", region: "trunk", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3 },
+  { metricKey: "hip_flexion_asymmetry_3d_deg", region: "hip", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3 },
+  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "left", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
+  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "right", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
+  { metricKey: "pelvis_over_stance_offset_3d_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
 ]);
 
 function primarySymmetryMetric(exerciseKey) {
