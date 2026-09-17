@@ -15,7 +15,11 @@ const SESSION_LOOKUP_ATTEMPTS = 20;
 const SESSION_LOOKUP_DELAY_MS = 450;
 const LOWER_BODY_ANALYSIS_EXERCISES = new Set([
   "bodyweight_squat",
+  "half_squat",
+  "sit_to_stand",
   "forward_lunge",
+  "step_up",
+  "lateral_step_up",
 ]);
 
 const state = {
