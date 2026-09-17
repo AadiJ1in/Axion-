@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.3.0";
+export const COMPENSATION_ENGINE_VERSION = "0.4.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -308,7 +308,9 @@ export function detectCompensationMigration({
     const score = scoreSignal({ persistence, magnitude, coupling, exerciseConsistency });
     const crossExerciseSatisfied = replicatedExerciseCount >= config.minExercises;
 
-    if (temporal.correlation !== null && temporal.correlation < config.minTemporalCorrelation && score < config.candidateScore) continue;
+    const temporalCouplingSatisfied = temporal.correlation !== null
+      && temporal.pairedSessions >= 3
+      && temporal.correlation >= config.minTemporalCorrelation;
 
     signals.push({
       metric: {
@@ -328,22 +330,26 @@ export function detectCompensationMigration({
       crossExerciseSatisfied,
       replicatedExerciseCount,
       replicationEvidence,
+      temporalCouplingSatisfied,
       explanation: signalExplanation(primaryMetric, related, primarySummary, summary, score, crossExerciseSatisfied),
     });
   }
 
   signals.sort((a, b) => b.score - a.score);
   const candidateSignal = signals.find((signal) => signal.score >= config.candidateScore
+    && signal.temporalCouplingSatisfied
     && (!config.requireCrossExerciseCandidate || signal.crossExerciseSatisfied));
   const score = candidateSignal?.score || signals[0]?.score || 0;
   return {
     status: candidateSignal ? "candidate" : signals.length ? "monitoring" : "stable",
     score,
     reason: candidateSignal
-      ? "cross_exercise_secondary_drift_detected"
-      : signals.length
-        ? "secondary_drift_requires_replication"
-        : "no_secondary_drift",
+      ? "cross_exercise_temporally_coupled_secondary_drift_detected"
+      : signals.some((signal) => signal.crossExerciseSatisfied && !signal.temporalCouplingSatisfied)
+        ? "secondary_drift_temporal_coupling_weak"
+        : signals.length
+          ? "secondary_drift_requires_replication"
+          : "no_secondary_drift",
     primary: {
       metric: {
         metricKey: primaryMetric.metricKey,
