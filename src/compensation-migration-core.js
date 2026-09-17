@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.8.0";
+export const COMPENSATION_ENGINE_VERSION = "0.9.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -18,6 +18,8 @@ export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minTemporalCorrelation: 0.55,
   candidateScore: 60,
   requireCrossExerciseCandidate: true,
+  maxReportedSignals: 4,
+  maxReplicationEvidence: 4,
 });
 
 function engineConfigSnapshot(config) {
@@ -36,6 +38,8 @@ function engineConfigSnapshot(config) {
     minTemporalCorrelation: config.minTemporalCorrelation,
     candidateScore: config.candidateScore,
     requireCrossExerciseCandidate: Boolean(config.requireCrossExerciseCandidate),
+    maxReportedSignals: config.maxReportedSignals,
+    maxReplicationEvidence: config.maxReplicationEvidence,
   };
 }
 
@@ -405,6 +409,16 @@ export function detectCompensationMigration({
     && signal.observationWindowSatisfied
     && (!config.requireCrossExerciseCandidate || signal.crossExerciseSatisfied));
   const score = candidateSignal?.score || signals[0]?.score || 0;
+  const orderedSignals = candidateSignal
+    ? [candidateSignal, ...signals.filter((signal) => signal !== candidateSignal)]
+    : signals;
+  const reportedSignals = orderedSignals
+    .slice(0, Math.max(1, Number(config.maxReportedSignals) || 4))
+    .map((signal) => ({
+      ...signal,
+      replicationEvidence: (signal.replicationEvidence || [])
+        .slice(0, Math.max(1, Number(config.maxReplicationEvidence) || 4)),
+    }));
   return {
     status: candidateSignal ? "candidate" : signals.length ? "monitoring" : "stable",
     score,
@@ -428,7 +442,7 @@ export function detectCompensationMigration({
       summary: primarySummary,
       improvementFraction: primaryImprovement,
     },
-    signals,
+    signals: reportedSignals,
     candidateMetric: candidateSignal?.metric || null,
     engineVersion: COMPENSATION_ENGINE_VERSION,
     config: configSnapshot,
