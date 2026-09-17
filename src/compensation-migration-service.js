@@ -28,10 +28,11 @@ function metricPayload(metric) {
 
 function rowObservations(row) {
   const metrics = Array.isArray(row?.features?.metrics) ? row.features.metrics : [];
+  const occurredAt = row?.features?.sessionCompletedAt || row.created_at;
   return metrics.map((metric) => ({
     sessionId: row.session_id,
     exerciseKey: row.exercise_key,
-    occurredAt: row.created_at,
+    occurredAt,
     metricKey: metric.metricKey,
     region: metric.region,
     side: metric.side || "unspecified",
@@ -43,7 +44,12 @@ function rowObservations(row) {
   })).filter((item) => item.metricKey && Number.isFinite(item.value));
 }
 
-export async function loadBiomechanicsHistory({ supabase, patientId, limit = 250 } = {}) {
+export async function loadBiomechanicsHistory({
+  supabase,
+  patientId,
+  limit = 250,
+  featureDefinitionVersion = null,
+} = {}) {
   assertClient(supabase);
   if (!patientId) return [];
   const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 250));
@@ -53,7 +59,9 @@ export async function loadBiomechanicsHistory({ supabase, patientId, limit = 250
     .order("created_at", { ascending: true })
     .limit(safeLimit);
   if (error) throw error;
-  return (data || []).flatMap(rowObservations);
+  return (data || [])
+    .filter((row) => !featureDefinitionVersion || row?.features?.definitionVersion === featureDefinitionVersion)
+    .flatMap(rowObservations);
 }
 
 export async function analyzePatientCompensation({
@@ -64,8 +72,14 @@ export async function analyzePatientCompensation({
   config,
   historyLimit = 250,
   additionalObservations = [],
+  featureDefinitionVersion = null,
 } = {}) {
-  const history = await loadBiomechanicsHistory({ supabase, patientId, limit: historyLimit });
+  const history = await loadBiomechanicsHistory({
+    supabase,
+    patientId,
+    limit: historyLimit,
+    featureDefinitionVersion,
+  });
   return detectCompensationMigration({
     observations: [...history, ...additionalObservations],
     primaryMetric,
@@ -84,6 +98,7 @@ export async function persistSessionBiomechanics({
   relatedMetrics = [],
   minQuality = 0.55,
   historyLimit = 250,
+  featureDefinitionVersion = "whole-body-v1",
 } = {}) {
   assertClient(supabase);
   if (!patientId || !session?.id || !session?.assignment_id || !session?.exercise_key) {
@@ -109,6 +124,7 @@ export async function persistSessionBiomechanics({
       relatedMetrics,
       historyLimit,
       additionalObservations: currentObservations,
+      featureDefinitionVersion,
     })
     : {
       status: "insufficient_data",
@@ -119,8 +135,9 @@ export async function persistSessionBiomechanics({
     };
 
   const features = {
-    definitionVersion: "whole-body-v1",
+    definitionVersion: featureDefinitionVersion,
     aggregation: "median",
+    sessionCompletedAt: occurredAt,
     metrics: metrics.map(metricPayload),
   };
   const trackingQuality = average(metrics.map((metric) => metric.quality));
