@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { detectCompensationMigration } from "../src/compensation-migration-core.js";
 
-const day = 86400000;
+const day = 2 * 86400000;
 const start = Date.parse("2026-09-01T12:00:00Z");
 
 function observation(session, exerciseKey, metricKey, region, side, value, quality = 0.95) {
@@ -37,6 +37,26 @@ const related = [
   ];
   const result = detectCompensationMigration({ observations, primaryMetric: primary, relatedMetrics: related });
   assert.equal(result.status, "insufficient_data");
+}
+
+{
+  const observations = [];
+  const knee = [24, 21, 18, 14, 10];
+  const trunk = [4, 6, 8, 11, 14];
+  for (let i = 0; i < knee.length; i += 1) {
+    const occurredAt = new Date(start + i * 60 * 60 * 1000).toISOString();
+    const exercise = i % 2 === 0 ? "squat" : "step_down";
+    observations.push({ ...observation(i + 1, exercise, "right_knee_asymmetry", "knee", "right", knee[i]), occurredAt });
+    observations.push({ ...observation(i + 1, exercise, "trunk_lean", "trunk", "midline", trunk[i]), occurredAt });
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: primary,
+    relatedMetrics: [related[0]],
+  });
+  assert.equal(result.status, "insufficient_data");
+  assert.equal(result.reason, "observation_window_too_short");
+  assert.ok(result.primary.spanDays < 1);
 }
 
 {
