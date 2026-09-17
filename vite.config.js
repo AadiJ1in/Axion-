@@ -31,7 +31,7 @@ export default defineConfig({
         // the exact same URL contract as production.
         const sourceDir = resolve("node_modules/@mediapipe/tasks-vision/wasm");
         server.middlewares.use("/mediapipe", (req, res, next) => {
-          const requested = decodeURIComponent((req.url || "").split("?")[0]).replace(/^\\/+/, "");
+          const requested = decodeURIComponent((req.url || "").split("?")[0]).split("/").filter(Boolean).pop() || "";
           if (!mediapipeRuntimeFiles.includes(requested)) return next();
           const source = resolve(sourceDir, requested);
           if (!existsSync(source)) return next();
