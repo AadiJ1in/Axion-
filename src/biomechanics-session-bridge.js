@@ -161,7 +161,7 @@ async function newestSavedSession() {
 
 function analysisGraphForAssignment(assignment) {
   if (!LOWER_BODY_ANALYSIS_EXERCISES.has(assignment?.exercise_key)) return null;
-  return LOWER_BODY_COMPENSATION_GRAPH.kneeAsymmetry;
+  return LOWER_BODY_COMPENSATION_GRAPH.byExercise?.[assignment.exercise_key] || null;
 }
 
 function showPersistenceReceipt(result) {
