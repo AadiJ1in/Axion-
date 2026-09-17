@@ -54,7 +54,7 @@ export function createWorldBiomechanicsFrame(landmarks, {
 } = {}) {
   const quality = Number(trackingQuality);
   if (!Array.isArray(landmarks)
-      || landmarks.length < 29
+      || landmarks.length < 33
       || !calibrated
       || !WORLD_BIOMECHANICS_ACTIVE_STAGES.includes(String(stage))
       || !Number.isFinite(quality)
