@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.10.0";
+export const COMPENSATION_ENGINE_VERSION = "0.11.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -112,7 +112,9 @@ function metricIdentity(metric = {}) {
 }
 
 function matchesMetric(item, metric = {}) {
-  if (metricIdentity(item) !== metricIdentity(metric)) return false;
+  if (item.metricKey !== metric.metricKey) return false;
+  if (metric.region && item.region !== metric.region) return false;
+  if (metric.side && metric.side !== "any" && item.side !== metric.side) return false;
   if (metric.exerciseKey && item.exerciseKey !== metric.exerciseKey) return false;
   if (Array.isArray(metric.exerciseKeys) && metric.exerciseKeys.length && !metric.exerciseKeys.includes(item.exerciseKey)) return false;
   if (metric.unit && item.unit !== metric.unit) return false;
@@ -334,6 +336,74 @@ export function detectCompensationMigration({
     };
   }
 
+  let recoveryGuard = null;
+  if (primaryMetric.recoveryGuard?.metricKey) {
+    const guardSpec = primaryMetric.recoveryGuard;
+    const guardRaw = normalized.filter((item) => matchesMetric(item, guardSpec));
+    const guardPoints = collapseBySession(guardRaw, config.minQuality);
+    const guardSummary = summarizeMetric(guardPoints, config);
+    const maxRelativeDecrease = Math.max(0, Number(guardSpec.maxRelativeDecrease ?? 0.15));
+    if (!guardSummary || guardSummary.spanDays < config.minObservationSpanDays) {
+      return {
+        status: "insufficient_data",
+        score: 0,
+        reason: "primary_recovery_guard_insufficient",
+        primary: {
+          metric: {
+            metricKey: primaryMetric.metricKey,
+            region: primaryMetric.region || "unknown",
+            side: primaryMetric.side || "unspecified",
+            unit: primaryMetric.unit || primaryPoints[0]?.unit || null,
+            exerciseKey: primaryMetric.exerciseKey || null,
+          },
+          summary: primarySummary,
+          improvementFraction: primaryImprovement,
+          recoveryGuard: {
+            metric: guardSpec,
+            summary: guardSummary,
+            satisfied: false,
+            maxRelativeDecrease,
+          },
+        },
+        signals: [],
+        engineVersion: COMPENSATION_ENGINE_VERSION,
+        config: configSnapshot,
+        disclaimer: "Movement-pattern signal for clinician review only. It does not diagnose or predict an injury.",
+      };
+    }
+    const relativeDecrease = Math.max(0, -guardSummary.relativeDelta);
+    recoveryGuard = {
+      metric: guardSpec,
+      summary: guardSummary,
+      relativeDecrease,
+      maxRelativeDecrease,
+      satisfied: relativeDecrease <= maxRelativeDecrease,
+    };
+    if (!recoveryGuard.satisfied) {
+      return {
+        status: "monitoring",
+        score: 0,
+        reason: "primary_recovery_confounded_by_range_loss",
+        primary: {
+          metric: {
+            metricKey: primaryMetric.metricKey,
+            region: primaryMetric.region || "unknown",
+            side: primaryMetric.side || "unspecified",
+            unit: primaryMetric.unit || primaryPoints[0]?.unit || null,
+            exerciseKey: primaryMetric.exerciseKey || null,
+          },
+          summary: primarySummary,
+          improvementFraction: primaryImprovement,
+          recoveryGuard,
+        },
+        signals: [],
+        engineVersion: COMPENSATION_ENGINE_VERSION,
+        config: configSnapshot,
+        disclaimer: "Movement-pattern signal for clinician review only. It does not diagnose or predict an injury.",
+      };
+    }
+  }
+
   const signals = [];
   for (const related of relatedMetrics) {
     if (!related?.metricKey) continue;
@@ -441,6 +511,7 @@ export function detectCompensationMigration({
       },
       summary: primarySummary,
       improvementFraction: primaryImprovement,
+      recoveryGuard,
     },
     signals: reportedSignals,
     candidateMetric: candidateSignal?.metric || null,
