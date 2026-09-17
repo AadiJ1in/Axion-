@@ -2,14 +2,16 @@
 // These tests do not claim to evaluate the neural model's real-world accuracy.
 import assert from 'node:assert/strict';
 import { FilesetResolver, PoseLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
-import { createMovementTracker } from '../src/pose.js';
+import { createMovementTracker, resolveMediapipeRuntimeUrl } from '../src/pose.js';
+assert.equal(resolveMediapipeRuntimeUrl('/'), '/mediapipe');
+assert.equal(resolveMediapipeRuntimeUrl('/Axion-/'), '/Axion-/mediapipe', 'GitHub Pages resolves MediaPipe under the app base path');
 let now = 100, nextFrame = 0, failInference = false, closed = 0;
 const frames = new Map(), streams = [], states = [], errors = [], calibrations = [];
 Object.defineProperty(globalThis, 'performance', {value:{now:()=>now},configurable:true});
 globalThis.requestAnimationFrame = fn => {const id=++nextFrame;frames.set(id,fn);return id;};
 globalThis.cancelAnimationFrame = id => frames.delete(id);
 globalThis.OffscreenCanvasRenderingContext2D = class {};
-globalThis.document = {createElement:()=>({getContext:()=>null})};
+globalThis.document = {createElement:()=>({getContext:(kind)=>kind==='webgl2'?{}:null})};
 // Model integrity/download is outside this lifecycle test; no network is used.
 globalThis.fetch = async()=>({ok:true,arrayBuffer:async()=>new ArrayBuffer(0)});
 Object.defineProperty(globalThis,'crypto',{value:{subtle:{digest:async()=>Uint8Array.from(Buffer.from('59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a','hex')).buffer}},configurable:true});
@@ -18,7 +20,8 @@ for(const [hip,knee,ankle] of [[23,25,27],[24,26,28]]){
   points[hip]={x:.5,y:.3,z:0,visibility:1};points[knee]={x:.5,y:.6,z:0,visibility:1};points[ankle]={x:.5,y:.9,z:0,visibility:1};
 }
 FilesetResolver.forVisionTasks=async()=>({});
-PoseLandmarker.createFromOptions=async()=>({detectForVideo(){if(failInference)throw Error('GPU context lost');return {landmarks:[points],worldLandmarks:[points]};},close(){closed++;}});
+const delegates=[];
+PoseLandmarker.createFromOptions=async(_vision,options)=>{delegates.push(options.baseOptions.delegate);return {detectForVideo(){if(failInference)throw Error('GPU context lost');return {landmarks:[points],worldLandmarks:[points]};},close(){closed++;}};};
 DrawingUtils.prototype.drawConnectors=()=>{};
 DrawingUtils.prototype.drawLandmarks=()=>{};
 function newStream(){const stream={active:true,getTracks:()=>[track],getVideoTracks:()=>[track]};const track={stop(){stream.active=false;},addEventListener(){}};streams.push(stream);return stream;}
@@ -42,10 +45,17 @@ assert.equal(calibrations.at(-1).progress,0);
 tracker.resume();for(let i=0;i<35;i++)await step();
 assert.equal(tracker.getMetrics().calibrated,true,'reset then resume can calibrate again');
 failInference=true;await step();
-assert.equal(frames.size,0,'inference failure stops rather than leaving a rejected RAF promise');
+assert.equal(frames.size,1,'a GPU inference failure automatically keeps one tracking loop alive through CPU fallback');
+assert.deepEqual(delegates.slice(0,2),['GPU','CPU'],'runtime recovery switches from GPU to CPU');
+assert.equal(streams.at(-1).active,true,'GPU fallback keeps the granted camera stream active');
+assert.equal(errors.length,0,'successful compatibility fallback is not surfaced as a fatal camera error');
+failInference=false;await step();
+assert.equal(frames.size,1,'CPU compatibility tracking resumes automatically');
+failInference=true;await step();
+assert.equal(frames.size,0,'a subsequent CPU inference failure enters the recoverable stopped state');
 assert.equal(streams.at(-1).active,false);
-assert.equal(errors.length,1);assert.equal(states.at(-1),'camera_error');assert.equal(closed,1);
-failInference=false;await tracker.start();assert.equal(frames.size,1,'explicit restart recovers after a model failure');
+assert.equal(errors.length,1);assert.equal(states.at(-1),'camera_error');assert.equal(closed,2);
+failInference=false;await tracker.start();assert.equal(frames.size,1,'explicit restart recovers after a CPU model failure');
 tracker.stop();assert.equal(frames.size,0);
 let release;
 open=()=>new Promise(resolve=>{release=resolve;});
@@ -58,7 +68,7 @@ assert.equal(video.srcObject,null);assert.equal(frames.size,0);
 tracker.destroy();
 assert.equal(frames.size,0,'destroy leaves no tracking loop');
 assert.equal(video.srcObject,null,'destroy detaches camera element');
-assert.equal(closed,2,'destroy disposes the active MediaPipe landmarker exactly once');
+assert.equal(closed,3,'destroy disposes the active MediaPipe landmarker exactly once after GPU fallback');
 tracker.destroy();
-assert.equal(closed,2,'destroy is idempotent for model disposal');
+assert.equal(closed,3,'destroy is idempotent for model disposal');
 console.log('Actual tracker lifecycle passed: recalibration, restart, pause, model failure/recovery, late camera grant cancellation, and terminal model disposal.');
