@@ -4,7 +4,7 @@ import { detectCompensationMigration } from "../src/compensation-migration-core.
 const day = 2 * 86400000;
 const start = Date.parse("2026-09-01T12:00:00Z");
 
-function observation(session, exerciseKey, metricKey, region, side, value, quality = 0.95) {
+function observation(session, exerciseKey, metricKey, region, side, value, quality = 0.95, acceptedFrames = 12) {
   return {
     sessionId: `session-${session}`,
     exerciseKey,
@@ -15,6 +15,7 @@ function observation(session, exerciseKey, metricKey, region, side, value, quali
     value,
     quality,
     unit: metricKey.includes("load") ? "%" : "deg",
+    context: { acceptedFrames },
   };
 }
 
@@ -182,6 +183,25 @@ const related = [
   assert.ok(result.signals[0].score >= 60);
   assert.equal(result.status, "monitoring");
   assert.equal(result.reason, "secondary_drift_temporal_coupling_weak");
+}
+
+{
+  const observations = [];
+  const knee = [24, 21, 18, 14, 10, 7, 5];
+  const trunk = [4, 5, 7, 9, 12, 15, 17];
+  for (let i = 0; i < knee.length; i += 1) {
+    const exercise = i % 2 === 0 ? "squat" : "step_down";
+    observations.push(observation(i + 1, exercise, "right_knee_asymmetry", "knee", "right", knee[i]));
+    observations.push(observation(i + 1, exercise, "trunk_lean", "trunk", "midline", trunk[i], 0.95, 3));
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: primary,
+    relatedMetrics: [related[0]],
+  });
+  assert.equal(result.status, "stable");
+  assert.equal(result.reason, "no_secondary_drift");
+  assert.equal(result.signals.length, 0);
 }
 
 {
