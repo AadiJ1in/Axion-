@@ -106,14 +106,14 @@ document.addEventListener('click', (event) => {
   }, 80);
 }, true);
 
-// The timer still avoids full presentation rerenders. It refreshes the rest overlay
-// plus two finite post-clinic mappings needed because clinic-readiness resolves async.
-const polishTimer = window.setInterval(() => {
-  syncRestExperience();
-  syncLateClinicPresentation();
-}, 250);
+// Keep the established rest-only timer contract intact. A separate lightweight
+// async-clinic sync only touches two idempotent presentation details after the
+// clinic-ready enhancer finishes loading its data.
+const polishTimer = window.setInterval(syncRestExperience, 250);
+const lateClinicTimer = window.setInterval(syncLateClinicPresentation, 250);
 window.addEventListener('pagehide', () => {
   window.clearInterval(polishTimer);
+  window.clearInterval(lateClinicTimer);
   if (presentationFrame) window.cancelAnimationFrame(presentationFrame);
 }, { once:true });
 window.addEventListener('pageshow', schedulePresentationHierarchy);
