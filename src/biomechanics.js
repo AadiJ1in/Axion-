@@ -26,7 +26,7 @@ export const MODEL_FEATURES_V1 = Object.freeze([
 ]);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = (value) => value === null || value === undefined || value === "" ? null : (Number.isFinite(Number(value)) ? Number(value) : null);
 const round = (value, digits = 3) => {
   const n = finite(value);
   if (n === null) return null;
