@@ -59,6 +59,19 @@ assert.equal(building.title, "Longitudinal baseline is still building");
 assert.equal(building.showScore, false);
 assert.equal(building.signals.length, 0);
 
+const secondaryOnly = biomechanicsReviewPresentation({
+  features: { definitionVersion: "whole-body-world-v2" },
+  compensation_analysis: {
+    status: "insufficient_data",
+    reason: "primary_metric_not_configured",
+    score: 0,
+    signals: [],
+  },
+});
+assert.equal(secondaryOnly.title, "Movement evidence captured for longitudinal comparison");
+assert.equal(secondaryOnly.badge, "EVIDENCE CAPTURED");
+assert.equal(secondaryOnly.showScore, false);
+
 console.log("biomechanics clinician review presentation tests passed");
 
 const world = biomechanicsReviewPresentation({
