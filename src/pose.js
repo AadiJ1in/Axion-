@@ -1,4 +1,5 @@
 import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
+import { createWorldBiomechanicsFrame } from "./biomechanics-live-core.js";
 import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
 
 const MODEL_URL =
@@ -47,6 +48,11 @@ const median = (values) => {
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 };
+
+function emitBiomechanicsFrame(frame) {
+  if (!frame || typeof window === "undefined" || typeof CustomEvent === "undefined") return;
+  window.dispatchEvent(new CustomEvent("axion:biomechanics-frame", { detail: frame }));
+}
 
 // Calibration is accepted only when enough reliable frames agree on a stable
 // starting position. A median baseline is intentionally resistant to one-frame
@@ -497,6 +503,13 @@ export async function createMovementTracker(options) {
       const movementAt = performance.now();
       onTiming({ id: ++timingSequence, cameraFrameAt, poseAt, movementAt });
       updateState(metrics, now);
+      emitBiomechanicsFrame(createWorldBiomechanicsFrame(result.worldLandmarks?.[0], {
+        trackingQuality: quality.score,
+        stage,
+        calibrated,
+        exerciseKey,
+        capturedAt: now,
+      }));
     }
     rafId = requestAnimationFrame(frame);
   }
