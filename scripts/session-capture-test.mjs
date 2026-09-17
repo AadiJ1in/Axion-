@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   createAttemptTracker,
   numericText,
@@ -6,6 +7,11 @@ import {
   trackingConfidenceFromText,
   validRepPercent,
 } from "../src/session-capture-core.js";
+
+const captureSource = fs.readFileSync(new URL("../src/clinical-session-capture.js", import.meta.url), "utf8");
+assert.ok(captureSource.includes("function sessionCaptureNeedsPeriodicSync()"), "session capture polling must be demand-gated");
+assert.ok(captureSource.includes('document.querySelector("#app") || document.documentElement'), "session capture observer must prefer the app root");
+assert.ok(captureSource.includes("!document.hidden && sessionCaptureNeedsPeriodicSync()"), "inactive or hidden screens must not run session capture every 250ms");
 
 assert.equal(numericText("42°"), 42);
 assert.equal(numericText("Tracking —"), null);
