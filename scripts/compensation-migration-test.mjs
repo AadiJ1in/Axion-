@@ -100,6 +100,32 @@ const related = [
 {
   const observations = [];
   const knee = [24, 21, 18, 14, 10, 7, 5];
+  const stanceOffset = [0.035, 0.04, 0.048, 0.057, 0.069, 0.081, 0.092];
+  for (let i = 0; i < knee.length; i += 1) {
+    const exercise = i % 2 === 0 ? "squat" : "step_down";
+    observations.push(observation(i + 1, exercise, "right_knee_asymmetry", "knee", "right", knee[i]));
+    observations.push(observation(i + 1, exercise, "pelvis_over_stance_offset_proxy", "lower_limb", "bilateral", stanceOffset[i]));
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: primary,
+    relatedMetrics: [{
+      metricKey: "pelvis_over_stance_offset_proxy",
+      region: "lower_limb",
+      side: "bilateral",
+      worseningDirection: "increase",
+      minRelativeDrift: 0.08,
+      minAbsoluteDrift: 0.03,
+    }],
+  });
+  assert.equal(result.status, "candidate");
+  assert.ok(result.signals[0].summary.absoluteDelta > 0.03);
+  assert.equal(result.signals[0].metric.thresholds.minAbsoluteDrift, 0.03);
+}
+
+{
+  const observations = [];
+  const knee = [24, 21, 18, 14, 10, 7, 5];
   const trunk = [5, 5, 5, 14, 5, 5, 5];
   for (let i = 0; i < knee.length; i += 1) {
     observations.push(observation(i + 1, "squat", "right_knee_asymmetry", "knee", "right", knee[i]));
