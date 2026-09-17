@@ -13,13 +13,13 @@ const FRAME_SAMPLE_INTERVAL_MS = 250;
 const BRIDGE_SYNC_INTERVAL_MS = 250;
 const SESSION_LOOKUP_ATTEMPTS = 20;
 const SESSION_LOOKUP_DELAY_MS = 450;
+// Only bilateral tasks currently have a defensible session-level primary
+// recovery anchor. Unilateral lower-body tasks still persist whole-body
+// features and can contribute secondary cross-exercise replication evidence.
 const LOWER_BODY_ANALYSIS_EXERCISES = new Set([
   "bodyweight_squat",
   "half_squat",
   "sit_to_stand",
-  "forward_lunge",
-  "step_up",
-  "lateral_step_up",
 ]);
 
 const state = {
