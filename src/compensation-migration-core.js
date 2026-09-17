@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.5.0";
+export const COMPENSATION_ENGINE_VERSION = "0.6.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -9,6 +9,7 @@ export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   recentSessions: 3,
   minExercises: 2,
   minSessionsPerExercise: 3,
+  minObservationSpanDays: 7,
   minQuality: 0.55,
   minPrimaryRelativeImprovement: 0.15,
   minSecondaryRelativeDrift: 0.12,
@@ -153,6 +154,9 @@ function summarizeMetric(points, config) {
     exerciseCount: new Set(points.map((point) => point.exerciseKey)).size,
     firstAt: points[0]?.occurredAt || null,
     lastAt: points.at(-1)?.occurredAt || null,
+    spanDays: points.length > 1
+      ? Math.max(0, (points.at(-1).occurredAt.getTime() - points[0].occurredAt.getTime()) / 86400000)
+      : 0,
   };
 }
 
@@ -275,6 +279,17 @@ export function detectCompensationMigration({
   if (!primarySummary) {
     return { status: "insufficient_data", score: 0, reason: "not_enough_primary_sessions", signals: [], engineVersion: COMPENSATION_ENGINE_VERSION };
   }
+  if (primarySummary.spanDays < config.minObservationSpanDays) {
+    return {
+      status: "insufficient_data",
+      score: 0,
+      reason: "observation_window_too_short",
+      primary: primarySummary,
+      signals: [],
+      engineVersion: COMPENSATION_ENGINE_VERSION,
+      disclaimer: "Movement-pattern signal for clinician review only. It does not diagnose or predict an injury.",
+    };
+  }
 
   const primaryDirection = primaryMetric.improvementDirection || "decrease";
   const primaryImprovement = improvementFraction(primarySummary, primaryDirection);
@@ -308,6 +323,7 @@ export function detectCompensationMigration({
       : config.minSecondaryAbsoluteDrift;
     if (drift < relativeThreshold && absoluteDrift < absoluteThreshold) continue;
 
+    const observationWindowSatisfied = summary.spanDays >= config.minObservationSpanDays;
     const temporal = temporalCoupling(primaryPoints, points, primaryDirection, worseningDirection);
     const persistence = clamp(summary.sessionCount / Math.max(config.minSessions + 3, 1), 0, 1);
     const magnitude = clamp(Math.max(
@@ -350,6 +366,7 @@ export function detectCompensationMigration({
       replicatedExerciseCount,
       replicationEvidence,
       temporalCouplingSatisfied,
+      observationWindowSatisfied,
       explanation: signalExplanation(primaryMetric, related, primarySummary, summary, score, crossExerciseSatisfied),
     });
   }
@@ -357,6 +374,7 @@ export function detectCompensationMigration({
   signals.sort((a, b) => b.score - a.score);
   const candidateSignal = signals.find((signal) => signal.score >= config.candidateScore
     && signal.temporalCouplingSatisfied
+    && signal.observationWindowSatisfied
     && (!config.requireCrossExerciseCandidate || signal.crossExerciseSatisfied));
   const score = candidateSignal?.score || signals[0]?.score || 0;
   return {
@@ -364,11 +382,13 @@ export function detectCompensationMigration({
     score,
     reason: candidateSignal
       ? "cross_exercise_temporally_coupled_secondary_drift_detected"
-      : signals.some((signal) => signal.crossExerciseSatisfied && !signal.temporalCouplingSatisfied)
-        ? "secondary_drift_temporal_coupling_weak"
-        : signals.length
-          ? "secondary_drift_requires_replication"
-          : "no_secondary_drift",
+      : signals.some((signal) => !signal.observationWindowSatisfied)
+        ? "secondary_drift_observation_window_short"
+        : signals.some((signal) => signal.crossExerciseSatisfied && !signal.temporalCouplingSatisfied)
+          ? "secondary_drift_temporal_coupling_weak"
+          : signals.length
+            ? "secondary_drift_requires_replication"
+            : "no_secondary_drift",
     primary: {
       metric: {
         metricKey: primaryMetric.metricKey,
