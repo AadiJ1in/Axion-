@@ -19,6 +19,24 @@ export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   requireCrossExerciseCandidate: true,
 });
 
+function engineConfigSnapshot(config) {
+  return {
+    minSessions: config.minSessions,
+    baselineSessions: config.baselineSessions,
+    recentSessions: config.recentSessions,
+    minExercises: config.minExercises,
+    minSessionsPerExercise: config.minSessionsPerExercise,
+    minObservationSpanDays: config.minObservationSpanDays,
+    minQuality: config.minQuality,
+    minPrimaryRelativeImprovement: config.minPrimaryRelativeImprovement,
+    minSecondaryRelativeDrift: config.minSecondaryRelativeDrift,
+    minSecondaryAbsoluteDrift: config.minSecondaryAbsoluteDrift,
+    minTemporalCorrelation: config.minTemporalCorrelation,
+    candidateScore: config.candidateScore,
+    requireCrossExerciseCandidate: Boolean(config.requireCrossExerciseCandidate),
+  };
+}
+
 function safeDate(value) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -268,8 +286,9 @@ export function detectCompensationMigration({
   config: suppliedConfig = {},
 } = {}) {
   const config = { ...DEFAULT_COMPENSATION_CONFIG, ...suppliedConfig };
+  const configSnapshot = engineConfigSnapshot(config);
   if (!primaryMetric?.metricKey) {
-    return { status: "insufficient_data", score: 0, reason: "primary_metric_required", signals: [], engineVersion: COMPENSATION_ENGINE_VERSION };
+    return { status: "insufficient_data", score: 0, reason: "primary_metric_required", signals: [], engineVersion: COMPENSATION_ENGINE_VERSION, config: configSnapshot };
   }
 
   const normalized = observations.map(normalizeMovementObservation).filter(Boolean);
@@ -277,7 +296,7 @@ export function detectCompensationMigration({
   const primaryPoints = collapseBySession(primaryRaw, config.minQuality);
   const primarySummary = summarizeMetric(primaryPoints, config);
   if (!primarySummary) {
-    return { status: "insufficient_data", score: 0, reason: "not_enough_primary_sessions", signals: [], engineVersion: COMPENSATION_ENGINE_VERSION };
+    return { status: "insufficient_data", score: 0, reason: "not_enough_primary_sessions", signals: [], engineVersion: COMPENSATION_ENGINE_VERSION, config: configSnapshot };
   }
   if (primarySummary.spanDays < config.minObservationSpanDays) {
     return {
@@ -287,6 +306,7 @@ export function detectCompensationMigration({
       primary: primarySummary,
       signals: [],
       engineVersion: COMPENSATION_ENGINE_VERSION,
+      config: configSnapshot,
       disclaimer: "Movement-pattern signal for clinician review only. It does not diagnose or predict an injury.",
     };
   }
@@ -301,6 +321,7 @@ export function detectCompensationMigration({
       primary: primarySummary,
       signals: [],
       engineVersion: COMPENSATION_ENGINE_VERSION,
+      config: configSnapshot,
     };
   }
 
@@ -403,6 +424,7 @@ export function detectCompensationMigration({
     signals,
     candidateMetric: candidateSignal?.metric || null,
     engineVersion: COMPENSATION_ENGINE_VERSION,
+    config: configSnapshot,
     disclaimer: "Movement-pattern signal for clinician review only. It does not diagnose or predict an injury.",
   };
 }
