@@ -16,7 +16,7 @@ The public synthetic demo works without configuration:
 
 - three-second session calibration using locally estimated pose landmarks;
 - live Movement Twin reconstructed from MediaPipe coordinates;
-- 92 explicit exercise-tracking profiles: 71 calibrated rep-cycle counters and 21 camera-timed position holds;
+- 93 explicit exercise-tracking profiles: 72 calibrated rep-cycle counters and 21 camera-timed position holds;
 - movement-specific signals for the neck, shoulders, arms, trunk, hips, knees, ankles, feet, balance, and gait;
 - rep-level excursion, tempo, and bilateral-difference summaries using each exercise's relevant landmarks;
 - sequence-aware coaching messages;
@@ -32,7 +32,7 @@ The public synthetic demo works without configuration:
 - therapist-configured session cadence (weeks × sessions/week), including a 12-week/84-session path, with one touchable node per prescribed session;
 - node-level exercise checklists, sequential unlocks, audited therapist overrides, weekly checkpoints, and one-time transactional XP/streak awards;
 - functional therapist workspace sections for patients, recovery roadmaps, check-ins, attention alerts, and the exercise library;
-- 92-movement therapist library organized into 14 anatomical sections and seven curated clinical-program filters;
+- 93-movement therapist library organized into 14 anatomical sections and seven curated clinical-program filters;
 - patient-ready setup, numbered technique steps, form cues, common mistakes, and safety guidance, with external education links withheld until a deploying clinic reviews and configures its approved materials;
 - the same exercise guidance shown in the patient roadmap and inside Motion Lab before tracking starts;
 - live therapist statistics, patient filtering, actionable check-ins, and descriptive review alerts derived from authorized session data;
@@ -50,6 +50,12 @@ The public synthetic demo works without configuration:
 - keyboard rep navigation, mobile haptics, milestone feedback, reduced-motion support, and reset-demo control;
 - optional Supabase authentication, database roles, RLS, and minimal session-summary storage;
 - no raw camera upload or storage.
+
+## Clinical validation strategy
+
+Axion is being developed as movement-intelligence infrastructure for therapist-directed rehabilitation, not as a replacement for PT clinical judgment. The near-term priority is clinical collaboration and evidence generation before expanding clinical claims or investor-scale distribution.
+
+See [`docs/CLINICAL_VALIDATION_STRATEGY.md`](docs/CLINICAL_VALIDATION_STRATEGY.md) for the current validation roadmap, RTM exploration, collaborator priorities, market context, IP references, known limitations, and commercialization boundaries.
 
 ## Run locally
 
