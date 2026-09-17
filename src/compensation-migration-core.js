@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.4.0";
+export const COMPENSATION_ENGINE_VERSION = "0.5.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -29,6 +29,27 @@ function mean(values) {
   return usable.length ? usable.reduce((sum, value) => sum + value, 0) / usable.length : null;
 }
 
+function median(values) {
+  const usable = values.map(finite).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!usable.length) return null;
+  const middle = Math.floor(usable.length / 2);
+  return usable.length % 2 ? usable[middle] : (usable[middle - 1] + usable[middle]) / 2;
+}
+
+function ranks(values) {
+  const indexed = values.map((value, index) => ({ value, index })).sort((a, b) => a.value - b.value);
+  const result = Array(values.length).fill(0);
+  let cursor = 0;
+  while (cursor < indexed.length) {
+    let end = cursor + 1;
+    while (end < indexed.length && indexed[end].value === indexed[cursor].value) end += 1;
+    const averageRank = ((cursor + 1) + end) / 2;
+    for (let i = cursor; i < end; i += 1) result[indexed[i].index] = averageRank;
+    cursor = end;
+  }
+  return result;
+}
+
 function pearson(xs, ys) {
   if (xs.length !== ys.length || xs.length < 3) return null;
   const mx = mean(xs);
@@ -48,20 +69,17 @@ function pearson(xs, ys) {
   return numerator / Math.sqrt(dx2 * dy2);
 }
 
-function linearSlope(points) {
+function robustSlopePerDay(points) {
   if (points.length < 2) return 0;
-  const xs = points.map((_, index) => index);
-  const ys = points.map((point) => point.value);
-  const mx = mean(xs);
-  const my = mean(ys);
-  let numerator = 0;
-  let denominator = 0;
-  for (let i = 0; i < xs.length; i += 1) {
-    const dx = xs[i] - mx;
-    numerator += dx * (ys[i] - my);
-    denominator += dx * dx;
+  const slopes = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    for (let j = i + 1; j < points.length; j += 1) {
+      const elapsedDays = (points[j].occurredAt.getTime() - points[i].occurredAt.getTime()) / 86400000;
+      if (elapsedDays <= 0) continue;
+      slopes.push((points[j].value - points[i].value) / elapsedDays);
+    }
   }
-  return denominator ? numerator / denominator : 0;
+  return median(slopes) ?? 0;
 }
 
 function metricIdentity(metric = {}) {
@@ -120,8 +138,8 @@ function summarizeMetric(points, config) {
   if (points.length < config.minSessions) return null;
   const baselineCount = Math.min(config.baselineSessions, Math.max(1, points.length - config.recentSessions));
   const recentCount = Math.min(config.recentSessions, Math.max(1, points.length - baselineCount));
-  const baseline = mean(points.slice(0, baselineCount).map((point) => point.value));
-  const recent = mean(points.slice(-recentCount).map((point) => point.value));
+  const baseline = median(points.slice(0, baselineCount).map((point) => point.value));
+  const recent = median(points.slice(-recentCount).map((point) => point.value));
   if (baseline === null || recent === null) return null;
   const absoluteDelta = recent - baseline;
   const denominator = Math.max(Math.abs(baseline), 1);
@@ -130,7 +148,7 @@ function summarizeMetric(points, config) {
     recent,
     absoluteDelta,
     relativeDelta: absoluteDelta / denominator,
-    slope: linearSlope(points),
+    slope: robustSlopePerDay(points),
     sessionCount: points.length,
     exerciseCount: new Set(points.map((point) => point.exerciseKey)).size,
     firstAt: points[0]?.occurredAt || null,
@@ -211,12 +229,13 @@ function alignedSeries(primaryPoints, secondaryPoints) {
 
 function temporalCoupling(primaryPoints, secondaryPoints, primaryDirection, secondaryDirection) {
   const aligned = alignedSeries(primaryPoints, secondaryPoints);
-  if (aligned.count < 3) return { correlation: null, coupling: 0, pairedSessions: aligned.count };
+  if (aligned.count < 3) return { correlation: null, method: "spearman_rank", coupling: 0, pairedSessions: aligned.count };
   const primarySignal = aligned.primary.map((value) => primaryDirection === "increase" ? value : -value);
   const secondarySignal = aligned.secondary.map((value) => secondaryDirection === "decrease" ? -value : value);
-  const correlation = pearson(primarySignal, secondarySignal);
+  const correlation = pearson(ranks(primarySignal), ranks(secondarySignal));
   return {
     correlation,
+    method: "spearman_rank",
     coupling: correlation === null ? 0 : clamp(correlation, 0, 1),
     pairedSessions: aligned.count,
   };
