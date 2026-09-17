@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.1.0";
+export const COMPENSATION_ENGINE_VERSION = "0.2.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -14,6 +14,7 @@ export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSecondaryAbsoluteDrift: 2,
   minTemporalCorrelation: 0.55,
   candidateScore: 60,
+  requireCrossExerciseCandidate: true,
 });
 
 function safeDate(value) {
@@ -172,12 +173,15 @@ function scoreSignal({ persistence, magnitude, coupling, exerciseConsistency }) 
   return Math.round(clamp((0.28 * persistence) + (0.30 * magnitude) + (0.27 * coupling) + (0.15 * exerciseConsistency), 0, 1) * 100);
 }
 
-function signalExplanation(primary, secondary, primarySummary, secondarySummary, score) {
+function signalExplanation(primary, secondary, primarySummary, secondarySummary, score, crossExerciseSatisfied) {
   const primaryLabel = `${primary.side || ""} ${primary.region || ""} ${primary.metricKey}`.replace(/\s+/g, " ").trim();
   const secondaryLabel = `${secondary.side || ""} ${secondary.region || ""} ${secondary.metricKey}`.replace(/\s+/g, " ").trim();
   const primaryChange = Math.round(Math.abs(primarySummary.relativeDelta) * 100);
   const secondaryChange = Math.round(Math.abs(secondarySummary.relativeDelta) * 100);
-  return `${primaryLabel} improved approximately ${primaryChange}% from its early-session baseline while ${secondaryLabel} drifted approximately ${secondaryChange}% in a potentially compensatory direction. This is a longitudinal movement-pattern signal for clinician review, not an injury diagnosis. Score ${score}/100.`;
+  const replication = crossExerciseSatisfied
+    ? `The secondary pattern is replicated across ${secondarySummary.exerciseCount} exercise types.`
+    : `The secondary pattern is currently limited to ${secondarySummary.exerciseCount} exercise type and remains a monitoring signal.`;
+  return `${primaryLabel} improved approximately ${primaryChange}% from its early-session baseline while ${secondaryLabel} drifted approximately ${secondaryChange}% in a potentially compensatory direction. ${replication} This is a longitudinal movement-pattern signal for clinician review, not an injury diagnosis. Score ${score}/100.`;
 }
 
 export function detectCompensationMigration({
@@ -231,6 +235,7 @@ export function detectCompensationMigration({
     const exerciseConsistency = clamp(summary.exerciseCount / Math.max(config.minExercises, 1), 0, 1);
     const coupling = temporal.coupling;
     const score = scoreSignal({ persistence, magnitude, coupling, exerciseConsistency });
+    const crossExerciseSatisfied = summary.exerciseCount >= config.minExercises;
 
     if (temporal.correlation !== null && temporal.correlation < config.minTemporalCorrelation && score < config.candidateScore) continue;
 
@@ -244,16 +249,23 @@ export function detectCompensationMigration({
       summary,
       temporal,
       score,
-      explanation: signalExplanation(primaryMetric, related, primarySummary, summary, score),
+      crossExerciseSatisfied,
+      explanation: signalExplanation(primaryMetric, related, primarySummary, summary, score, crossExerciseSatisfied),
     });
   }
 
   signals.sort((a, b) => b.score - a.score);
-  const score = signals[0]?.score || 0;
+  const candidateSignal = signals.find((signal) => signal.score >= config.candidateScore
+    && (!config.requireCrossExerciseCandidate || signal.crossExerciseSatisfied));
+  const score = candidateSignal?.score || signals[0]?.score || 0;
   return {
-    status: score >= config.candidateScore ? "candidate" : signals.length ? "monitoring" : "stable",
+    status: candidateSignal ? "candidate" : signals.length ? "monitoring" : "stable",
     score,
-    reason: signals.length ? "secondary_drift_detected" : "no_secondary_drift",
+    reason: candidateSignal
+      ? "cross_exercise_secondary_drift_detected"
+      : signals.length
+        ? "secondary_drift_requires_replication"
+        : "no_secondary_drift",
     primary: {
       metric: {
         metricKey: primaryMetric.metricKey,
@@ -265,6 +277,7 @@ export function detectCompensationMigration({
       improvementFraction: primaryImprovement,
     },
     signals,
+    candidateMetric: candidateSignal?.metric || null,
     engineVersion: COMPENSATION_ENGINE_VERSION,
     disclaimer: "Movement-pattern signal for clinician review only. It does not diagnose or predict an injury.",
   };
