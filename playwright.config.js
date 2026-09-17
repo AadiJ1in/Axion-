@@ -3,6 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: /rc1.*\.spec\.js/,
+  // Superseded by rc1-interface-sprint.spec.js and rc1-interface-report.spec.js,
+  // which enforce the current four-tab patient IA plus contextual reporting.
+  grepInvert: /patient shell stays stable, restores Report, and carries story theme/,
   timeout: 30_000,
   expect: { timeout: 8_000 },
   fullyParallel: false,
