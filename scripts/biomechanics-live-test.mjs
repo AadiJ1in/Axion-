@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { extractWholeBodyBiomechanics, aggregateBiomechanicsFrames } from "../src/biomechanics-feature-core.js";
 import {
   appendBiomechanicsFrame,
+  createWorldBiomechanicsFrame,
   parseTrackingQuality,
   shouldCaptureBiomechanics,
   twinSnapshotToLandmarks,
+  WORLD_BIOMECHANICS_DEFINITION,
 } from "../src/biomechanics-live-core.js";
 
 assert.equal(parseTrackingQuality("Tracking quality: High · 94%"), 0.94);
@@ -45,6 +47,41 @@ assert.ok(keys.has("pelvic_obliquity_deg"));
 assert.ok(keys.has("knee_flexion_asymmetry_deg"));
 assert.ok(keys.has("lateral_weight_shift_proxy"));
 assert.ok(metrics.every((metric) => metric.quality >= 0.9));
+
+const worldLandmarks = landmarks.map((point, index) => point ? {
+  ...point,
+  z: index % 2 === 0 ? 0.02 : -0.01,
+} : null);
+const worldFrame = createWorldBiomechanicsFrame(worldLandmarks, {
+  trackingQuality: 0.93,
+  stage: "down",
+  calibrated: true,
+  exerciseKey: "bodyweight_squat",
+  capturedAt: 1234,
+});
+assert.ok(worldFrame);
+assert.equal(worldFrame.definitionVersion, WORLD_BIOMECHANICS_DEFINITION);
+assert.equal(worldFrame.exerciseKey, "bodyweight_squat");
+assert.equal(worldFrame.capturedAt, 1234);
+assert.ok(worldFrame.metrics.length >= 8);
+assert.ok(worldFrame.metrics.every((metric) => metric.context.source === "pose_world"));
+assert.ok(worldFrame.metrics.every((metric) => metric.context.acquisition === WORLD_BIOMECHANICS_DEFINITION));
+assert.equal(worldFrame.metrics.some((metric) => "landmarks" in metric || "coordinates" in metric), false);
+assert.equal(createWorldBiomechanicsFrame(worldLandmarks, {
+  trackingQuality: 0.93,
+  stage: "up",
+  calibrated: true,
+}), null);
+assert.equal(createWorldBiomechanicsFrame(worldLandmarks, {
+  trackingQuality: 0.61,
+  stage: "down",
+  calibrated: true,
+}), null);
+assert.equal(createWorldBiomechanicsFrame(worldLandmarks, {
+  trackingQuality: 0.93,
+  stage: "down",
+  calibrated: false,
+}), null);
 
 const aggregated = aggregateBiomechanicsFrames([metrics, metrics, metrics], { minQuality: 0.62 });
 assert.ok(aggregated.length >= 8);
