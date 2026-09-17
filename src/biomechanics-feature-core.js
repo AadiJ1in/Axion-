@@ -58,12 +58,36 @@ function segmentTiltFromHorizontal(a, b) {
   return degrees(Math.atan2(b.y - a.y, b.x - a.x));
 }
 
+function wrappedAngleDifference(a, b) {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  let delta = a - b;
+  while (delta > 180) delta -= 360;
+  while (delta < -180) delta += 360;
+  return delta;
+}
+
 function trunkLateralLean(shoulderMid, hipMid) {
   if (!shoulderMid || !hipMid) return null;
   const dx = shoulderMid.x - hipMid.x;
   const dy = shoulderMid.y - hipMid.y;
   if (Math.abs(dx) + Math.abs(dy) < 1e-9) return null;
   return degrees(Math.atan2(dx, -dy));
+}
+
+function trunkLeanRelativeToPelvis(shoulderMid, hipMid, leftHip, rightHip) {
+  if (!shoulderMid || !hipMid || !leftHip || !rightHip) return null;
+  const pelvisX = rightHip.x - leftHip.x;
+  const pelvisY = rightHip.y - leftHip.y;
+  const pelvisLength = Math.hypot(pelvisX, pelvisY);
+  if (!pelvisLength) return null;
+  const referenceUp = { x: pelvisY / pelvisLength, y: -pelvisX / pelvisLength };
+  const trunk = { x: shoulderMid.x - hipMid.x, y: shoulderMid.y - hipMid.y };
+  const trunkLength = Math.hypot(trunk.x, trunk.y);
+  if (!trunkLength) return null;
+  const normalizedTrunk = { x: trunk.x / trunkLength, y: trunk.y / trunkLength };
+  const cross = (referenceUp.x * normalizedTrunk.y) - (referenceUp.y * normalizedTrunk.x);
+  const dot = (referenceUp.x * normalizedTrunk.x) + (referenceUp.y * normalizedTrunk.y);
+  return degrees(Math.atan2(cross, dot));
 }
 
 function pointLineOffset2d(pointValue, lineStart, lineEnd) {
@@ -73,6 +97,19 @@ function pointLineOffset2d(pointValue, lineStart, lineEnd) {
   const length = Math.hypot(dx, dy);
   if (!length) return null;
   return ((pointValue.x - lineStart.x) * dy - (pointValue.y - lineStart.y) * dx) / length;
+}
+
+function pelvisOffsetAlongStance(hipMid, ankleMid, leftAnkle, rightAnkle, scale) {
+  if (!hipMid || !ankleMid || !leftAnkle || !rightAnkle || !scale) return null;
+  const axisX = rightAnkle.x - leftAnkle.x;
+  const axisY = rightAnkle.y - leftAnkle.y;
+  const axisLength = Math.hypot(axisX, axisY);
+  if (!axisLength) return null;
+  const unitX = axisX / axisLength;
+  const unitY = axisY / axisLength;
+  const shiftX = hipMid.x - ankleMid.x;
+  const shiftY = hipMid.y - ankleMid.y;
+  return ((shiftX * unitX) + (shiftY * unitY)) / scale;
 }
 
 function visibilityQuality(points) {
@@ -102,8 +139,10 @@ export function extractWholeBodyBiomechanics(landmarks, { source = "pose_world",
   const stanceScale = Math.max(ankleWidth ?? 0, hipWidth ?? 0, 1e-5);
 
   const trunkLean = trunkLateralLean(shoulderMid, hipMid);
+  const pelvisRelativeTrunkLean = trunkLeanRelativeToPelvis(shoulderMid, hipMid, leftHip, rightHip);
   const pelvicObliquity = segmentTiltFromHorizontal(leftHip, rightHip);
   const shoulderObliquity = segmentTiltFromHorizontal(leftShoulder, rightShoulder);
+  const shoulderPelvisDelta = wrappedAngleDifference(shoulderObliquity, pelvicObliquity);
   const leftKneeAngle = angle3d(leftHip, leftKnee, leftAnkle);
   const rightKneeAngle = angle3d(rightHip, rightKnee, rightAnkle);
   const leftHipAngle = angle3d(leftShoulder, leftHip, leftKnee);
@@ -111,24 +150,30 @@ export function extractWholeBodyBiomechanics(landmarks, { source = "pose_world",
   const leftKneeLineOffset = pointLineOffset2d(leftKnee, leftHip, leftAnkle);
   const rightKneeLineOffset = pointLineOffset2d(rightKnee, rightHip, rightAnkle);
   const lateralShift = hipMid && ankleMid ? (hipMid.x - ankleMid.x) / stanceScale : null;
+  const pelvisStanceShift = pelvisOffsetAlongStance(hipMid, ankleMid, leftAnkle, rightAnkle, stanceScale);
 
   const trunkQuality = visibilityQuality([leftShoulder, rightShoulder, leftHip, rightHip]);
   const lowerQuality = visibilityQuality([leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle]);
   const leftLegQuality = visibilityQuality([leftHip, leftKnee, leftAnkle]);
   const rightLegQuality = visibilityQuality([rightHip, rightKnee, rightAnkle]);
   const common = { source, cameraView };
+  const cameraSensitive = { ...common, cameraOrientationSensitive: true };
+  const bodyRelative = { ...common, cameraOrientationSensitive: false, bodyRelative: true };
 
   return [
-    metric("trunk_lateral_lean_deg", "trunk", "midline", Math.abs(trunkLean), "deg", trunkQuality, { ...common, signedValue: trunkLean }),
-    metric("pelvic_obliquity_deg", "pelvis", "bilateral", Math.abs(pelvicObliquity), "deg", lowerQuality, { ...common, signedValue: pelvicObliquity }),
-    metric("shoulder_obliquity_deg", "shoulder_girdle", "bilateral", Math.abs(shoulderObliquity), "deg", trunkQuality, { ...common, signedValue: shoulderObliquity }),
+    metric("trunk_lateral_lean_deg", "trunk", "midline", Math.abs(trunkLean), "deg", trunkQuality, { ...cameraSensitive, signedValue: trunkLean }),
+    metric("trunk_lateral_lean_relative_deg", "trunk", "midline", Math.abs(pelvisRelativeTrunkLean), "deg", trunkQuality, { ...bodyRelative, signedValue: pelvisRelativeTrunkLean, reference: "pelvis_normal" }),
+    metric("pelvic_obliquity_deg", "pelvis", "bilateral", Math.abs(pelvicObliquity), "deg", lowerQuality, { ...cameraSensitive, signedValue: pelvicObliquity }),
+    metric("shoulder_obliquity_deg", "shoulder_girdle", "bilateral", Math.abs(shoulderObliquity), "deg", trunkQuality, { ...cameraSensitive, signedValue: shoulderObliquity }),
+    metric("shoulder_pelvis_obliquity_delta_deg", "trunk", "bilateral", Math.abs(shoulderPelvisDelta), "deg", trunkQuality, { ...bodyRelative, signedValue: shoulderPelvisDelta, reference: "shoulder_vs_pelvis" }),
     metric("knee_flexion_deg", "knee", "left", leftKneeAngle === null ? null : Math.max(0, 180 - leftKneeAngle), "deg", leftLegQuality, common),
     metric("knee_flexion_deg", "knee", "right", rightKneeAngle === null ? null : Math.max(0, 180 - rightKneeAngle), "deg", rightLegQuality, common),
     metric("hip_flexion_proxy_deg", "hip", "left", leftHipAngle === null ? null : Math.max(0, 180 - leftHipAngle), "deg", visibilityQuality([leftShoulder, leftHip, leftKnee]), { ...common, proxy: true }),
     metric("hip_flexion_proxy_deg", "hip", "right", rightHipAngle === null ? null : Math.max(0, 180 - rightHipAngle), "deg", visibilityQuality([rightShoulder, rightHip, rightKnee]), { ...common, proxy: true }),
-    metric("knee_frontal_offset_proxy", "knee", "left", leftKneeLineOffset === null ? null : Math.abs(leftKneeLineOffset) / stanceScale, "ratio", leftLegQuality, { ...common, proxy: true, signedValue: leftKneeLineOffset === null ? null : leftKneeLineOffset / stanceScale }),
-    metric("knee_frontal_offset_proxy", "knee", "right", rightKneeLineOffset === null ? null : Math.abs(rightKneeLineOffset) / stanceScale, "ratio", rightLegQuality, { ...common, proxy: true, signedValue: rightKneeLineOffset === null ? null : rightKneeLineOffset / stanceScale }),
-    metric("lateral_weight_shift_proxy", "lower_limb", "bilateral", lateralShift === null ? null : Math.abs(lateralShift), "ratio", lowerQuality, { ...common, proxy: true, signedValue: lateralShift }),
+    metric("knee_frontal_offset_proxy", "knee", "left", leftKneeLineOffset === null ? null : Math.abs(leftKneeLineOffset) / stanceScale, "ratio", leftLegQuality, { ...bodyRelative, proxy: true, signedValue: leftKneeLineOffset === null ? null : leftKneeLineOffset / stanceScale, reference: "hip_ankle_line" }),
+    metric("knee_frontal_offset_proxy", "knee", "right", rightKneeLineOffset === null ? null : Math.abs(rightKneeLineOffset) / stanceScale, "ratio", rightLegQuality, { ...bodyRelative, proxy: true, signedValue: rightKneeLineOffset === null ? null : rightKneeLineOffset / stanceScale, reference: "hip_ankle_line" }),
+    metric("lateral_weight_shift_proxy", "lower_limb", "bilateral", lateralShift === null ? null : Math.abs(lateralShift), "ratio", lowerQuality, { ...cameraSensitive, proxy: true, signedValue: lateralShift }),
+    metric("pelvis_over_stance_offset_proxy", "lower_limb", "bilateral", pelvisStanceShift === null ? null : Math.abs(pelvisStanceShift), "ratio", lowerQuality, { ...bodyRelative, proxy: true, signedValue: pelvisStanceShift, reference: "ankle_line" }),
     metric("knee_flexion_asymmetry_deg", "knee", "bilateral", leftKneeAngle === null || rightKneeAngle === null ? null : Math.abs(leftKneeAngle - rightKneeAngle), "deg", lowerQuality, common),
   ].filter(Boolean);
 }
