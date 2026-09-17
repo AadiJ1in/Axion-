@@ -270,17 +270,5 @@ export const LOWER_BODY_COMPENSATION_GRAPH = Object.freeze({
       primaryMetric: primarySymmetryMetric("sit_to_stand", "deg"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
-    forward_lunge: Object.freeze({
-      primaryMetric: primarySymmetryMetric("forward_lunge", "deg"),
-      relatedMetrics: sharedLowerBodyRelatedMetrics,
-    }),
-    step_up: Object.freeze({
-      primaryMetric: primarySymmetryMetric("step_up", "%"),
-      relatedMetrics: sharedLowerBodyRelatedMetrics,
-    }),
-    lateral_step_up: Object.freeze({
-      primaryMetric: primarySymmetryMetric("lateral_step_up", "%"),
-      relatedMetrics: sharedLowerBodyRelatedMetrics,
-    }),
   }),
 });
