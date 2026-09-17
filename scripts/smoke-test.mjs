@@ -189,7 +189,7 @@ const requirements = [
   [files.supabaseClient, "window.sessionStorage", "session-scoped auth token storage"],
   [files.supabaseClient, 'flowType: "pkce"', "PKCE authorization flow"],
   [files.supabaseClient, 'from "@supabase/supabase-js"', "locally bundled Supabase client"],
-  [files.pose, 'from "@mediapipe/tasks-vision"', "locally bundled pose runtime"],
+  [files.pose, 'import("@mediapipe/tasks-vision")', "lazy locally bundled pose runtime"],
   [files.mediapipeConfig, 'sha256: "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a"', "pose model integrity pin"],
   [files.mediapipeConfig, "VITE_MEDIAPIPE_MODEL_SHA256", "configurable model integrity pin"],
   [files.mediapipeConfig, "VITE_MEDIAPIPE_WASM_URL", "configurable MediaPipe runtime root"],
