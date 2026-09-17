@@ -1,8 +1,8 @@
 import { aggregateBiomechanicsFrames } from "./biomechanics-feature-core.js";
 import { detectCompensationMigration } from "./compensation-migration-core.js";
 
-export const BIOMECHANICS_FEATURE_SCHEMA_VERSION = 1;
-export const COMPENSATION_ANALYSIS_VERSION = 1;
+export const BIOMECHANICS_FEATURE_SCHEMA_VERSION = 2;
+export const COMPENSATION_ANALYSIS_VERSION = 2;
 
 function assertClient(supabase) {
   if (!supabase?.from) throw new Error("A configured Supabase client is required.");
