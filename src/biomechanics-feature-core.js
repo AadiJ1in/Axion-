@@ -42,6 +42,64 @@ function distance2d(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function vector3d(a, b) {
+  if (!a || !b) return null;
+  return { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+}
+
+function magnitude3d(vector) {
+  if (!vector) return 0;
+  return Math.hypot(vector.x, vector.y, vector.z);
+}
+
+function dot3d(a, b) {
+  if (!a || !b) return null;
+  return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+}
+
+function distance3d(a, b) {
+  return magnitude3d(vector3d(a, b));
+}
+
+function angleBetweenVectors3d(a, b) {
+  const am = magnitude3d(a);
+  const bm = magnitude3d(b);
+  if (!am || !bm) return null;
+  return degrees(Math.acos(clamp(dot3d(a, b) / (am * bm), -1, 1)));
+}
+
+function axisAlignmentDeviation3d(a, b) {
+  const angle = angleBetweenVectors3d(a, b);
+  if (angle === null) return null;
+  return Math.min(angle, Math.abs(180 - angle));
+}
+
+function orthogonalityDeviation3d(a, b) {
+  const angle = angleBetweenVectors3d(a, b);
+  return angle === null ? null : Math.abs(90 - angle);
+}
+
+function pointLineResidual3d(pointValue, lineStart, lineEnd) {
+  if (!pointValue || !lineStart || !lineEnd) return null;
+  const axis = vector3d(lineStart, lineEnd);
+  const lengthSquared = dot3d(axis, axis);
+  if (!lengthSquared) return null;
+  const fromStart = vector3d(lineStart, pointValue);
+  const t = dot3d(fromStart, axis) / lengthSquared;
+  const closest = {
+    x: lineStart.x + axis.x * t,
+    y: lineStart.y + axis.y * t,
+    z: lineStart.z + axis.z * t,
+  };
+  return vector3d(closest, pointValue);
+}
+
+function projectionOnAxis3d(vector, axis, scale = 1) {
+  const axisMagnitude = magnitude3d(axis);
+  if (!vector || !axisMagnitude || !scale) return null;
+  return dot3d(vector, axis) / (axisMagnitude * scale);
+}
+
 function angle3d(a, vertex, c) {
   if (!a || !vertex || !c) return null;
   const u = { x: a.x - vertex.x, y: a.y - vertex.y, z: a.z - vertex.z };
@@ -137,9 +195,17 @@ export function extractWholeBodyBiomechanics(landmarks, { source = "pose_world",
   const hipWidth = distance2d(leftHip, rightHip);
   const ankleWidth = distance2d(leftAnkle, rightAnkle);
   const stanceScale = Math.max(ankleWidth ?? 0, hipWidth ?? 0, 1e-5);
+  const hipWidth3d = distance3d(leftHip, rightHip);
+  const ankleWidth3d = distance3d(leftAnkle, rightAnkle);
+  const stanceScale3d = Math.max(ankleWidth3d ?? 0, hipWidth3d ?? 0, 1e-5);
+  const pelvisAxis3d = vector3d(leftHip, rightHip);
+  const shoulderAxis3d = vector3d(leftShoulder, rightShoulder);
+  const trunkAxis3d = vector3d(hipMid, shoulderMid);
 
   const trunkLean = trunkLateralLean(shoulderMid, hipMid);
   const pelvisRelativeTrunkLean = trunkLeanRelativeToPelvis(shoulderMid, hipMid, leftHip, rightHip);
+  const trunkPelvisLateralDeviation3d = orthogonalityDeviation3d(pelvisAxis3d, trunkAxis3d);
+  const shoulderPelvisAxisMismatch3d = axisAlignmentDeviation3d(shoulderAxis3d, pelvisAxis3d);
   const pelvicObliquity = segmentTiltFromHorizontal(leftHip, rightHip);
   const shoulderObliquity = segmentTiltFromHorizontal(leftShoulder, rightShoulder);
   const shoulderPelvisDelta = wrappedAngleDifference(shoulderObliquity, pelvicObliquity);
@@ -149,8 +215,14 @@ export function extractWholeBodyBiomechanics(landmarks, { source = "pose_world",
   const rightHipAngle = angle3d(rightShoulder, rightHip, rightKnee);
   const leftKneeLineOffset = pointLineOffset2d(leftKnee, leftHip, leftAnkle);
   const rightKneeLineOffset = pointLineOffset2d(rightKnee, rightHip, rightAnkle);
+  const leftKneeResidual3d = pointLineResidual3d(leftKnee, leftHip, leftAnkle);
+  const rightKneeResidual3d = pointLineResidual3d(rightKnee, rightHip, rightAnkle);
+  const leftKneeMediolateral3d = projectionOnAxis3d(leftKneeResidual3d, pelvisAxis3d, stanceScale3d);
+  const rightKneeMediolateral3d = projectionOnAxis3d(rightKneeResidual3d, pelvisAxis3d, stanceScale3d);
   const lateralShift = hipMid && ankleMid ? (hipMid.x - ankleMid.x) / stanceScale : null;
   const pelvisStanceShift = pelvisOffsetAlongStance(hipMid, ankleMid, leftAnkle, rightAnkle, stanceScale);
+  const pelvisStanceShift3d = projectionOnAxis3d(vector3d(ankleMid, hipMid), pelvisAxis3d, stanceScale3d);
+  const hipFlexionAsymmetry = leftHipAngle === null || rightHipAngle === null ? null : Math.abs(leftHipAngle - rightHipAngle);
 
   const trunkQuality = visibilityQuality([leftShoulder, rightShoulder, leftHip, rightHip]);
   const lowerQuality = visibilityQuality([leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle]);
@@ -163,17 +235,23 @@ export function extractWholeBodyBiomechanics(landmarks, { source = "pose_world",
   return [
     metric("trunk_lateral_lean_deg", "trunk", "midline", Math.abs(trunkLean), "deg", trunkQuality, { ...cameraSensitive, signedValue: trunkLean }),
     metric("trunk_lateral_lean_relative_deg", "trunk", "midline", Math.abs(pelvisRelativeTrunkLean), "deg", trunkQuality, { ...bodyRelative, signedValue: pelvisRelativeTrunkLean, reference: "pelvis_normal" }),
+    metric("trunk_pelvis_lateral_deviation_3d_deg", "trunk", "midline", trunkPelvisLateralDeviation3d, "deg", trunkQuality, { ...bodyRelative, invariant3d: true, reference: "pelvis_axis_vs_trunk_axis" }),
     metric("pelvic_obliquity_deg", "pelvis", "bilateral", Math.abs(pelvicObliquity), "deg", lowerQuality, { ...cameraSensitive, signedValue: pelvicObliquity }),
     metric("shoulder_obliquity_deg", "shoulder_girdle", "bilateral", Math.abs(shoulderObliquity), "deg", trunkQuality, { ...cameraSensitive, signedValue: shoulderObliquity }),
     metric("shoulder_pelvis_obliquity_delta_deg", "trunk", "bilateral", Math.abs(shoulderPelvisDelta), "deg", trunkQuality, { ...bodyRelative, signedValue: shoulderPelvisDelta, reference: "shoulder_vs_pelvis" }),
+    metric("shoulder_pelvis_axis_mismatch_3d_deg", "trunk", "bilateral", shoulderPelvisAxisMismatch3d, "deg", trunkQuality, { ...bodyRelative, invariant3d: true, reference: "shoulder_axis_vs_pelvis_axis" }),
     metric("knee_flexion_deg", "knee", "left", leftKneeAngle === null ? null : Math.max(0, 180 - leftKneeAngle), "deg", leftLegQuality, common),
     metric("knee_flexion_deg", "knee", "right", rightKneeAngle === null ? null : Math.max(0, 180 - rightKneeAngle), "deg", rightLegQuality, common),
     metric("hip_flexion_proxy_deg", "hip", "left", leftHipAngle === null ? null : Math.max(0, 180 - leftHipAngle), "deg", visibilityQuality([leftShoulder, leftHip, leftKnee]), { ...common, proxy: true }),
     metric("hip_flexion_proxy_deg", "hip", "right", rightHipAngle === null ? null : Math.max(0, 180 - rightHipAngle), "deg", visibilityQuality([rightShoulder, rightHip, rightKnee]), { ...common, proxy: true }),
+    metric("hip_flexion_asymmetry_3d_deg", "hip", "bilateral", hipFlexionAsymmetry, "deg", lowerQuality, { ...bodyRelative, invariant3d: true, proxy: true }),
     metric("knee_frontal_offset_proxy", "knee", "left", leftKneeLineOffset === null ? null : Math.abs(leftKneeLineOffset) / stanceScale, "ratio", leftLegQuality, { ...bodyRelative, proxy: true, signedValue: leftKneeLineOffset === null ? null : leftKneeLineOffset / stanceScale, reference: "hip_ankle_line" }),
     metric("knee_frontal_offset_proxy", "knee", "right", rightKneeLineOffset === null ? null : Math.abs(rightKneeLineOffset) / stanceScale, "ratio", rightLegQuality, { ...bodyRelative, proxy: true, signedValue: rightKneeLineOffset === null ? null : rightKneeLineOffset / stanceScale, reference: "hip_ankle_line" }),
+    metric("knee_mediolateral_offset_3d_proxy", "knee", "left", leftKneeMediolateral3d === null ? null : Math.abs(leftKneeMediolateral3d), "ratio", leftLegQuality, { ...bodyRelative, invariant3d: true, proxy: true, signedValue: leftKneeMediolateral3d, reference: "hip_ankle_residual_projected_on_pelvis_axis" }),
+    metric("knee_mediolateral_offset_3d_proxy", "knee", "right", rightKneeMediolateral3d === null ? null : Math.abs(rightKneeMediolateral3d), "ratio", rightLegQuality, { ...bodyRelative, invariant3d: true, proxy: true, signedValue: rightKneeMediolateral3d, reference: "hip_ankle_residual_projected_on_pelvis_axis" }),
     metric("lateral_weight_shift_proxy", "lower_limb", "bilateral", lateralShift === null ? null : Math.abs(lateralShift), "ratio", lowerQuality, { ...cameraSensitive, proxy: true, signedValue: lateralShift }),
     metric("pelvis_over_stance_offset_proxy", "lower_limb", "bilateral", pelvisStanceShift === null ? null : Math.abs(pelvisStanceShift), "ratio", lowerQuality, { ...bodyRelative, proxy: true, signedValue: pelvisStanceShift, reference: "ankle_line" }),
+    metric("pelvis_over_stance_offset_3d_proxy", "lower_limb", "bilateral", pelvisStanceShift3d === null ? null : Math.abs(pelvisStanceShift3d), "ratio", lowerQuality, { ...bodyRelative, invariant3d: true, proxy: true, signedValue: pelvisStanceShift3d, reference: "pelvis_axis" }),
     metric("knee_flexion_asymmetry_deg", "knee", "bilateral", leftKneeAngle === null || rightKneeAngle === null ? null : Math.abs(leftKneeAngle - rightKneeAngle), "deg", lowerQuality, common),
   ].filter(Boolean);
 }
