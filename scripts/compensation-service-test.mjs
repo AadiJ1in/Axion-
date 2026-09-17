@@ -44,7 +44,7 @@ const session = {
   movement_summary: {
     average_symmetry_delta: 8.5,
     average_joint_movement_range_degrees: 74,
-    measurement_unit: "deg",
+    measurement_unit: "\u00b0",
   },
 };
 
