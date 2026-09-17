@@ -39,6 +39,7 @@ const session = {
   movement_summary: {
     average_symmetry_delta: 8.5,
     average_joint_movement_range_degrees: 74,
+    measurement_unit: "deg",
   },
 };
 
@@ -69,10 +70,12 @@ assert.ok(primarySymmetry);
 assert.equal(primarySymmetry.value, 8.5);
 assert.equal(primarySymmetry.context.source, "verified_session_summary");
 assert.equal(primarySymmetry.context.exerciseKey, "bodyweight_squat");
+assert.equal(primarySymmetry.unit, "deg");
 
-const primaryRange = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_range_deg");
+const primaryRange = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_range");
 assert.ok(primaryRange);
 assert.equal(primaryRange.value, 74);
+assert.equal(primaryRange.unit, "deg");
 assert.equal(insertedRow.features.metrics.some((metric) => "landmarks" in metric || "coordinates" in metric), false);
 
 console.log("compensation biomechanics persistence service tests passed");
