@@ -4,7 +4,12 @@ import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
 const MODEL_SHA256 = "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a";
-const WASM_URL = "/mediapipe";
+export function resolveMediapipeRuntimeUrl(baseUrl = import.meta.env?.BASE_URL || "/") {
+  const safeBase = typeof baseUrl === "string" && baseUrl.trim() ? baseUrl.trim() : "/";
+  const normalizedBase = safeBase.endsWith("/") ? safeBase : `${safeBase}/`;
+  return `${normalizedBase}mediapipe`;
+}
+const WASM_URL = resolveMediapipeRuntimeUrl();
 
 let verifiedModelUrlPromise;
 
@@ -156,6 +161,7 @@ export async function createMovementTracker(options) {
   } = options || {};
   const profile = getMovementProfile(exerciseKey, trackingMode);
   let landmarker;
+  let preferCpu = false;
   const trackerApi = {};
   let stream;
   let running = false;
@@ -200,7 +206,7 @@ export async function createMovementTracker(options) {
       verifiedModelUrl(),
     ]);
     const options = {
-      baseOptions: { modelAssetPath, delegate: supportsWebGL() ? "GPU" : "CPU" },
+      baseOptions: { modelAssetPath, delegate: !preferCpu && supportsWebGL() ? "GPU" : "CPU" },
       runningMode: "VIDEO",
       numPoses: 2,
       minPoseDetectionConfidence: 0.55,
@@ -434,7 +440,29 @@ export async function createMovementTracker(options) {
         result = landmarker.detectForVideo(video, now);
         poseAt = performance.now();
         draw(result);
-      } catch {
+      } catch (inferenceError) {
+        // A number of browsers/laptops can create the GPU landmarker successfully
+        // and then lose the WebGL context on the first real video inference. Recover
+        // once in-place on CPU so a presentation/session does not die after camera
+        // permission has already been granted. Completed reps and calibration state
+        // remain untouched.
+        if (!preferCpu && running) {
+          const recoveryGeneration = cameraGeneration;
+          preferCpu = true;
+          try { landmarker?.close?.(); } catch { /* The failed GPU model may already be disposed. */ }
+          landmarker = null;
+          onTrackingState({ code: "model_fallback", label: "Switching to compatibility tracking", quality: null });
+          try {
+            await initialize();
+            if (!running || recoveryGeneration !== cameraGeneration) return;
+            lastVideoTime = -1;
+            rafId = requestAnimationFrame(frame);
+            return;
+          } catch {
+            // If CPU initialization also fails, continue into the normal recoverable
+            // camera error state below.
+          }
+        }
         stop();
         try { landmarker?.close?.(); } catch { /* The failed model may already be disposed. */ }
         landmarker = null;
