@@ -33,6 +33,7 @@ const state = {
   planId: null,
   clientSessionId: null,
   frames: [],
+  acceptedSampleCount: 0,
   featureDefinitionVersion: null,
   lastFrameAt: -Infinity,
   resolving: null,
@@ -64,6 +65,7 @@ function resetForLab(root) {
   state.planId = planId;
   state.clientSessionId = clientSessionId;
   state.frames = [];
+  state.acceptedSampleCount = 0;
   state.featureDefinitionVersion = null;
   state.lastFrameAt = -Infinity;
   state.resolving = null;
@@ -140,6 +142,7 @@ function acceptDerivedFrame(event) {
 
   state.featureDefinitionVersion = frame.definitionVersion;
   state.lastFrameAt = sampleAt;
+  state.acceptedSampleCount += 1;
   state.frames = appendBiomechanicsFrame(state.frames, safeMetrics);
   if (!state.assignment) void resolveLabContext();
 }
@@ -216,6 +219,7 @@ async function persistPendingCapture() {
         patientId: state.patientId,
         session: savedSession,
         frames: state.frames,
+        acceptedSampleCount: state.acceptedSampleCount,
         prescribedSide: state.assignment.prescribed_side || "either",
         primaryMetric: graph?.primaryMetric || null,
         relatedMetrics: graph?.relatedMetrics || [],
