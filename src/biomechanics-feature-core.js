@@ -1,0 +1,165 @@
+const LANDMARK = Object.freeze({
+  leftShoulder: 11,
+  rightShoulder: 12,
+  leftHip: 23,
+  rightHip: 24,
+  leftKnee: 25,
+  rightKnee: 26,
+  leftAnkle: 27,
+  rightAnkle: 28,
+  leftHeel: 29,
+  rightHeel: 30,
+  leftFoot: 31,
+  rightFoot: 32,
+});
+
+const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const degrees = (radians) => radians * 180 / Math.PI;
+
+function point(landmarks, index) {
+  const raw = landmarks?.[index];
+  if (!raw) return null;
+  const x = finite(raw.x);
+  const y = finite(raw.y);
+  const z = finite(raw.z);
+  if (x === null || y === null) return null;
+  return { x, y, z: z ?? 0, visibility: finite(raw.visibility) ?? 1 };
+}
+
+function midpoint(a, b) {
+  if (!a || !b) return null;
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+    z: (a.z + b.z) / 2,
+    visibility: Math.min(a.visibility, b.visibility),
+  };
+}
+
+function distance2d(a, b) {
+  if (!a || !b) return null;
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function angle3d(a, vertex, c) {
+  if (!a || !vertex || !c) return null;
+  const u = { x: a.x - vertex.x, y: a.y - vertex.y, z: a.z - vertex.z };
+  const v = { x: c.x - vertex.x, y: c.y - vertex.y, z: c.z - vertex.z };
+  const dot = u.x * v.x + u.y * v.y + u.z * v.z;
+  const um = Math.hypot(u.x, u.y, u.z);
+  const vm = Math.hypot(v.x, v.y, v.z);
+  if (!um || !vm) return null;
+  return degrees(Math.acos(clamp(dot / (um * vm), -1, 1)));
+}
+
+function segmentTiltFromHorizontal(a, b) {
+  if (!a || !b) return null;
+  return degrees(Math.atan2(b.y - a.y, b.x - a.x));
+}
+
+function trunkLateralLean(shoulderMid, hipMid) {
+  if (!shoulderMid || !hipMid) return null;
+  const dx = shoulderMid.x - hipMid.x;
+  const dy = shoulderMid.y - hipMid.y;
+  if (Math.abs(dx) + Math.abs(dy) < 1e-9) return null;
+  return degrees(Math.atan2(dx, -dy));
+}
+
+function pointLineOffset2d(pointValue, lineStart, lineEnd) {
+  if (!pointValue || !lineStart || !lineEnd) return null;
+  const dx = lineEnd.x - lineStart.x;
+  const dy = lineEnd.y - lineStart.y;
+  const length = Math.hypot(dx, dy);
+  if (!length) return null;
+  return ((pointValue.x - lineStart.x) * dy - (pointValue.y - lineStart.y) * dx) / length;
+}
+
+function visibilityQuality(points) {
+  const values = points.filter(Boolean).map((item) => clamp(item.visibility ?? 1, 0, 1));
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function metric(metricKey, region, side, value, unit, quality, context = {}) {
+  return Number.isFinite(value) ? { metricKey, region, side, value, unit, quality: clamp(quality, 0, 1), context } : null;
+}
+
+export function extractWholeBodyBiomechanics(landmarks, { source = "pose_world", cameraView = "unknown" } = {}) {
+  const leftShoulder = point(landmarks, LANDMARK.leftShoulder);
+  const rightShoulder = point(landmarks, LANDMARK.rightShoulder);
+  const leftHip = point(landmarks, LANDMARK.leftHip);
+  const rightHip = point(landmarks, LANDMARK.rightHip);
+  const leftKnee = point(landmarks, LANDMARK.leftKnee);
+  const rightKnee = point(landmarks, LANDMARK.rightKnee);
+  const leftAnkle = point(landmarks, LANDMARK.leftAnkle);
+  const rightAnkle = point(landmarks, LANDMARK.rightAnkle);
+
+  const shoulderMid = midpoint(leftShoulder, rightShoulder);
+  const hipMid = midpoint(leftHip, rightHip);
+  const ankleMid = midpoint(leftAnkle, rightAnkle);
+  const hipWidth = distance2d(leftHip, rightHip);
+  const ankleWidth = distance2d(leftAnkle, rightAnkle);
+  const stanceScale = Math.max(ankleWidth ?? 0, hipWidth ?? 0, 1e-5);
+
+  const trunkLean = trunkLateralLean(shoulderMid, hipMid);
+  const pelvicObliquity = segmentTiltFromHorizontal(leftHip, rightHip);
+  const shoulderObliquity = segmentTiltFromHorizontal(leftShoulder, rightShoulder);
+  const leftKneeAngle = angle3d(leftHip, leftKnee, leftAnkle);
+  const rightKneeAngle = angle3d(rightHip, rightKnee, rightAnkle);
+  const leftHipAngle = angle3d(leftShoulder, leftHip, leftKnee);
+  const rightHipAngle = angle3d(rightShoulder, rightHip, rightKnee);
+  const leftKneeLineOffset = pointLineOffset2d(leftKnee, leftHip, leftAnkle);
+  const rightKneeLineOffset = pointLineOffset2d(rightKnee, rightHip, rightAnkle);
+  const lateralShift = hipMid && ankleMid ? (hipMid.x - ankleMid.x) / stanceScale : null;
+
+  const trunkQuality = visibilityQuality([leftShoulder, rightShoulder, leftHip, rightHip]);
+  const lowerQuality = visibilityQuality([leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle]);
+  const leftLegQuality = visibilityQuality([leftHip, leftKnee, leftAnkle]);
+  const rightLegQuality = visibilityQuality([rightHip, rightKnee, rightAnkle]);
+  const common = { source, cameraView };
+
+  return [
+    metric("trunk_lateral_lean_deg", "trunk", "midline", Math.abs(trunkLean), "deg", trunkQuality, { ...common, signedValue: trunkLean }),
+    metric("pelvic_obliquity_deg", "pelvis", "bilateral", Math.abs(pelvicObliquity), "deg", lowerQuality, { ...common, signedValue: pelvicObliquity }),
+    metric("shoulder_obliquity_deg", "shoulder_girdle", "bilateral", Math.abs(shoulderObliquity), "deg", trunkQuality, { ...common, signedValue: shoulderObliquity }),
+    metric("knee_flexion_deg", "knee", "left", leftKneeAngle === null ? null : Math.max(0, 180 - leftKneeAngle), "deg", leftLegQuality, common),
+    metric("knee_flexion_deg", "knee", "right", rightKneeAngle === null ? null : Math.max(0, 180 - rightKneeAngle), "deg", rightLegQuality, common),
+    metric("hip_flexion_proxy_deg", "hip", "left", leftHipAngle === null ? null : Math.max(0, 180 - leftHipAngle), "deg", visibilityQuality([leftShoulder, leftHip, leftKnee]), { ...common, proxy: true }),
+    metric("hip_flexion_proxy_deg", "hip", "right", rightHipAngle === null ? null : Math.max(0, 180 - rightHipAngle), "deg", visibilityQuality([rightShoulder, rightHip, rightKnee]), { ...common, proxy: true }),
+    metric("knee_frontal_offset_proxy", "knee", "left", leftKneeLineOffset === null ? null : Math.abs(leftKneeLineOffset) / stanceScale, "ratio", leftLegQuality, { ...common, proxy: true, signedValue: leftKneeLineOffset === null ? null : leftKneeLineOffset / stanceScale }),
+    metric("knee_frontal_offset_proxy", "knee", "right", rightKneeLineOffset === null ? null : Math.abs(rightKneeLineOffset) / stanceScale, "ratio", rightLegQuality, { ...common, proxy: true, signedValue: rightKneeLineOffset === null ? null : rightKneeLineOffset / stanceScale }),
+    metric("lateral_weight_shift_proxy", "lower_limb", "bilateral", lateralShift === null ? null : Math.abs(lateralShift), "ratio", lowerQuality, { ...common, proxy: true, signedValue: lateralShift }),
+    metric("knee_flexion_asymmetry_deg", "knee", "bilateral", leftKneeAngle === null || rightKneeAngle === null ? null : Math.abs(leftKneeAngle - rightKneeAngle), "deg", lowerQuality, common),
+  ].filter(Boolean);
+}
+
+export function aggregateBiomechanicsFrames(frames = [], { minQuality = 0.55 } = {}) {
+  const grouped = new Map();
+  frames.flat().forEach((raw) => {
+    if (!raw?.metricKey || !Number.isFinite(Number(raw.value)) || Number(raw.quality ?? 1) < minQuality) return;
+    const key = `${raw.metricKey}|${raw.region}|${raw.side}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(raw);
+  });
+
+  return [...grouped.values()].map((items) => {
+    const sorted = items.map((item) => Number(item.value)).sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    const quality = items.reduce((sum, item) => sum + Number(item.quality ?? 1), 0) / items.length;
+    const first = items[0];
+    return {
+      metricKey: first.metricKey,
+      region: first.region,
+      side: first.side,
+      value: median,
+      unit: first.unit || null,
+      quality: clamp(quality, 0, 1),
+      context: {
+        ...(first.context || {}),
+        aggregation: "median",
+        acceptedFrames: items.length,
+      },
+    };
+  });
+}
