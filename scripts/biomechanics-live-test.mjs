@@ -32,7 +32,8 @@ const snapshot = {
 const landmarks = twinSnapshotToLandmarks(snapshot, { quality: 0.93 });
 assert.equal(landmarks.length, 33);
 assert.equal(landmarks[11].visibility, 0.93);
-assert.equal(landmarks[23].x, snapshot.lh.x / 320);
+assert.equal(landmarks[23].x, 1 - ((snapshot.lh.x - 40) / 240));
+assert.equal(landmarks[23].y, (snapshot.lh.y - 22) / 350);
 
 const metrics = extractWholeBodyBiomechanics(landmarks, {
   source: "pose_screen_proxy",
