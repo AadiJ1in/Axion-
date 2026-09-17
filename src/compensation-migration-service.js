@@ -218,12 +218,15 @@ export async function persistSessionBiomechanics({
 // This reduces false drift from a camera that is slightly rolled between home
 // sessions. Raw camera-horizontal angles are still stored for research display,
 // but they do not drive candidate status.
+// Prototype sensitivity thresholds are expressed in each metric's native
+// scale. They are engineering gates for longitudinal review signals, not
+// clinically validated diagnostic cutoffs.
 const sharedLowerBodyRelatedMetrics = Object.freeze([
-  { metricKey: "trunk_lateral_lean_relative_deg", region: "trunk", side: "midline", worseningDirection: "increase" },
-  { metricKey: "shoulder_pelvis_obliquity_delta_deg", region: "trunk", side: "bilateral", worseningDirection: "increase" },
-  { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "left", worseningDirection: "increase" },
-  { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "right", worseningDirection: "increase" },
-  { metricKey: "pelvis_over_stance_offset_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase" },
+  { metricKey: "trunk_lateral_lean_relative_deg", region: "trunk", side: "midline", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5 },
+  { metricKey: "shoulder_pelvis_obliquity_delta_deg", region: "trunk", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5 },
+  { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "left", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
+  { metricKey: "knee_frontal_offset_proxy", region: "knee", side: "right", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
+  { metricKey: "pelvis_over_stance_offset_proxy", region: "lower_limb", side: "bilateral", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
 ]);
 
 function primarySymmetryMetric(exerciseKey) {
