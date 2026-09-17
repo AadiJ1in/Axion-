@@ -4,10 +4,21 @@ import "./clinical-targets.js";
 import "./therapist-review-audit.js";
 import "./plan-version-history.js";
 import "./session-review-notes.js";
+import "./demo-entry.js";
 import { syncUiHierarchy } from "./ui-hierarchy.js";
 import { syncUiHierarchyP1 } from "./ui-hierarchy-p1.js";
 import { syncUiStability } from "./ui-stability.js";
 import { syncPatientSurfacePolish } from "./patient-surface-polish.js";
+import { syncInterfaceSprint } from "./interface-sprint.js";
+import { syncClinicalValidationSurface } from "./clinical-validation-surface.js";
+import { syncTodayRoadmapEntry } from "./today-roadmap-entry.js";
+import { syncTherapistReviewCopy } from "./therapist-review-copy.js";
+import {
+  bindExerciseStartContinuity,
+  captureCameraRecoveryState,
+  restoreCameraRecoveryState,
+  syncJourneyIntroPlacement,
+} from "./release-regression-repair.js";
 
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
@@ -27,11 +38,25 @@ function restVisible(overlay) {
   return Boolean(overlay && !overlay.classList.contains('hidden'));
 }
 
+function syncLateClinicPresentation() {
+  // clinic-readiness can finish async after the main presentation pass. These
+  // two helpers are tiny and idempotent: they only map the visible Today entry
+  // and normalize one therapist heading after those elements arrive.
+  syncTodayRoadmapEntry();
+  syncTherapistReviewCopy();
+}
+
 function syncPresentationHierarchy() {
   syncUiHierarchy();
   syncUiHierarchyP1();
   syncUiStability();
   syncPatientSurfacePolish();
+  const recoveryState = captureCameraRecoveryState();
+  syncInterfaceSprint();
+  restoreCameraRecoveryState(recoveryState);
+  syncJourneyIntroPlacement();
+  syncClinicalValidationSurface();
+  syncLateClinicPresentation();
 }
 
 let presentationFrame = 0;
@@ -44,6 +69,7 @@ function schedulePresentationHierarchy() {
 }
 
 window.__axionSyncPresentation = schedulePresentationHierarchy;
+bindExerciseStartContinuity();
 
 function syncRestExperience() {
   const overlay = document.querySelector('#set-rest-overlay');
@@ -90,11 +116,14 @@ document.addEventListener('click', (event) => {
   }, 80);
 }, true);
 
-// The 250ms timer is now rest-overlay only. Presentation hierarchy is event-driven
-// after a render, so signed-in navigation and cards cannot flicker four times/second.
+// Keep the established rest-only timer contract intact. A separate lightweight
+// async-clinic sync only touches two idempotent presentation details after the
+// clinic-ready enhancer finishes loading its data.
 const polishTimer = window.setInterval(syncRestExperience, 250);
+const lateClinicTimer = window.setInterval(syncLateClinicPresentation, 250);
 window.addEventListener('pagehide', () => {
   window.clearInterval(polishTimer);
+  window.clearInterval(lateClinicTimer);
   if (presentationFrame) window.cancelAnimationFrame(presentationFrame);
 }, { once:true });
 window.addEventListener('pageshow', schedulePresentationHierarchy);

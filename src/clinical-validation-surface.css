@@ -1,0 +1,162 @@
+.clinical-validation-surface{
+  margin:clamp(4rem,8vw,7rem) auto;
+  padding:clamp(1.25rem,3vw,2.2rem);
+  border:1px solid rgba(22,55,45,.13);
+  border-radius:30px;
+  background:linear-gradient(150deg,rgba(247,243,232,.98),rgba(237,244,238,.94));
+  box-shadow:0 22px 70px rgba(31,52,43,.08);
+}
+
+.clinical-validation-heading{
+  display:grid;
+  grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);
+  gap:clamp(1.5rem,4vw,4rem);
+  align-items:end;
+}
+
+.clinical-validation-heading h2{
+  margin:.55rem 0 0;
+  max-width:760px;
+  font-size:clamp(2rem,4vw,4rem);
+  line-height:.98;
+  letter-spacing:-.045em;
+}
+
+.clinical-validation-heading>p{
+  margin:0;
+  max-width:610px;
+  color:#45574f;
+  font-size:1rem;
+  line-height:1.7;
+}
+
+.clinical-validation-boundaries{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin-top:clamp(1.8rem,4vw,3rem);
+}
+
+.clinical-validation-boundaries>div{
+  padding:18px;
+  border:1px solid rgba(20,58,45,.1);
+  border-radius:18px;
+  background:rgba(255,255,255,.62);
+}
+
+.clinical-validation-boundaries b{
+  display:block;
+  margin-bottom:7px;
+  color:#183f32;
+  font-size:.95rem;
+}
+
+.clinical-validation-boundaries p,
+.clinical-validation-stage p,
+.clinical-collaboration-callout p,
+.clinical-reimbursement-note p{
+  margin:0;
+  color:#526159;
+  line-height:1.58;
+}
+
+.clinical-validation-stage-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+  margin-top:14px;
+}
+
+.clinical-validation-stage{
+  min-height:100%;
+  padding:22px;
+  border-radius:20px;
+  background:#173d31;
+  color:#f4f0e5;
+}
+
+.clinical-validation-stage>span,
+.clinical-collaboration-callout>div>span{
+  display:block;
+  margin-bottom:10px;
+  font-size:.72rem;
+  font-weight:800;
+  letter-spacing:.14em;
+}
+
+.clinical-validation-stage>span{color:#b8d8c7}
+
+.clinical-validation-stage h3{
+  margin:0 0 10px;
+  color:#fffdf7;
+  font-size:1.35rem;
+}
+
+.clinical-validation-stage p{color:#d6dfda}
+
+.clinical-validation-stage ul{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  margin:18px 0 0;
+  padding:0;
+  list-style:none;
+}
+
+.clinical-validation-stage li{
+  padding:7px 10px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:999px;
+  background:rgba(255,255,255,.07);
+  color:#f7f5ef;
+  font-size:.79rem;
+}
+
+.clinical-collaboration-callout{
+  display:flex;
+  gap:24px;
+  align-items:center;
+  justify-content:space-between;
+  margin-top:14px;
+  padding:22px;
+  border:1px solid rgba(47,104,79,.18);
+  border-radius:20px;
+  background:rgba(255,255,255,.7);
+}
+
+.clinical-collaboration-callout>div{max-width:780px}
+.clinical-collaboration-callout>div>span{color:#537263}
+.clinical-collaboration-callout h3{margin:0 0 7px;font-size:1.35rem;color:#173d31}
+.clinical-collaboration-callout .button{flex:0 0 auto;min-height:46px}
+
+.clinical-reimbursement-note{
+  margin-top:14px;
+  padding:15px 18px;
+  border:1px solid rgba(20,58,45,.11);
+  border-radius:16px;
+  background:rgba(255,255,255,.52);
+}
+
+.clinical-reimbursement-note summary{
+  cursor:pointer;
+  color:#173d31;
+  font-weight:760;
+}
+
+.clinical-reimbursement-note p{padding-top:10px}
+
+@media (max-width:900px){
+  .clinical-validation-heading{grid-template-columns:1fr}
+  .clinical-validation-boundaries,
+  .clinical-validation-stage-grid{grid-template-columns:1fr}
+  .clinical-collaboration-callout{align-items:flex-start;flex-direction:column}
+}
+
+@media (max-width:520px){
+  .clinical-validation-surface{margin:3rem auto;padding:16px;border-radius:22px}
+  .clinical-validation-heading h2{font-size:2.25rem}
+  .clinical-validation-stage,
+  .clinical-validation-boundaries>div,
+  .clinical-collaboration-callout{padding:17px}
+  .clinical-collaboration-callout .button{width:100%}
+}
