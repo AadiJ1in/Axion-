@@ -146,6 +146,27 @@ const related = [
 {
   const observations = [];
   const knee = [24, 21, 18, 14, 10, 7, 5];
+  const trunk = [10, 100, 20, 110, 30, 120, 40];
+  for (let i = 0; i < knee.length; i += 1) {
+    const exercise = i % 2 === 0 ? "squat" : "step_down";
+    observations.push(observation(i + 1, exercise, "right_knee_asymmetry", "knee", "right", knee[i]));
+    observations.push(observation(i + 1, exercise, "trunk_lean", "trunk", "midline", trunk[i]));
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: primary,
+    relatedMetrics: [related[0]],
+  });
+  assert.equal(result.signals[0].crossExerciseSatisfied, true);
+  assert.equal(result.signals[0].temporalCouplingSatisfied, false);
+  assert.ok(result.signals[0].score >= 60);
+  assert.equal(result.status, "monitoring");
+  assert.equal(result.reason, "secondary_drift_temporal_coupling_weak");
+}
+
+{
+  const observations = [];
+  const knee = [24, 21, 18, 14, 10, 7, 5];
   const trunk = [5, 5, 5, 14, 5, 5, 5];
   for (let i = 0; i < knee.length; i += 1) {
     observations.push(observation(i + 1, "squat", "right_knee_asymmetry", "knee", "right", knee[i]));
