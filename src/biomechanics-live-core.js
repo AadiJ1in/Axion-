@@ -18,7 +18,7 @@ const TWIN_LANDMARK_MAP = Object.freeze({
 export const LIVE_BIOMECHANICS_MIN_QUALITY = 0.62;
 export const LIVE_BIOMECHANICS_PHASES = Object.freeze(["IN MOTION", "HOLDING", "LIVE"]);
 export const WORLD_BIOMECHANICS_ACTIVE_STAGES = Object.freeze(["down", "hold"]);
-export const WORLD_BIOMECHANICS_DEFINITION = "whole-body-world-v1";
+export const WORLD_BIOMECHANICS_DEFINITION = "whole-body-world-v2";
 
 export function parseTrackingQuality(text = "") {
   const value = String(text);
