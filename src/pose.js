@@ -1,22 +1,14 @@
 import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
 import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
+import { chooseMediapipeDelegate, resolveMediapipeConfig } from "./mediapipe-config.js";
 
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
-const MODEL_SHA256 = "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a";
-export function resolveMediapipeRuntimeUrl(baseUrl = import.meta.env?.BASE_URL || "/") {
-  const safeBase = typeof baseUrl === "string" && baseUrl.trim() ? baseUrl.trim() : "/";
-  const normalizedBase = safeBase.endsWith("/") ? safeBase : `${safeBase}/`;
-  return `${normalizedBase}mediapipe`;
-}
-const WASM_URL = resolveMediapipeRuntimeUrl();
+const verifiedModelUrls = new Map();
 
-let verifiedModelUrlPromise;
-
-async function verifiedModelUrl() {
-  if (!verifiedModelUrlPromise) {
-    verifiedModelUrlPromise = (async () => {
-      const response = await fetch(MODEL_URL, {
+async function verifiedModelUrl(model) {
+  const cacheKey = `${model.url}#${model.sha256}`;
+  if (!verifiedModelUrls.has(cacheKey)) {
+    const promise = (async () => {
+      const response = await fetch(model.url, {
         cache: "force-cache",
         credentials: "omit",
         referrerPolicy: "no-referrer",
@@ -26,16 +18,17 @@ async function verifiedModelUrl() {
       const actualHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", modelBytes)))
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
-      if (actualHash !== MODEL_SHA256) {
+      if (actualHash !== model.sha256) {
         throw new Error("Movement model integrity verification failed.");
       }
       return URL.createObjectURL(new Blob([modelBytes], { type: "application/octet-stream" }));
     })().catch((error) => {
-      verifiedModelUrlPromise = null;
+      verifiedModelUrls.delete(cacheKey);
       throw error;
     });
+    verifiedModelUrls.set(cacheKey, promise);
   }
-  return verifiedModelUrlPromise;
+  return verifiedModelUrls.get(cacheKey);
 }
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -158,8 +151,10 @@ export async function createMovementTracker(options) {
     onTrackingState = () => {},
     onTiming = () => {},
     onError = () => {},
+    mediapipe = {},
   } = options || {};
   const profile = getMovementProfile(exerciseKey, trackingMode);
+  const mediapipeConfig = resolveMediapipeConfig(mediapipe);
   let landmarker;
   let preferCpu = false;
   const trackerApi = {};
@@ -202,11 +197,17 @@ export async function createMovementTracker(options) {
     trackerApi.DrawingUtils = DrawingUtils;
     trackerApi.PoseLandmarker = PoseLandmarker;
     const [vision, modelAssetPath] = await Promise.all([
-      FilesetResolver.forVisionTasks(WASM_URL),
-      verifiedModelUrl(),
+      FilesetResolver.forVisionTasks(mediapipeConfig.wasmRoot),
+      verifiedModelUrl(mediapipeConfig.model),
     ]);
     const options = {
-      baseOptions: { modelAssetPath, delegate: !preferCpu && supportsWebGL() ? "GPU" : "CPU" },
+      baseOptions: {
+        modelAssetPath,
+        delegate: chooseMediapipeDelegate(mediapipeConfig.delegate, {
+          webgl: supportsWebGL(),
+          forceCpu: preferCpu,
+        }),
+      },
       runningMode: "VIDEO",
       numPoses: 2,
       minPoseDetectionConfidence: 0.55,
