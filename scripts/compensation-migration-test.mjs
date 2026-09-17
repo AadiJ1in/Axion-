@@ -54,7 +54,23 @@ const related = [
   assert.equal(result.status, "candidate");
   assert.ok(result.score >= 60);
   assert.equal(result.signals.length, 2);
+  assert.ok(result.signals.every((signal) => signal.crossExerciseSatisfied));
   assert.ok(result.signals.every((signal) => signal.explanation.includes("not an injury diagnosis")));
+}
+
+{
+  const observations = [];
+  const knee = [24, 21, 18, 14, 10, 7, 5];
+  const trunk = [4, 5, 7, 9, 12, 15, 17];
+  for (let i = 0; i < knee.length; i += 1) {
+    observations.push(observation(i + 1, "squat", "right_knee_asymmetry", "knee", "right", knee[i]));
+    observations.push(observation(i + 1, "squat", "trunk_lean", "trunk", "midline", trunk[i]));
+  }
+  const result = detectCompensationMigration({ observations, primaryMetric: primary, relatedMetrics: related });
+  assert.equal(result.status, "monitoring");
+  assert.equal(result.reason, "secondary_drift_requires_replication");
+  assert.ok(result.score >= 60);
+  assert.equal(result.signals[0].crossExerciseSatisfied, false);
 }
 
 {
