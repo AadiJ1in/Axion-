@@ -498,6 +498,13 @@ function scheduleClinicalSessionCapture() {
   });
 }
 
+function sessionCaptureNeedsPeriodicSync() {
+  if (document.querySelector(".lab-page")) return true;
+  if (state.finalizing && !state.persistedSessionId) return true;
+  const reflection = document.querySelector(".reflection-card");
+  return Boolean(reflection && !document.querySelector("[data-session-after-context]"));
+}
+
 const sessionCaptureObserver = new MutationObserver((mutations) => {
   if (mutations.some((mutation) => [...(mutation.addedNodes || [])].some((node) => node.nodeType === Node.ELEMENT_NODE
     && (node.matches?.(".lab-page, [data-clinic-calibration], .reflection-card, .report-page")
@@ -505,9 +512,12 @@ const sessionCaptureObserver = new MutationObserver((mutations) => {
     scheduleClinicalSessionCapture();
   }
 });
-sessionCaptureObserver.observe(document.documentElement, { childList: true, subtree: true });
+const sessionCaptureObserverRoot = document.querySelector("#app") || document.documentElement;
+sessionCaptureObserver.observe(sessionCaptureObserverRoot, { childList: true, subtree: true });
 document.addEventListener("axion:clinical-gate-mounted", scheduleClinicalSessionCapture);
-const timer = window.setInterval(scheduleClinicalSessionCapture, 250);
+const timer = window.setInterval(() => {
+  if (!document.hidden && sessionCaptureNeedsPeriodicSync()) scheduleClinicalSessionCapture();
+}, 250);
 scheduleClinicalSessionCapture();
 
 window.addEventListener("pagehide", () => {
