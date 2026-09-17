@@ -14,6 +14,13 @@ const average = (values) => {
   return usable.length ? usable.reduce((sum, value) => sum + value, 0) / usable.length : null;
 };
 
+function canonicalMeasurementUnit(unit) {
+  const raw = String(unit || "").trim();
+  if (!raw || raw === "°" || /^deg(?:ree)?s?$/i.test(raw)) return "deg";
+  if (raw === "%" || /^percent$/i.test(raw)) return "%";
+  return raw;
+}
+
 function metricPayload(metric) {
   return {
     metricKey: metric.metricKey,
@@ -95,7 +102,7 @@ function sessionSummaryMetrics(session, trackingQuality, prescribedSide) {
   const quality = Number.isFinite(Number(trackingQuality)) ? Number(trackingQuality) : 1;
   const symmetry = finite(summary.average_symmetry_delta);
   const movementRange = finite(summary.average_joint_movement_range_degrees ?? summary.average_signal_excursion);
-  const measurementUnit = String(summary.measurement_unit || "deg");
+  const measurementUnit = canonicalMeasurementUnit(summary.measurement_unit || "deg");
   const metrics = [];
   if (symmetry !== null) {
     metrics.push({
