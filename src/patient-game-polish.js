@@ -11,6 +11,7 @@ import { syncUiStability } from "./ui-stability.js";
 import { syncPatientSurfacePolish } from "./patient-surface-polish.js";
 import { syncInterfaceSprint } from "./interface-sprint.js";
 import { syncClinicalValidationSurface } from "./clinical-validation-surface.js";
+import { syncTodayRoadmapEntry } from "./today-roadmap-entry.js";
 
 // Patient-facing usability repairs for Movement Lab.
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
@@ -37,6 +38,7 @@ function syncPresentationHierarchy() {
   syncPatientSurfacePolish();
   syncInterfaceSprint();
   syncClinicalValidationSurface();
+  syncTodayRoadmapEntry();
 }
 
 let presentationFrame = 0;
