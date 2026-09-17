@@ -59,6 +59,33 @@ assert.equal(building.title, "Longitudinal baseline is still building");
 assert.equal(building.showScore, false);
 assert.equal(building.signals.length, 0);
 
+const guarded = biomechanicsReviewPresentation({
+  features: { definitionVersion: "whole-body-world-v2" },
+  compensation_analysis: {
+    status: "monitoring",
+    reason: "primary_recovery_confounded_by_range_loss",
+    score: 0,
+    signals: [],
+    primary: {
+      metric: { metricKey: "primary_movement_symmetry_delta", exerciseKey: "bodyweight_squat", unit: "deg" },
+      summary: { baseline: 18, recent: 7, sessionCount: 7, spanDays: 18 },
+      improvementFraction: 0.61,
+      recoveryGuard: {
+        metric: { metricKey: "primary_movement_range", unit: "deg" },
+        summary: { baseline: 80, recent: 48 },
+        relativeDecrease: 0.4,
+        maxRelativeDecrease: 0.15,
+        satisfied: false,
+      },
+    },
+  },
+});
+assert.equal(guarded.primary.recoveryGuard.satisfied, false);
+assert.equal(guarded.primary.recoveryGuard.relativeDecreasePercent, 40);
+assert.equal(guarded.primary.recoveryGuard.maxRelativeDecreasePercent, 15);
+assert.equal(guarded.primary.recoveryGuard.baseline, "80.0°");
+assert.equal(guarded.primary.recoveryGuard.recent, "48.0°");
+
 const secondaryOnly = biomechanicsReviewPresentation({
   features: { definitionVersion: "whole-body-world-v2" },
   compensation_analysis: {
