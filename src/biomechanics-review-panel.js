@@ -17,6 +17,66 @@ function metricCard(label, value) {
   return card;
 }
 
+function primaryRecoveryCard(primary) {
+  if (!primary) return null;
+  const card = element("section", "biomechanics-primary-recovery");
+  const title = element("div", "biomechanics-primary-head");
+  title.append(
+    element("span", "", "PRIMARY RECOVERY TREND"),
+    element("b", "", primary.label),
+  );
+  const exercise = primary.exerciseKey
+    ? String(primary.exerciseKey).replaceAll("_", " ")
+    : "prescribed movement";
+  const values = element("p", "", `Early baseline ${primary.baseline} → recent ${primary.recent}${primary.improvementPercent === null ? "" : ` · ${primary.improvementPercent}% improvement`}`);
+  const evidence = element("small", "", `${primary.sessionCount} ${exercise} sessions${primary.spanDays === null ? "" : ` · ${primary.spanDays.toFixed(1)} day observation span`}`);
+  card.append(title, values, evidence);
+  return card;
+}
+
+function strongestSignal(signals, predicate) {
+  return signals.filter(predicate).sort((a, b) => b.score - a.score)[0] || null;
+}
+
+function movementDriftMap(signals) {
+  if (!signals.length) return null;
+  const map = element("section", "movement-drift-map");
+  const copy = element("div", "movement-drift-copy");
+  copy.append(
+    element("span", "", "MOVEMENT DRIFT MAP"),
+    element("b", "", "Where sustained kinematic drift is appearing"),
+    element("small", "", "Region map only. It does not measure joint force, tissue load, or injury probability."),
+  );
+
+  const regionSpecs = [
+    { key: "trunk", label: "Trunk", signal: strongestSignal(signals, (item) => item.region === "trunk") },
+    { key: "pelvis", label: "Pelvis / stance", signal: strongestSignal(signals, (item) => item.region === "pelvis" || item.region === "lower_limb") },
+    { key: "left-knee", label: "Left knee", signal: strongestSignal(signals, (item) => item.region === "knee" && (item.side === "left" || item.side === "bilateral")) },
+    { key: "right-knee", label: "Right knee", signal: strongestSignal(signals, (item) => item.region === "knee" && (item.side === "right" || item.side === "bilateral")) },
+  ];
+
+  const figure = element("div", "movement-drift-body");
+  figure.setAttribute("role", "img");
+  const activeLabels = regionSpecs.filter((item) => item.signal).map((item) => `${item.label} ${item.signal.score}/100`);
+  figure.setAttribute("aria-label", activeLabels.length
+    ? `Movement drift regions: ${activeLabels.join(", ")}`
+    : "No mapped movement drift regions");
+
+  regionSpecs.forEach(({ key, label, signal }) => {
+    const node = element("div", `movement-drift-node region-${key}${signal ? " active" : ""}`);
+    node.dataset.region = key;
+    node.append(
+      element("span", "", label),
+      element("b", "", signal ? `${signal.score}/100` : "—"),
+    );
+    if (signal) node.title = `${signal.label}: pattern score ${signal.score}/100`;
+    figure.append(node);
+  });
+
+  map.append(copy, figure);
+  return map;
+}
+
 function signalCard(signal) {
   const card = element("article", "biomechanics-review-signal");
   const head = element("header");
@@ -58,6 +118,11 @@ function buildPanel(row) {
     metricCard("Tracking quality", view.trackingQualityPercent === null ? "—" : `${view.trackingQualityPercent}%`),
   );
   panel.append(metrics);
+
+  const primary = primaryRecoveryCard(view.primary);
+  if (primary) panel.append(primary);
+  const driftMap = movementDriftMap(view.signals);
+  if (driftMap) panel.append(driftMap);
 
   if (view.signals.length) {
     const signals = element("div", "biomechanics-review-signals");
