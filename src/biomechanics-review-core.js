@@ -2,13 +2,18 @@ const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 
 const METRIC_LABELS = Object.freeze({
   trunk_lateral_lean_deg: "Trunk lateral lean",
+  trunk_lateral_lean_relative_deg: "Trunk lean relative to pelvis",
   pelvic_obliquity_deg: "Pelvic obliquity",
   shoulder_obliquity_deg: "Shoulder obliquity",
+  shoulder_pelvis_obliquity_delta_deg: "Shoulder–pelvis tilt difference",
   knee_flexion_deg: "Knee flexion",
   knee_flexion_asymmetry_deg: "Knee flexion asymmetry",
   hip_flexion_proxy_deg: "Hip flexion proxy",
   knee_frontal_offset_proxy: "Frontal knee-offset proxy",
   lateral_weight_shift_proxy: "Lateral weight-shift proxy",
+  pelvis_over_stance_offset_proxy: "Pelvis-over-stance offset proxy",
+  primary_movement_symmetry_delta: "Primary movement symmetry delta",
+  primary_movement_range_deg: "Primary movement range",
 });
 
 export function humanizeBiomechanicsMetric(metricKey = "") {
@@ -62,7 +67,9 @@ export function biomechanicsReviewPresentation(row = {}) {
   const definitionVersion = String(row?.features?.definitionVersion || "unknown");
   const acquisition = definitionVersion.includes("screen-proxy")
     ? "2D camera-derived movement proxy"
-    : "Pose-derived movement features";
+    : definitionVersion.includes("world")
+      ? "MediaPipe world-landmark derived movement features"
+      : "Pose-derived movement features";
 
   return {
     status,
