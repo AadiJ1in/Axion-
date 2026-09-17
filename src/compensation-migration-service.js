@@ -53,16 +53,17 @@ export async function loadBiomechanicsHistory({
   assertClient(supabase);
   if (!patientId) return [];
   const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 250));
-  const { data, error } = await supabase.from("movement_biomechanics_sessions")
+  let query = supabase.from("movement_biomechanics_sessions")
     .select("session_id, exercise_key, created_at, tracking_quality, features, compensation_analysis")
     .eq("patient_id", patientId)
-    .order("created_at", { ascending: false })
-    .limit(safeLimit);
+    .order("created_at", { ascending: false });
+  if (featureDefinitionVersion) {
+    query = query.contains("features", { definitionVersion: featureDefinitionVersion });
+  }
+  const { data, error } = await query.limit(safeLimit);
   if (error) throw error;
 
-  return [...(data || [])].reverse()
-    .filter((row) => !featureDefinitionVersion || row?.features?.definitionVersion === featureDefinitionVersion)
-    .flatMap(rowObservations);
+  return [...(data || [])].reverse().flatMap(rowObservations);
 }
 
 export async function analyzePatientCompensation({
