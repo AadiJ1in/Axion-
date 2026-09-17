@@ -135,6 +135,7 @@ export async function persistSessionBiomechanics({
   patientId,
   session,
   frames = [],
+  acceptedSampleCount = null,
   prescribedSide = "either",
   primaryMetric = null,
   relatedMetrics = [],
@@ -181,10 +182,15 @@ export async function persistSessionBiomechanics({
       disclaimer: "Movement-pattern signal for clinician review only. It does not diagnose or predict an injury.",
     };
 
+  const totalAcceptedSamples = Number.isFinite(Number(acceptedSampleCount))
+    ? Math.max(frames.length, Math.round(Number(acceptedSampleCount)))
+    : frames.length;
   const features = {
     definitionVersion: featureDefinitionVersion,
     aggregation: "median_active_phase_plus_verified_session_summary",
     sessionCompletedAt: occurredAt,
+    retainedSampleCount: frames.length,
+    totalAcceptedSampleCount: totalAcceptedSamples,
     metrics: metrics.map(metricPayload),
   };
   const symmetry = finite(session?.movement_summary?.average_symmetry_delta)
@@ -199,7 +205,7 @@ export async function persistSessionBiomechanics({
     prescribed_side: ["left", "right"].includes(prescribedSide) ? prescribedSide : "either",
     feature_schema_version: BIOMECHANICS_FEATURE_SCHEMA_VERSION,
     analysis_version: COMPENSATION_ANALYSIS_VERSION,
-    sample_count: frames.length,
+    sample_count: totalAcceptedSamples,
     rep_count: Math.max(0, Number(session.repetitions || 0)),
     tracking_quality: trackingQuality,
     primary_movement_range: finite(session?.movement_summary?.average_joint_movement_range_degrees ?? session?.movement_summary?.average_signal_excursion),
