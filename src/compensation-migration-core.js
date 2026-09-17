@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.6.0";
+export const COMPENSATION_ENGINE_VERSION = "0.7.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -10,6 +10,7 @@ export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minExercises: 2,
   minSessionsPerExercise: 3,
   minObservationSpanDays: 7,
+  minSecondaryAcceptedFrames: 8,
   minQuality: 0.55,
   minPrimaryRelativeImprovement: 0.15,
   minSecondaryRelativeDrift: 0.12,
@@ -27,6 +28,7 @@ function engineConfigSnapshot(config) {
     minExercises: config.minExercises,
     minSessionsPerExercise: config.minSessionsPerExercise,
     minObservationSpanDays: config.minObservationSpanDays,
+    minSecondaryAcceptedFrames: config.minSecondaryAcceptedFrames,
     minQuality: config.minQuality,
     minPrimaryRelativeImprovement: config.minPrimaryRelativeImprovement,
     minSecondaryRelativeDrift: config.minSecondaryRelativeDrift,
@@ -128,6 +130,8 @@ export function normalizeMovementObservation(raw = {}) {
     unit: raw.unit ? String(raw.unit) : null,
     quality: quality === null ? 0 : clamp(quality, 0, 1),
     source: String(raw.source || "pose"),
+    acceptedFrames: finite(raw.acceptedFrames ?? raw.context?.acceptedFrames),
+    context: raw.context && typeof raw.context === "object" ? raw.context : {},
   };
 }
 
@@ -328,7 +332,9 @@ export function detectCompensationMigration({
   const signals = [];
   for (const related of relatedMetrics) {
     if (!related?.metricKey) continue;
-    const relatedRaw = normalized.filter((item) => matchesMetric(item, related));
+    const relatedRaw = normalized.filter((item) =>
+      matchesMetric(item, related)
+      && Number(item.acceptedFrames ?? 0) >= config.minSecondaryAcceptedFrames);
     const points = collapseBySession(relatedRaw, config.minQuality);
     const summary = summarizeMetric(points, config);
     if (!summary) continue;
