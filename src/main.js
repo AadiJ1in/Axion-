@@ -1,6 +1,7 @@
 import { isConfigured, supabase } from "./supabase.js";
 import { createMovementTracker } from "./pose.js";
 import { getMovementProfile } from "./movement-profiles.js";
+import { summarizeSessionBiomechanics } from "./biomechanics.js";
 import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "./movement-game.js";
 import { ownsActiveAssignment } from "./squat-camera.js";
 import { journeyMapMarkup, sessionPathPresentation, layoutJourney } from "./journey-map.js";
@@ -2718,6 +2719,7 @@ async function saveSessionSummary(reps, feedback = {}) {
   const stats = summaryFor(reps);
   const trackingProfile = getMovementProfile(context.exerciseKey, context.trackingMode);
   const degreeMetric = trackingProfile.unit === "°";
+  const biomechanicsSummary = summarizeSessionBiomechanics(reps);
 
   console.info("AXION_OPERATIONAL_EVENT", { event: "session_save_started", release: APP_RELEASE });
   const { data, error } = await supabase
@@ -2748,6 +2750,7 @@ async function saveSessionSummary(reps, feedback = {}) {
         average_tempo_seconds: Number.isFinite(Number(stats.tempo)) ? Number(stats.tempo) : null,
         average_symmetry_delta: Number.isFinite(Number(stats.symmetry)) ? Number(stats.symmetry) : null,
         movement_consistency: Number.isFinite(Number(stats.consistency)) ? Number(stats.consistency) : null,
+        biomechanics_v1: biomechanicsSummary,
         completed_sets: doseProgress(currentAssignment, reps.length).completedSets,
         prescribed_sets: context.prescribedSets,
         prescribed_reps_per_set: context.prescribedReps,
