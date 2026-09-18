@@ -123,9 +123,10 @@ function rotZ(angle) {
   return [[c, -s, 0], [s, c, 0], [0, 0, 1]];
 }
 
-// UI-PRMD stores Euler triplets in the same order used by its reference
-// reconstruction. Reproduce that transform exactly: Rz(z) * Ry(x) * Rx(y)
-// for the three stored components passed through the published e2r routine.
+// UI-PRMD describes the angle output as a YXZ Euler triplet. For benchmark
+// reproducibility, this adapter follows the public reference reconstruction's
+// exact component/matrix order without re-interpreting vendor axis semantics:
+// Rz(component 3) * Ry(component 2) * Rx(component 1).
 function eulerUiPrmdDegrees(triplet) {
   const g = triplet[0] * DEG_TO_RAD;
   const b = triplet[1] * DEG_TO_RAD;
@@ -276,6 +277,8 @@ export const UI_PRMD_ADAPTER_METADATA = Object.freeze({
   sourceJointCount: 22,
   valuesPerPositionFrame: 66,
   mappingScope: "kinematic benchmark topology proxy",
+  reconstructionProvenance: "UI-PRMD published hierarchy + public reference transform order",
+  eulerConventionIndependentlyVerified: false,
   clinicalValidation: false,
   injuryPredictionValidation: false,
 });
