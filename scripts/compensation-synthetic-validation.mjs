@@ -27,7 +27,7 @@ function metric({
     value,
     unit,
     quality: 0.95,
-    context: { acceptedFrames, source: "synthetic_validation" },
+    context: { acceptedFrames, supportCount: acceptedFrames, source: "synthetic_validation" },
   };
 }
 
@@ -69,7 +69,7 @@ function bilateralScenario({
       observations.push(metric({
         session,
         exerciseKey,
-        metricKey: "trunk_pelvis_lateral_deviation_3d_deg",
+        metricKey: "trunk_3d_tilt_deg",
         region: "trunk",
         side: "midline",
         value: trunk[i],
@@ -80,11 +80,11 @@ function bilateralScenario({
       observations.push(metric({
         session,
         exerciseKey,
-        metricKey: "pelvis_over_stance_offset_3d_proxy",
-        region: "lower_limb",
+        metricKey: "pelvis_depth_asymmetry_pct",
+        region: "pelvis",
         side: "bilateral",
         value: pelvis[i],
-        unit: "ratio",
+        unit: "%",
       }));
     }
   }
@@ -157,7 +157,7 @@ const cases = [];
   }));
   assert.equal(result.status, "insufficient_data");
   assert.equal(result.reason, "not_enough_primary_sessions");
-  cases.push(["low_frame_primary", result.status, result.reason]);
+  cases.push(["low_support_primary", result.status, result.reason]);
 }
 
 {
@@ -183,7 +183,7 @@ const cases = [];
     }
     observations.push(metric({
       session, exerciseKey,
-      metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline",
+      metricKey: "trunk_3d_tilt_deg", region: "trunk", side: "midline",
       value: 4 + i * 0.6, unit: "deg",
     }));
   }
@@ -197,13 +197,13 @@ const cases = [];
 
 {
   const result = run(bilateralScenario({
-    pelvis: [0.04, 0.043, 0.047, 0.052, 0.058, 0.064, 0.071, 0.079, 0.088, 0.098, 0.109, 0.121],
+    pelvis: [4.0, 4.3, 4.7, 5.2, 5.8, 6.4, 7.1, 7.9, 8.8, 9.8, 10.9, 12.1],
   }));
   assert.equal(result.status, "candidate");
-  const signal = result.signals.find((item) => item.metric.metricKey === "pelvis_over_stance_offset_3d_proxy");
+  const signal = result.signals.find((item) => item.metric.metricKey === "pelvis_depth_asymmetry_pct");
   assert.ok(signal);
   assert.ok(signal.summary.relativeDelta > 1);
-  cases.push(["normalized_ratio_migration", result.status, result.reason]);
+  cases.push(["pelvis_depth_migration", result.status, result.reason]);
 }
 
 console.log("synthetic compensation validation passed");
