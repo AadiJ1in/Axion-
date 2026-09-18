@@ -252,7 +252,7 @@ export function extractWholeBodyBiomechanics(landmarks, { source = "pose_world",
     metric("lateral_weight_shift_proxy", "lower_limb", "bilateral", lateralShift === null ? null : Math.abs(lateralShift), "ratio", lowerQuality, { ...cameraSensitive, proxy: true, signedValue: lateralShift }),
     metric("pelvis_over_stance_offset_proxy", "lower_limb", "bilateral", pelvisStanceShift === null ? null : Math.abs(pelvisStanceShift), "ratio", lowerQuality, { ...bodyRelative, proxy: true, signedValue: pelvisStanceShift, reference: "ankle_line" }),
     metric("pelvis_over_stance_offset_3d_proxy", "lower_limb", "bilateral", pelvisStanceShift3d === null ? null : Math.abs(pelvisStanceShift3d), "ratio", lowerQuality, { ...bodyRelative, invariant3d: true, proxy: true, signedValue: pelvisStanceShift3d, reference: "pelvis_axis" }),
-    metric("knee_flexion_asymmetry_deg", "knee", "bilateral", leftKneeAngle === null || rightKneeAngle === null ? null : Math.abs(leftKneeAngle - rightKneeAngle), "deg", lowerQuality, common),
+    metric("knee_flexion_asymmetry_deg", "knee", "bilateral", leftKneeAngle === null || rightKneeAngle === null ? null : Math.abs(leftKneeAngle - rightKneeAngle), "deg", lowerQuality, { ...bodyRelative, invariant3d: true, reference: "bilateral_knee_internal_angle_difference" }),
   ].filter(Boolean);
 }
 
