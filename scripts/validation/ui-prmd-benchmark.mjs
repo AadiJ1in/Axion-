@@ -88,9 +88,11 @@ function candidateAnglePaths(positionPath) {
   const angleName = path.basename(positionPath).replace(/_positions\.txt$/i, "_angles.txt");
   const sameDirectory = path.join(path.dirname(positionPath), angleName);
   const parts = positionPath.split(path.sep);
-  const mappedParts = parts.map((part) => /^positions$/i.test(part) ? "Angles" : part);
-  mappedParts[mappedParts.length - 1] = angleName;
-  return [...new Set([sameDirectory, mappedParts.join(path.sep)])];
+  const mappedUpper = parts.map((part) => /^positions$/i.test(part) ? "Angles" : part);
+  const mappedLower = parts.map((part) => /^positions$/i.test(part) ? "angles" : part);
+  mappedUpper[mappedUpper.length - 1] = angleName;
+  mappedLower[mappedLower.length - 1] = angleName;
+  return [...new Set([sameDirectory, mappedUpper.join(path.sep), mappedLower.join(path.sep)])];
 }
 
 const allFiles = walk(root);
@@ -209,8 +211,9 @@ for (const { file, parsed } of supportedPositions) {
   }
 }
 
-function aggregateMovement(movementKey) {
-  const rows = episodes.filter((episode) => episode.movementKey === movementKey);
+function aggregateMovement(movementKey, condition) {
+  const rows = episodes.filter((episode) =>
+    episode.movementKey === movementKey && episode.condition === condition);
   if (!rows.length) return null;
   const subjects = new Set(rows.map((row) => row.subjectKey));
   const frames = rows.map((row) => row.frameCount);
@@ -228,6 +231,7 @@ function aggregateMovement(movementKey) {
   }
   return {
     movementKey,
+    condition,
     movementName: rows[0].movementName,
     axionExerciseKey: rows[0].axionExerciseKey,
     benchmarkScope: rows[0].benchmarkScope,
@@ -240,8 +244,11 @@ function aggregateMovement(movementKey) {
 
 function repeatabilityReferences() {
   const references = [];
-  for (const movementKey of [...new Set(episodes.map((episode) => episode.movementKey))]) {
-    const movementRows = episodes.filter((episode) => episode.movementKey === movementKey);
+  const groups = [...new Set(episodes.map((episode) => `${episode.movementKey}|${episode.condition}`))];
+  for (const group of groups) {
+    const [movementKey, condition] = group.split("|");
+    const movementRows = episodes.filter((episode) =>
+      episode.movementKey === movementKey && episode.condition === condition);
     const subjects = [...new Set(movementRows.map((episode) => episode.subjectKey))];
     const identities = [...new Set(movementRows.flatMap((episode) =>
       episode.metrics.map((metric) => `${metric.metricKey}|${metric.side}|${metric.unit || ""}`)))];
@@ -271,7 +278,7 @@ function repeatabilityReferences() {
       references.push({
         movementKey,
         movementName: movementRows[0]?.movementName || movementKey,
-        condition: movementRows[0]?.condition || "unspecified",
+        condition,
         metricKey,
         side,
         unit: unit || null,
@@ -287,7 +294,8 @@ function repeatabilityReferences() {
   return references;
 }
 
-const movementKeys = [...new Set(episodes.map((episode) => episode.movementKey))].sort();
+const movementGroups = [...new Set(episodes.map((episode) =>
+  `${episode.movementKey}|${episode.condition}`))].sort();
 const result = {
   benchmark: "ui-prmd-kinect-to-axion-world-v2",
   generatedAt: new Date().toISOString(),
@@ -311,7 +319,10 @@ const result = {
   discoveredPositionFiles: positionFiles.length,
   benchmarkedEpisodes: episodes.length,
   skipped,
-  movements: movementKeys.map(aggregateMovement).filter(Boolean),
+  movements: movementGroups.map((group) => {
+    const [movementKey, condition] = group.split("|");
+    return aggregateMovement(movementKey, condition);
+  }).filter(Boolean),
   repeatabilityReferences: repeatabilityReferences(),
   episodes,
 };
@@ -326,7 +337,7 @@ if (outputPath) {
   console.log(`UI-PRMD benchmark written to ${outputPath}`);
 }
 
-console.log(`UI-PRMD benchmark complete: ${episodes.length} ${requestedCondition} episodes across ${movementKeys.length} supported movements; ${skipped.length} skipped.`);
+console.log(`UI-PRMD benchmark complete: ${episodes.length} ${requestedCondition} episodes across ${movementGroups.length} movement/condition groups; ${skipped.length} skipped.`);
 for (const movement of result.movements) {
   console.log(`${movement.movementKey} ${movement.movementName}: ${movement.episodes} episodes, ${movement.subjects} subjects`);
 }
