@@ -84,7 +84,7 @@ assert.equal(frames.size,1,'CPU compatibility tracking resumes automatically');
 failInference=true;await step();
 assert.equal(frames.size,0,'a subsequent CPU inference failure enters the recoverable stopped state');
 assert.equal(streams.at(-1).active,false);
-assert.equal(errors.length,1);assert.equal(states.at(-1),'camera_error');assert.equal(closed,2);
+assert.equal(errors.length,1);assert.equal(states.at(-1),'model_error');assert.equal(closed,2);
 failInference=false;await tracker.start();assert.equal(frames.size,1,'explicit restart recovers after a CPU model failure');
 tracker.stop();assert.equal(frames.size,0);
 let release;
