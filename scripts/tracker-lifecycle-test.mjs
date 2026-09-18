@@ -7,6 +7,16 @@ import { chooseMediapipeDelegate, resolveMediapipeConfig } from '../src/mediapip
 
 assert.equal(resolveMediapipeConfig({baseUrl:'/'},{}).wasmRoot, '/mediapipe');
 assert.equal(resolveMediapipeConfig({baseUrl:'/Axion-'},{}).wasmRoot, '/Axion-/mediapipe', 'GitHub Pages resolves MediaPipe under the app base path');
+assert.equal(
+  resolveMediapipeConfig({baseUrl:'/'},{}).model.url,
+  '/models/pose-landmarker-lite-float16-v1.task',
+  'default pose model is same-origin rather than a runtime third-party dependency',
+);
+assert.equal(
+  resolveMediapipeConfig({baseUrl:'/Axion-'},{}).model.url,
+  '/Axion-/models/pose-landmarker-lite-float16-v1.task',
+  'same-origin model URL follows the deployment base path',
+);
 assert.equal(resolveMediapipeConfig({wasmRoot:'https://cdn.example.test/mp-wasm'},{}).wasmRoot, 'https://cdn.example.test/mp-wasm', 'WASM root can be configured without changing tracker code');
 assert.equal(resolveMediapipeConfig({delegate:'cpu'},{}).delegate, 'cpu');
 assert.equal(chooseMediapipeDelegate('auto',{webgl:true}), 'GPU');
