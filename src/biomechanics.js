@@ -42,6 +42,7 @@ function visiblePoint(landmarks, index, minimumVisibility) {
   const p = point(landmarks, index);
   if (!p) return false;
   if (![p.x, p.y].every(Number.isFinite)) return false;
+  if (p.z !== undefined && p.z !== null && !Number.isFinite(p.z)) return false;
   return (p.visibility ?? 1) >= minimumVisibility;
 }
 
