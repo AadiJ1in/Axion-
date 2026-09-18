@@ -57,7 +57,7 @@ const requirements = [
   [files.main, "No sessions yet", "empty state"],
   [files.main, "Movement Report could not load", "error state"],
   [files.pose, "multiple_people", "multi-person camera state"],
-  [files.pose, "permission_denied", "permission camera state"],
+  [files.cameraRuntime, "permission_denied", "permission camera state"],
   [files.pose, "camera_disconnected", "disconnect camera state"],
   [files.poseRuntime, "Starting compatibility mode", "CPU pose-model fallback"],
   [files.pose, "createMovementTracker", "exercise-specific movement tracker"],
