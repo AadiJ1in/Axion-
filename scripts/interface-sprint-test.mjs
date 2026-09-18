@@ -33,6 +33,7 @@ for (const label of ['Product', 'For Therapists', 'For Patients', 'Demo']) asser
 assert.ok(js.includes('Physical therapy shouldn’t stop'), 'homepage must lead with the rehabilitation problem');
 assert.ok(indexHtml.includes('Axion helps patients complete prescribed rehabilitation at home'), 'document metadata must describe the at-home rehabilitation value proposition');
 assert.ok(indexHtml.includes('At-home rehabilitation movement intelligence'), 'document title must match the public product positioning');
+assert.ok(indexHtml.includes('property="og:title"') && indexHtml.includes('name="twitter:card"'), 'public website must include text-only social preview metadata');
 assert.ok(js.includes('Every movement tells a story.'), 'brand statement remains in the public story');
 assert.ok(js.includes('SYNTHETIC DEMO SESSION'), 'homepage example metrics must be clearly labeled synthetic');
 assert.ok(js.includes('Experience as Patient') && js.includes('Experience as Therapist'), 'demo entry must explain both roles');
