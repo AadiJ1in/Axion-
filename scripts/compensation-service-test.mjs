@@ -97,9 +97,17 @@ assert.equal(insertedRow.features.metrics.some((metric) => "landmarks" in metric
 for (const exerciseKey of ["bodyweight_squat", "half_squat", "sit_to_stand"]) {
   const graph = LOWER_BODY_COMPENSATION_GRAPH.byExercise[exerciseKey];
   assert.ok(graph, `missing bilateral recovery graph for ${exerciseKey}`);
+  assert.equal(graph.primaryMetric.metricKey, "knee_flexion_asymmetry_deg");
+  assert.equal(graph.primaryMetric.region, "knee");
+  assert.equal(graph.primaryMetric.side, "bilateral");
+  assert.equal(graph.primaryMetric.unit, "deg");
+  assert.equal(graph.primaryMetric.minAcceptedFrames, 8);
   assert.equal(graph.primaryMetric.recoveryGuard.metricKey, "primary_movement_range");
   assert.equal(graph.primaryMetric.recoveryGuard.exerciseKey, exerciseKey);
   assert.equal(graph.primaryMetric.recoveryGuard.maxRelativeDecrease, 0.15);
+  for (const relatedMetric of graph.relatedMetrics) {
+    assert.deepEqual(relatedMetric.exerciseKeys, ["bodyweight_squat", "half_squat", "sit_to_stand"]);
+  }
 }
 for (const exerciseKey of ["forward_lunge", "step_up", "lateral_step_up"]) {
   assert.equal(LOWER_BODY_COMPENSATION_GRAPH.byExercise[exerciseKey], undefined, `${exerciseKey} must not use bilateral symmetry as a recovery anchor`);
