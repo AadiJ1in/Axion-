@@ -161,7 +161,35 @@ const related = [
   });
   assert.equal(result.status, "candidate");
   assert.ok(result.signals[0].summary.absoluteDelta > 0.03);
+  assert.ok(result.signals[0].summary.relativeDelta > 1, "normalized ratio drift should use its real baseline scale");
   assert.equal(result.signals[0].metric.thresholds.minAbsoluteDrift, 0.03);
+  assert.equal(result.signals[0].metric.thresholds.minRelativeBaseline, 0.03);
+}
+
+{
+  const observations = [];
+  const knee = [24, 21, 18, 14, 10, 7, 5];
+  const tinyOffset = [0.005, 0.006, 0.007, 0.008, 0.009, 0.010, 0.011];
+  for (let i = 0; i < knee.length; i += 1) {
+    const exercise = i % 2 === 0 ? "squat" : "step_down";
+    observations.push(observation(i + 1, exercise, "right_knee_asymmetry", "knee", "right", knee[i]));
+    observations.push(observation(i + 1, exercise, "pelvis_tiny_offset_proxy", "lower_limb", "bilateral", tinyOffset[i]));
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: primary,
+    relatedMetrics: [{
+      metricKey: "pelvis_tiny_offset_proxy",
+      region: "lower_limb",
+      side: "bilateral",
+      worseningDirection: "increase",
+      minRelativeDrift: 0.08,
+      minAbsoluteDrift: 0.03,
+    }],
+  });
+  assert.equal(result.status, "stable");
+  assert.equal(result.reason, "no_secondary_drift");
+  assert.equal(result.signals.length, 0);
 }
 
 {
