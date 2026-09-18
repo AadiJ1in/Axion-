@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { extractWholeBodyBiomechanics } from "../../src/biomechanics-feature-core.js";
+import { extractBiomechanicsFrame } from "../../src/biomechanics.js";
 import {
   UI_PRMD_ADAPTER_METADATA,
   parseUiPrmdSegmentFilename,
@@ -9,9 +9,7 @@ import {
 } from "./ui-prmd-adapter.mjs";
 
 const root = path.resolve(process.env.UI_PRMD_ROOT || process.argv[2] || "");
-const outputPath = process.env.UI_PRMD_OUTPUT
-  ? path.resolve(process.env.UI_PRMD_OUTPUT)
-  : null;
+const outputPath = process.env.UI_PRMD_OUTPUT ? path.resolve(process.env.UI_PRMD_OUTPUT) : null;
 
 if (!process.env.UI_PRMD_ROOT && !process.argv[2]) {
   console.log("UI-PRMD benchmark skipped: set UI_PRMD_ROOT or pass the dataset root as the first argument.");
@@ -22,14 +20,20 @@ if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
 }
 
 const VALIDATION_METRICS = Object.freeze([
-  "knee_flexion_deg",
   "knee_flexion_asymmetry_deg",
-  "trunk_pelvis_lateral_deviation_3d_deg",
-  "shoulder_pelvis_axis_mismatch_3d_deg",
-  "hip_flexion_asymmetry_3d_deg",
-  "knee_mediolateral_offset_3d_proxy",
-  "pelvis_over_stance_offset_3d_proxy",
+  "trunk_3d_tilt_deg",
+  "hip_flexion_asymmetry_deg",
+  "ankle_angle_asymmetry_deg",
+  "pelvis_depth_asymmetry_pct",
 ]);
+
+const UNIT_BY_METRIC = Object.freeze({
+  knee_flexion_asymmetry_deg: "deg",
+  trunk_3d_tilt_deg: "deg",
+  hip_flexion_asymmetry_deg: "deg",
+  ankle_angle_asymmetry_deg: "deg",
+  pelvis_depth_asymmetry_pct: "%",
+});
 
 function walk(directory) {
   const out = [];
@@ -48,13 +52,6 @@ function inferCondition(file) {
   return "unspecified";
 }
 
-function medianAbsoluteDeviation(values) {
-  const usable = values.filter(Number.isFinite);
-  if (!usable.length) return null;
-  const center = percentile(usable, 0.5);
-  return percentile(usable.map((value) => Math.abs(value - center)), 0.5);
-}
-
 function percentile(values, q) {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
   if (!sorted.length) return null;
@@ -65,6 +62,13 @@ function percentile(values, q) {
   if (lower === upper) return sorted[lower];
   const fraction = position - lower;
   return sorted[lower] * (1 - fraction) + sorted[upper] * fraction;
+}
+
+function medianAbsoluteDeviation(values) {
+  const usable = values.filter(Number.isFinite);
+  if (!usable.length) return null;
+  const center = percentile(usable, 0.5);
+  return percentile(usable.map((value) => Math.abs(value - center)), 0.5);
 }
 
 function summarize(values) {
@@ -124,35 +128,25 @@ function findAngleFile(positionPath) {
   return null;
 }
 
-function metricIdentity(metric) {
-  return `${metric.metricKey}|${metric.side}`;
-}
-
 function benchmarkEpisode(positionFile, angleFile, parsed) {
   const positionText = fs.readFileSync(positionFile, "utf8");
   const angleText = fs.readFileSync(angleFile, "utf8");
   const skeletonFrames = reconstructUiPrmdKinectSequence(positionText, angleText);
-  const samples = new Map();
+  const samples = new Map(VALIDATION_METRICS.map((metricKey) => [metricKey, []]));
+  let usableFrames = 0;
 
   for (const skeleton of skeletonFrames) {
     const landmarks = uiPrmdKinectToAxionLandmarks(skeleton);
-    const metrics = extractWholeBodyBiomechanics(landmarks, {
-      source: "ui_prmd_kinect_reconstruction",
-      cameraView: "dataset",
-    }).filter((metric) => VALIDATION_METRICS.includes(metric.metricKey));
-
-    for (const metric of metrics) {
-      const key = metricIdentity(metric);
-      if (!samples.has(key)) {
-        samples.set(key, {
-          metricKey: metric.metricKey,
-          region: metric.region,
-          side: metric.side,
-          unit: metric.unit,
-          values: [],
-        });
-      }
-      samples.get(key).values.push(Number(metric.value));
+    const frame = extractBiomechanicsFrame({
+      imageLandmarks: landmarks,
+      worldLandmarks: landmarks,
+      minimumVisibility: 0.55,
+    });
+    if (!frame?.quality?.usable) continue;
+    usableFrames += 1;
+    for (const metricKey of VALIDATION_METRICS) {
+      const value = Number(frame.features?.[metricKey]);
+      if (Number.isFinite(value)) samples.get(metricKey).push(value);
     }
   }
 
@@ -166,18 +160,18 @@ function benchmarkEpisode(positionFile, angleFile, parsed) {
     episodeKey: parsed.episodeKey,
     sourceFrameRateHz: UI_PRMD_ADAPTER_METADATA.sourceFrameRateHz,
     frameCount: skeletonFrames.length,
+    usableFrames,
     durationSeconds: skeletonFrames.length / UI_PRMD_ADAPTER_METADATA.sourceFrameRateHz,
     sourceFiles: {
       positions: path.relative(root, positionFile),
       angles: path.relative(root, angleFile),
     },
-    metrics: [...samples.values()].map((entry) => ({
-      metricKey: entry.metricKey,
-      region: entry.region,
-      side: entry.side,
-      unit: entry.unit,
-      ...summarize(entry.values),
-    })),
+    metrics: VALIDATION_METRICS
+      .map((metricKey) => {
+        const summary = summarize(samples.get(metricKey));
+        return summary ? { metricKey, unit: UNIT_BY_METRIC[metricKey], ...summary } : null;
+      })
+      .filter(Boolean),
   };
 }
 
@@ -204,29 +198,20 @@ for (const { file, parsed } of supportedPositions) {
   try {
     episodes.push(benchmarkEpisode(file, angleFile, parsed));
   } catch (error) {
-    skipped.push({
-      file: path.relative(root, file),
-      reason: String(error?.message || error),
-    });
+    skipped.push({ file: path.relative(root, file), reason: String(error?.message || error) });
   }
 }
 
 function aggregateMovement(movementKey, condition) {
-  const rows = episodes.filter((episode) =>
-    episode.movementKey === movementKey && episode.condition === condition);
+  const rows = episodes.filter((episode) => episode.movementKey === movementKey && episode.condition === condition);
   if (!rows.length) return null;
   const subjects = new Set(rows.map((row) => row.subjectKey));
-  const frames = rows.map((row) => row.frameCount);
   const metricCoverage = {};
   for (const metricKey of VALIDATION_METRICS) {
-    const episodeMatches = rows.map((row) => row.metrics.filter((metric) => metric.metricKey === metricKey));
-    const matched = episodeMatches.flat();
+    const matches = rows.map((row) => row.metrics.find((metric) => metric.metricKey === metricKey)).filter(Boolean);
     metricCoverage[metricKey] = {
-      episodeCount: episodeMatches.filter((metrics) => metrics.length > 0).length,
-      episodeCoverageFraction: rows.length
-        ? episodeMatches.filter((metrics) => metrics.length > 0).length / rows.length
-        : 0,
-      sideSummaries: matched.length,
+      episodeCount: matches.length,
+      episodeCoverageFraction: rows.length ? matches.length / rows.length : 0,
     };
   }
   return {
@@ -237,7 +222,8 @@ function aggregateMovement(movementKey, condition) {
     benchmarkScope: rows[0].benchmarkScope,
     episodes: rows.length,
     subjects: subjects.size,
-    medianFrameCount: percentile(frames, 0.5),
+    medianFrameCount: percentile(rows.map((row) => row.frameCount), 0.5),
+    medianUsableFrameCount: percentile(rows.map((row) => row.usableFrames), 0.5),
     metricCoverage,
   };
 }
@@ -247,21 +233,13 @@ function repeatabilityReferences() {
   const groups = [...new Set(episodes.map((episode) => `${episode.movementKey}|${episode.condition}`))];
   for (const group of groups) {
     const [movementKey, condition] = group.split("|");
-    const movementRows = episodes.filter((episode) =>
-      episode.movementKey === movementKey && episode.condition === condition);
-    const subjects = [...new Set(movementRows.map((episode) => episode.subjectKey))];
-    const identities = [...new Set(movementRows.flatMap((episode) =>
-      episode.metrics.map((metric) => `${metric.metricKey}|${metric.side}|${metric.unit || ""}`)))];
-
-    for (const identity of identities) {
-      const [metricKey, side, unit] = identity.split("|");
+    const movementRows = episodes.filter((episode) => episode.movementKey === movementKey && episode.condition === condition);
+    for (const metricKey of VALIDATION_METRICS) {
       const subjectStats = [];
-      for (const subjectKey of subjects) {
+      for (const subjectKey of [...new Set(movementRows.map((episode) => episode.subjectKey))]) {
         const medians = movementRows
           .filter((episode) => episode.subjectKey === subjectKey)
-          .flatMap((episode) => episode.metrics.filter((metric) =>
-            metric.metricKey === metricKey && metric.side === side && String(metric.unit || "") === unit))
-          .map((metric) => metric.median)
+          .map((episode) => episode.metrics.find((metric) => metric.metricKey === metricKey)?.median)
           .filter(Number.isFinite);
         if (medians.length < 2) continue;
         subjectStats.push({
@@ -280,8 +258,7 @@ function repeatabilityReferences() {
         movementName: movementRows[0]?.movementName || movementKey,
         condition,
         metricKey,
-        side,
-        unit: unit || null,
+        unit: UNIT_BY_METRIC[metricKey],
         subjectsWithRepeatedEpisodes: subjectStats.length,
         medianWithinSubjectMAD: percentile(mads, 0.5),
         p90WithinSubjectMAD: percentile(mads, 0.9),
@@ -294,16 +271,15 @@ function repeatabilityReferences() {
   return references;
 }
 
-const movementGroups = [...new Set(episodes.map((episode) =>
-  `${episode.movementKey}|${episode.condition}`))].sort();
+const movementGroups = [...new Set(episodes.map((episode) => `${episode.movementKey}|${episode.condition}`))].sort();
 const result = {
-  benchmark: "ui-prmd-kinect-to-axion-world-v2",
+  benchmark: "ui-prmd-kinect-to-axion-biomechanics-v1",
   generatedAt: new Date().toISOString(),
   adapter: UI_PRMD_ADAPTER_METADATA,
   validationClaims: {
     supported: [
       "file parsing and skeletal reconstruction",
-      "Axion world-v2 feature extraction on an external rehabilitation-motion dataset",
+      "canonical Axion biomechanics-v1 feature extraction on an external rehabilitation-motion dataset",
       "per-episode kinematic feature coverage and repeatability analysis",
     ],
     unsupported: [
