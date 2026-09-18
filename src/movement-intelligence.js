@@ -1,328 +1,386 @@
-const LANDMARK = Object.freeze({
-  LEFT_SHOULDER: 11,
-  RIGHT_SHOULDER: 12,
-  LEFT_HIP: 23,
-  RIGHT_HIP: 24,
-  LEFT_KNEE: 25,
-  RIGHT_KNEE: 26,
-  LEFT_ANKLE: 27,
-  RIGHT_ANKLE: 28,
-  LEFT_FOOT_INDEX: 31,
-  RIGHT_FOOT_INDEX: 32,
-});
+import { BIOMECHANICS_SCHEMA_VERSION } from "./biomechanics.js";
 
-export const MOVEMENT_INTELLIGENCE_VERSION = "axion-adaptive-movement-v0.1";
+export const MOVEMENT_INTELLIGENCE_VERSION = "axion-adaptive-movement-v0.2";
+export const MOVEMENT_SIGNATURE_SCHEMA_VERSION = 2;
 export const MOVEMENT_INTELLIGENCE_EXERCISES = new Set(["bodyweight_squat"]);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-const finite = (values) => values.filter(Number.isFinite);
+const round = (value, digits = 3) => {
+  const number = finite(value);
+  if (number === null) return null;
+  const factor = 10 ** digits;
+  return Math.round(number * factor) / factor;
+};
 
 function median(values) {
-  const sorted = finite(values).sort((a, b) => a - b);
-  if (!sorted.length) return null;
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
-function std(values, mean = average(values)) {
-  if (!values.length || !Number.isFinite(mean)) return null;
-  return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length);
-}
-
-function point(points, index) {
-  return points?.[index] || null;
-}
-
-function visible(points, indices, minimum = 0.55) {
-  return indices.every((index) => {
-    const value = point(points, index);
-    return value
-      && Number.isFinite(value.x)
-      && Number.isFinite(value.y)
-      && (value.visibility ?? 1) >= minimum;
-  });
-}
-
-function midpoint(a, b) {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-function angleAtVertex(a, b, c) {
-  const ba = { x: a.x - b.x, y: a.y - b.y };
-  const bc = { x: c.x - b.x, y: c.y - b.y };
-  const denominator = Math.hypot(ba.x, ba.y) * Math.hypot(bc.x, bc.y);
-  if (!denominator) return null;
-  const cosine = clamp((ba.x * bc.x + ba.y * bc.y) / denominator, -1, 1);
-  return Math.acos(cosine) * 180 / Math.PI;
-}
-
-function trunkFlexion(points) {
-  const leftShoulder = point(points, LANDMARK.LEFT_SHOULDER);
-  const rightShoulder = point(points, LANDMARK.RIGHT_SHOULDER);
-  const leftHip = point(points, LANDMARK.LEFT_HIP);
-  const rightHip = point(points, LANDMARK.RIGHT_HIP);
-  const neck = midpoint(leftShoulder, rightShoulder);
-  const hips = midpoint(leftHip, rightHip);
-  const vx = neck.x - hips.x;
-  const vy = neck.y - hips.y;
-  const magnitude = Math.hypot(vx, vy);
-  if (!magnitude) return null;
-  return Math.acos(clamp((-vy) / magnitude, -1, 1)) * 180 / Math.PI;
-}
-
-function frameVisibility(points) {
-  const indices = [
-    LANDMARK.LEFT_SHOULDER, LANDMARK.RIGHT_SHOULDER,
-    LANDMARK.LEFT_HIP, LANDMARK.RIGHT_HIP,
-    LANDMARK.LEFT_KNEE, LANDMARK.RIGHT_KNEE,
-    LANDMARK.LEFT_ANKLE, LANDMARK.RIGHT_ANKLE,
-    LANDMARK.LEFT_FOOT_INDEX, LANDMARK.RIGHT_FOOT_INDEX,
-  ];
-  const values = indices.map((index) => point(points, index)?.visibility ?? 0).filter(Number.isFinite);
-  return average(values) ?? 0;
-}
-
-export function squatFrameFeatures(points) {
-  const required = Object.values(LANDMARK);
-  if (!visible(points, required)) return null;
-  const lShoulder = point(points, LANDMARK.LEFT_SHOULDER);
-  const rShoulder = point(points, LANDMARK.RIGHT_SHOULDER);
-  const lHip = point(points, LANDMARK.LEFT_HIP);
-  const rHip = point(points, LANDMARK.RIGHT_HIP);
-  const lKnee = point(points, LANDMARK.LEFT_KNEE);
-  const rKnee = point(points, LANDMARK.RIGHT_KNEE);
-  const lAnkle = point(points, LANDMARK.LEFT_ANKLE);
-  const rAnkle = point(points, LANDMARK.RIGHT_ANKLE);
-  const lFoot = point(points, LANDMARK.LEFT_FOOT_INDEX);
-  const rFoot = point(points, LANDMARK.RIGHT_FOOT_INDEX);
-
-  return {
-    l_knee: angleAtVertex(lHip, lKnee, lAnkle),
-    r_knee: angleAtVertex(rHip, rKnee, rAnkle),
-    l_hip: angleAtVertex(lShoulder, lHip, lKnee),
-    r_hip: angleAtVertex(rShoulder, rHip, rKnee),
-    l_ankle: angleAtVertex(lKnee, lAnkle, lFoot),
-    r_ankle: angleAtVertex(rKnee, rAnkle, rFoot),
-    trunk_flex: trunkFlexion(points),
-    knee_distance: Math.abs(lKnee.x - rKnee.x),
-    hip_distance: Math.abs(lHip.x - rHip.x),
-    visibility: frameVisibility(points),
-  };
-}
-
-function summarizeSeries(values) {
-  const clean = finite(values);
+  const clean = values.map(finite).filter(Number.isFinite).sort((a, b) => a - b);
   if (!clean.length) return null;
-  const mean = average(clean);
-  const velocities = clean.slice(1).map((value, index) => Math.abs(value - clean[index]));
-  const minimum = Math.min(...clean);
-  const maximum = Math.max(...clean);
-  return {
-    min: minimum,
-    max: maximum,
-    rom: maximum - minimum,
-    mean,
-    std: std(clean, mean) ?? 0,
-    vel_mean_abs: average(velocities) ?? 0,
-    vel_max_abs: velocities.length ? Math.max(...velocities) : 0,
-  };
+  const middle = Math.floor(clean.length / 2);
+  return clean.length % 2 ? clean[middle] : (clean[middle - 1] + clean[middle]) / 2;
 }
 
-function appendSeriesFeatures(target, name, stats) {
-  if (!stats) return;
-  for (const key of ["min", "max", "rom", "mean", "std", "vel_mean_abs", "vel_max_abs"]) {
-    target[`${name}_${key}`] = stats[key];
-  }
-}
-
-export function summarizeSquatFrames(frames) {
-  const clean = frames.filter(Boolean);
-  if (clean.length < 8) return null;
-  const features = {};
-  const statsByName = {};
-  for (const name of ["l_knee", "r_knee", "l_hip", "r_hip", "l_ankle", "r_ankle", "trunk_flex"]) {
-    const stats = summarizeSeries(clean.map((frame) => frame[name]));
-    if (!stats) return null;
-    statsByName[name] = stats;
-    appendSeriesFeatures(features, name, stats);
-  }
-
-  features.sym_knee = Math.abs(statsByName.l_knee.rom - statsByName.r_knee.rom);
-  features.sym_hip = Math.abs(statsByName.l_hip.rom - statsByName.r_hip.rom);
-
-  const hipDistances = clean.map((frame) => frame.hip_distance).filter(Number.isFinite);
-  const floor = Math.max(1e-5, 0.25 * (median(hipDistances) ?? 0));
-  const valgus = clean
-    .map((frame) => frame.knee_distance / Math.max(frame.hip_distance, floor))
-    .filter(Number.isFinite);
-  if (!valgus.length) return null;
-  features.knee_valgus_min = Math.min(...valgus);
-  features.knee_valgus_mean = average(valgus);
-
-  return {
-    features,
-    frameCount: clean.length,
-    meanVisibility: average(clean.map((frame) => frame.visibility)) ?? 0,
-  };
+function peakAbs(entry) {
+  const minimum = finite(entry?.min);
+  const maximum = finite(entry?.max);
+  if (minimum === null && maximum === null) return null;
+  return Math.max(Math.abs(minimum ?? 0), Math.abs(maximum ?? 0));
 }
 
 const SIGNATURE_FEATURES = Object.freeze([
-  { key: "l_knee_rom", label: "Left knee excursion", floor: 5 },
-  { key: "r_knee_rom", label: "Right knee excursion", floor: 5 },
-  { key: "l_hip_rom", label: "Left hip excursion", floor: 5 },
-  { key: "r_hip_rom", label: "Right hip excursion", floor: 5 },
-  { key: "l_ankle_rom", label: "Left ankle excursion", floor: 4 },
-  { key: "r_ankle_rom", label: "Right ankle excursion", floor: 4 },
-  { key: "trunk_flex_mean", label: "Average trunk position", floor: 4 },
-  { key: "trunk_flex_max", label: "Peak trunk position", floor: 4 },
-  { key: "sym_knee", label: "Knee excursion symmetry", floor: 4 },
-  { key: "sym_hip", label: "Hip excursion symmetry", floor: 4 },
-  { key: "knee_valgus_min", label: "Frontal knee spacing pattern", floor: 0.08 },
+  { key: "left_knee_flexion_range_deg", source: "left_knee_flexion_deg", stat: "range", label: "Left knee flexion range", floor: 8 },
+  { key: "right_knee_flexion_range_deg", source: "right_knee_flexion_deg", stat: "range", label: "Right knee flexion range", floor: 8 },
+  { key: "left_hip_flexion_range_deg", source: "left_hip_flexion_deg", stat: "range", label: "Left hip flexion range", floor: 8 },
+  { key: "right_hip_flexion_range_deg", source: "right_hip_flexion_deg", stat: "range", label: "Right hip flexion range", floor: 8 },
+  { key: "left_ankle_range_deg", source: "left_ankle_angle_deg", stat: "range", label: "Left ankle angle range", floor: 6 },
+  { key: "right_ankle_range_deg", source: "right_ankle_angle_deg", stat: "range", label: "Right ankle angle range", floor: 6 },
+  { key: "knee_asymmetry_mean_deg", source: "knee_flexion_asymmetry_deg", stat: "mean", label: "Knee flexion asymmetry", floor: 3 },
+  { key: "hip_asymmetry_mean_deg", source: "hip_flexion_asymmetry_deg", stat: "mean", label: "Hip flexion asymmetry", floor: 3 },
+  { key: "ankle_asymmetry_mean_deg", source: "ankle_angle_asymmetry_deg", stat: "mean", label: "Ankle angle asymmetry", floor: 3 },
+  { key: "trunk_tilt_peak_deg", source: "trunk_3d_tilt_deg", stat: "peak_abs", fallbackSource: "trunk_image_tilt_deg", label: "Peak trunk tilt", floor: 4 },
+  { key: "pelvis_tilt_peak_deg", source: "pelvis_line_tilt_deg", stat: "peak_abs", label: "Peak pelvis line tilt", floor: 3 },
+  { key: "left_knee_path_peak_pct", source: "left_knee_path_offset_pct", stat: "peak_abs", label: "Left knee path offset", floor: 5 },
+  { key: "right_knee_path_peak_pct", source: "right_knee_path_offset_pct", stat: "peak_abs", label: "Right knee path offset", floor: 5 },
 ]);
 
-function baselineModel(reps) {
-  const model = {};
-  for (const descriptor of SIGNATURE_FEATURES) {
-    const values = reps.map((rep) => rep.features[descriptor.key]).filter(Number.isFinite);
-    const center = average(values);
-    model[descriptor.key] = {
-      center,
-      scale: Math.max(descriptor.floor, std(values, center) ?? 0),
-      label: descriptor.label,
-    };
-  }
-  return model;
+export const MOVEMENT_SIGNATURE_FEATURES = Object.freeze(SIGNATURE_FEATURES.map((feature) => feature.key));
+
+function featureValue(repBiomechanics, descriptor) {
+  const features = repBiomechanics?.features || {};
+  const entry = features[descriptor.source] || (descriptor.fallbackSource ? features[descriptor.fallbackSource] : null);
+  if (!entry) return null;
+  if (descriptor.stat === "peak_abs") return peakAbs(entry);
+  return finite(entry?.[descriptor.stat]);
 }
 
-function compareToBaseline(summary, baseline) {
-  const comparisons = SIGNATURE_FEATURES.map(({ key, label }) => {
-    const current = summary.features[key];
-    const reference = baseline[key];
-    const z = reference && Number.isFinite(current)
-      ? (current - reference.center) / reference.scale
-      : 0;
-    return { key, label, z, magnitude: Math.abs(z), value: current, baseline: reference?.center ?? null };
-  });
-  const drift = Math.sqrt(average(comparisons.map((item) => clamp(item.z, -4, 4) ** 2)) ?? 0);
-  const score = Math.round(100 * Math.exp(-0.38 * drift));
-  const band = drift < 0.85 ? "stable" : drift < 1.45 ? "changed" : "notable_change";
+export function repMovementSignature(repBiomechanics) {
+  if (!repBiomechanics || repBiomechanics.schemaVersion !== BIOMECHANICS_SCHEMA_VERSION) return null;
+  const values = {};
+  let available = 0;
+  for (const descriptor of SIGNATURE_FEATURES) {
+    const value = featureValue(repBiomechanics, descriptor);
+    values[descriptor.key] = value;
+    if (Number.isFinite(value)) available += 1;
+  }
+  const completeness = available / SIGNATURE_FEATURES.length;
+  const coverage = clamp(finite(repBiomechanics.coverage) ?? 0, 0, 1);
+  const meanVisibility = clamp(finite(repBiomechanics.quality?.meanVisibility) ?? 0, 0, 1);
+  const minVisibility = clamp(finite(repBiomechanics.quality?.minVisibility) ?? 0, 0, 1);
+  const confidence = Math.round(100 * clamp(
+    0.40 * coverage
+      + 0.35 * meanVisibility
+      + 0.10 * minVisibility
+      + 0.15 * completeness,
+    0,
+    1,
+  ));
   return {
-    driftIndex: Number(drift.toFixed(2)),
-    stabilityScore: clamp(score, 0, 100),
-    band,
-    factors: comparisons.sort((a, b) => b.magnitude - a.magnitude).slice(0, 3).map((item) => ({
-      key: item.key,
-      label: item.label,
-      standardizedChange: Number(item.z.toFixed(2)),
-    })),
+    values,
+    completeness: round(completeness),
+    coverage: round(coverage),
+    meanVisibility: round(meanVisibility),
+    minVisibility: round(minVisibility),
+    confidence,
   };
+}
+
+function robustModel(signatures) {
+  const usable = signatures.filter((item) => item?.values);
+  if (!usable.length) return null;
+  const centers = {};
+  const scales = {};
+  for (const descriptor of SIGNATURE_FEATURES) {
+    const values = usable.map((item) => item.values[descriptor.key]).filter(Number.isFinite);
+    const center = median(values);
+    if (!Number.isFinite(center)) continue;
+    const mad = median(values.map((value) => Math.abs(value - center))) ?? 0;
+    centers[descriptor.key] = round(center);
+    scales[descriptor.key] = round(Math.max(descriptor.floor, mad * 1.4826));
+  }
+  const completeness = Object.keys(centers).length / SIGNATURE_FEATURES.length;
+  if (completeness < 0.75) return null;
+  return {
+    schemaVersion: MOVEMENT_SIGNATURE_SCHEMA_VERSION,
+    biomechanicsSchemaVersion: BIOMECHANICS_SCHEMA_VERSION,
+    featureOrder: [...MOVEMENT_SIGNATURE_FEATURES],
+    centers,
+    scales,
+    sampleCount: usable.length,
+    derivedOnly: true,
+  };
+}
+
+function compareValuesToModel(values, model) {
+  if (!model?.centers || !model?.scales) return null;
+  const comparisons = [];
+  for (const descriptor of SIGNATURE_FEATURES) {
+    const current = finite(values?.[descriptor.key]);
+    const center = finite(model.centers?.[descriptor.key]);
+    const scale = Math.max(descriptor.floor, finite(model.scales?.[descriptor.key]) ?? descriptor.floor);
+    if (current === null || center === null) continue;
+    const standardizedChange = (current - center) / scale;
+    comparisons.push({
+      key: descriptor.key,
+      label: descriptor.label,
+      standardizedChange,
+      magnitude: Math.abs(standardizedChange),
+    });
+  }
+  if (comparisons.length < Math.ceil(SIGNATURE_FEATURES.length * 0.70)) return null;
+  const drift = Math.sqrt(average(comparisons.map((item) => clamp(item.standardizedChange, -4, 4) ** 2)) ?? 0);
+  const similarityScore = Math.round(100 * Math.exp(-0.42 * drift));
+  const patternBand = drift < 0.80 ? "similar" : drift < 1.40 ? "shifted" : "larger_shift";
+  return {
+    driftIndex: round(drift, 2),
+    similarityScore: clamp(similarityScore, 0, 100),
+    patternBand,
+    factors: comparisons
+      .sort((a, b) => b.magnitude - a.magnitude)
+      .slice(0, 3)
+      .map((item) => ({
+        key: item.key,
+        label: item.label,
+        standardizedChange: round(item.standardizedChange, 2),
+      })),
+  };
+}
+
+function baselineCohesion(signatures, model) {
+  const comparisons = signatures
+    .map((signature) => compareValuesToModel(signature.values, model))
+    .filter(Boolean);
+  const averageDrift = average(comparisons.map((item) => item.driftIndex)) ?? Infinity;
+  return {
+    averageDrift: round(averageDrift, 2),
+    cohesionScore: Number.isFinite(averageDrift)
+      ? Math.round(100 * Math.exp(-0.42 * averageDrift))
+      : 0,
+  };
+}
+
+function normalizeReference(reference) {
+  const signature = reference?.signature || reference;
+  if (!signature || signature.schemaVersion !== MOVEMENT_SIGNATURE_SCHEMA_VERSION) return null;
+  if (!signature.centers || !signature.scales) return null;
+  return {
+    signature,
+    sessionId: reference?.sessionId || null,
+    completedAt: reference?.completedAt || null,
+  };
+}
+
+export function latestCompatibleMovementReference(sessions = [], exerciseKey = "bodyweight_squat") {
+  return [...sessions]
+    .filter((session) => session?.exercise_key === exerciseKey)
+    .sort((a, b) => new Date(b.completed_at || b.created_at || 0) - new Date(a.completed_at || a.created_at || 0))
+    .map((session) => {
+      const signature = session?.movement_summary?.movement_intelligence?.signature;
+      if (signature?.schemaVersion !== MOVEMENT_SIGNATURE_SCHEMA_VERSION) return null;
+      return {
+        signature,
+        sessionId: session.id || null,
+        completedAt: session.completed_at || session.created_at || null,
+      };
+    })
+    .find(Boolean) || null;
 }
 
 export function supportsAdaptiveMovementIntelligence(exerciseKey) {
   return MOVEMENT_INTELLIGENCE_EXERCISES.has(String(exerciseKey || ""));
 }
 
-export function createAdaptiveMovementIntelligence({ baselineReps = 3, minFrames = 8, maxFrames = 180 } = {}) {
-  let collecting = false;
-  let frames = [];
-  let baseline = [];
+export function createAdaptiveMovementIntelligence({
+  baselineReps = 3,
+  maximumBaselineReps = 5,
+  minimumConfidence = 72,
+  minimumCoverage = 0.65,
+  minimumVisibility = 0.70,
+  priorReference = null,
+} = {}) {
+  const baseline = [];
+  const accepted = [];
   const results = [];
+  const rejected = [];
+  const prior = normalizeReference(priorReference);
+  let baselineModel = null;
+  let baselineStatus = "learning";
+  let cohesion = null;
 
-  const resetRep = () => {
-    collecting = false;
-    frames = [];
-  };
+  function qualityGate(signature) {
+    if (!signature) return { accepted: false, reason: "missing_biomechanics" };
+    if (signature.coverage < minimumCoverage) return { accepted: false, reason: "low_coverage" };
+    if (signature.meanVisibility < minimumVisibility) return { accepted: false, reason: "low_visibility" };
+    if (signature.completeness < 0.75) return { accepted: false, reason: "missing_features" };
+    if (signature.confidence < minimumConfidence) return { accepted: false, reason: "low_confidence" };
+    return { accepted: true, reason: null };
+  }
+
+  function currentSignatureModel() {
+    return robustModel(accepted);
+  }
+
+  function longitudinalSummary(signatureModel) {
+    if (!prior || !signatureModel) return {
+      status: "unavailable",
+      reason: prior ? "current_signature_unavailable" : "no_prior_compatible_session",
+    };
+    const comparison = compareValuesToModel(signatureModel.centers, prior.signature);
+    if (!comparison) return { status: "unavailable", reason: "incompatible_signature" };
+    return {
+      status: "available",
+      referenceSessionId: prior.sessionId,
+      referenceCompletedAt: prior.completedAt,
+      ...comparison,
+    };
+  }
 
   return {
-    startRep() {
-      collecting = true;
-      frames = [];
-    },
-    observe(points) {
-      if (!collecting || frames.length >= maxFrames) return;
-      const features = squatFrameFeatures(points);
-      if (features) frames.push(features);
-    },
-    discardRep() {
-      resetRep();
-    },
-    finishRep() {
-      const summary = summarizeSquatFrames(frames);
-      resetRep();
-      if (!summary || summary.frameCount < minFrames) {
+    analyzeRep(repBiomechanics) {
+      const signature = repMovementSignature(repBiomechanics);
+      const gate = qualityGate(signature);
+      if (!gate.accepted) {
         const result = {
-          status: "insufficient_data",
+          status: "insufficient_quality",
           modelVersion: MOVEMENT_INTELLIGENCE_VERSION,
           experimental: true,
-          message: "AI movement analysis needs a clearer full-body repetition.",
+          diagnostic: false,
+          confidence: signature?.confidence ?? 0,
+          reason: gate.reason,
+          message: "AI movement analysis skipped this rep because tracking quality was not strong enough.",
         };
+        rejected.push(result);
         results.push(result);
         return result;
       }
 
-      const confidence = Math.round(100 * clamp(
-        0.65 * summary.meanVisibility + 0.35 * Math.min(1, summary.frameCount / 24),
-        0,
-        1,
-      ));
+      if (!baselineModel) {
+        if (baseline.length < maximumBaselineReps) {
+          baseline.push(signature);
+          accepted.push(signature);
+        }
+        if (baseline.length < baselineReps) {
+          const result = {
+            status: "baseline_learning",
+            modelVersion: MOVEMENT_INTELLIGENCE_VERSION,
+            experimental: true,
+            diagnostic: false,
+            confidence: signature.confidence,
+            baselineProgress: baseline.length,
+            baselineTarget: baselineReps,
+            message: `AI movement signature learning (${baseline.length}/${baselineReps}).`,
+          };
+          results.push(result);
+          return result;
+        }
 
-      if (baseline.length < baselineReps) {
-        baseline.push(summary);
-        const ready = baseline.length >= baselineReps;
+        const candidate = robustModel(baseline);
+        cohesion = candidate ? baselineCohesion(baseline, candidate) : null;
+        const stableEnough = candidate && cohesion && cohesion.averageDrift <= 1.25;
+        if (!stableEnough) {
+          baselineStatus = baseline.length >= maximumBaselineReps ? "unstable" : "extending";
+          const result = {
+            status: baselineStatus === "unstable" ? "baseline_unstable" : "baseline_extending",
+            modelVersion: MOVEMENT_INTELLIGENCE_VERSION,
+            experimental: true,
+            diagnostic: false,
+            confidence: signature.confidence,
+            baselineProgress: baseline.length,
+            baselineTarget: maximumBaselineReps,
+            baselineCohesionScore: cohesion?.cohesionScore ?? 0,
+            message: baselineStatus === "unstable"
+              ? "AI did not establish a repeatable movement baseline in this session."
+              : "AI is collecting extra repetitions because the first baseline reps varied.",
+          };
+          results.push(result);
+          return result;
+        }
+
+        baselineModel = candidate;
+        baselineStatus = "ready";
         const result = {
-          status: ready ? "baseline_ready" : "baseline_learning",
+          status: "baseline_ready",
           modelVersion: MOVEMENT_INTELLIGENCE_VERSION,
           experimental: true,
-          confidence,
+          diagnostic: false,
+          confidence: signature.confidence,
           baselineProgress: baseline.length,
-          baselineTarget: baselineReps,
-          message: ready
-            ? "AI movement baseline learned for this session."
-            : `AI movement baseline learning (${baseline.length}/${baselineReps}).`,
+          baselineTarget: baseline.length,
+          baselineCohesionScore: cohesion.cohesionScore,
+          message: "AI movement signature baseline is ready for this session.",
         };
         results.push(result);
         return result;
       }
 
-      const comparison = compareToBaseline(summary, baselineModel(baseline));
+      accepted.push(signature);
+      const comparison = compareValuesToModel(signature.values, baselineModel);
+      if (!comparison) {
+        const result = {
+          status: "insufficient_quality",
+          modelVersion: MOVEMENT_INTELLIGENCE_VERSION,
+          experimental: true,
+          diagnostic: false,
+          confidence: signature.confidence,
+          reason: "comparison_unavailable",
+          message: "AI movement analysis could not compare this repetition reliably.",
+        };
+        results.push(result);
+        return result;
+      }
       const result = {
         status: "analyzed",
         modelVersion: MOVEMENT_INTELLIGENCE_VERSION,
         experimental: true,
-        confidence,
+        diagnostic: false,
+        confidence: signature.confidence,
         ...comparison,
-        message: comparison.band === "stable"
-          ? "AI movement signature is consistent with this session baseline."
-          : comparison.band === "changed"
-            ? "AI detected a movement-pattern shift from this session baseline."
+        message: comparison.patternBand === "similar"
+          ? "AI movement signature is similar to this session baseline."
+          : comparison.patternBand === "shifted"
+            ? "AI detected a measurable movement-pattern shift from this session baseline."
             : "AI detected a larger movement-pattern shift for therapist review.",
       };
       results.push(result);
       return result;
     },
+
     sessionSummary() {
       const analyzed = results.filter((result) => result.status === "analyzed");
+      const signature = currentSignatureModel();
+      const longitudinal = longitudinalSummary(signature);
+      const acceptedConfidence = accepted.map((item) => item.confidence).filter(Number.isFinite);
       return {
         enabled: true,
         version: MOVEMENT_INTELLIGENCE_VERSION,
-        mode: "patient_specific_adaptive_baseline",
+        mode: "patient_specific_adaptive_signature",
         experimental: true,
         diagnostic: false,
         processing: "on_device",
-        analyzed_repetitions: analyzed.length,
-        baseline_repetitions: baseline.length,
-        average_stability_score: analyzed.length
-          ? Math.round(average(analyzed.map((result) => result.stabilityScore)))
+        biomechanicsSchemaVersion: BIOMECHANICS_SCHEMA_VERSION,
+        signature,
+        baselineStatus,
+        baselineRepetitions: baseline.length,
+        baselineCohesionScore: cohesion?.cohesionScore ?? null,
+        analyzedRepetitions: analyzed.length,
+        qualityGatedRepetitions: rejected.length,
+        averageConfidence: acceptedConfidence.length ? Math.round(average(acceptedConfidence)) : null,
+        averageSimilarityScore: analyzed.length
+          ? Math.round(average(analyzed.map((result) => result.similarityScore)))
           : null,
-        latest_pattern_band: analyzed.at(-1)?.band ?? null,
+        latestPatternBand: analyzed.at(-1)?.patternBand ?? null,
+        longitudinal,
       };
     },
+
     reset() {
-      collecting = false;
-      frames = [];
-      baseline = [];
+      baseline.length = 0;
+      accepted.length = 0;
       results.length = 0;
+      rejected.length = 0;
+      baselineModel = null;
+      baselineStatus = "learning";
+      cohesion = null;
     },
   };
 }
