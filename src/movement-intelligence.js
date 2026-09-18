@@ -5,7 +5,9 @@ export const MOVEMENT_SIGNATURE_SCHEMA_VERSION = 2;
 export const MOVEMENT_INTELLIGENCE_EXERCISES = new Set(["bodyweight_squat"]);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = (value) => value === null || value === undefined || value === ""
+  ? null
+  : (Number.isFinite(Number(value)) ? Number(value) : null);
 const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 const round = (value, digits = 3) => {
   const number = finite(value);
