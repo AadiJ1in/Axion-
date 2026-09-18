@@ -4,8 +4,12 @@ let landmarker = null;
 let delegate = null;
 let config = null;
 let modelObjectUrl = null;
+let modelCacheKey = null;
 
 async function verifiedModelUrl(model) {
+  const cacheKey = `${model.url}#${model.sha256}`;
+  if (modelObjectUrl && modelCacheKey === cacheKey) return modelObjectUrl;
+  if (modelObjectUrl) URL.revokeObjectURL(modelObjectUrl);
   const response = await fetch(model.url, {
     cache: "force-cache",
     credentials: "omit",
@@ -19,7 +23,16 @@ async function verifiedModelUrl(model) {
     .join("");
   if (actualHash !== model.sha256) throw new Error("Movement model integrity verification failed.");
   modelObjectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  modelCacheKey = cacheKey;
   return modelObjectUrl;
+}
+
+function landmarkerOptions(modelAssetPath, activeDelegate) {
+  return {
+    baseOptions: { modelAssetPath, delegate: activeDelegate },
+    runningMode: "VIDEO",
+    ...config.vision,
+  };
 }
 
 async function buildLandmarker(forceCpu = false) {
@@ -31,25 +44,11 @@ async function buildLandmarker(forceCpu = false) {
   ]);
   const requested = forceCpu || config.delegate === "cpu" ? "CPU" : "GPU";
   try {
-    landmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath, delegate: requested },
-      runningMode: "VIDEO",
-      numPoses: 2,
-      minPoseDetectionConfidence: 0.55,
-      minPosePresenceConfidence: 0.55,
-      minTrackingConfidence: 0.55,
-    });
+    landmarker = await PoseLandmarker.createFromOptions(vision, landmarkerOptions(modelAssetPath, requested));
     delegate = requested;
   } catch (error) {
     if (requested !== "GPU") throw error;
-    landmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath, delegate: "CPU" },
-      runningMode: "VIDEO",
-      numPoses: 2,
-      minPoseDetectionConfidence: 0.55,
-      minPosePresenceConfidence: 0.55,
-      minTrackingConfidence: 0.55,
-    });
+    landmarker = await PoseLandmarker.createFromOptions(vision, landmarkerOptions(modelAssetPath, "CPU"));
     delegate = "CPU";
   }
   return delegate;
@@ -93,6 +92,7 @@ self.addEventListener("message", async (event) => {
       landmarker = null;
       if (modelObjectUrl) URL.revokeObjectURL(modelObjectUrl);
       modelObjectUrl = null;
+      modelCacheKey = null;
       self.postMessage({ id, ok: true, type: "closed" });
     }
   } catch (error) {
