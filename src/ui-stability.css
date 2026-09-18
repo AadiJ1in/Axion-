@@ -40,7 +40,7 @@ html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-repor
   color:var(--story-ink);
   background:
     linear-gradient(105deg,rgba(243,236,215,.94),rgba(224,210,176,.88)),
-    url('/axion-kingdom-world.webp') center 28%/cover fixed!important;
+    url('/axion-kingdom-world.webp') center 28%/cover no-repeat!important;
 }
 html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] :is(.report-header,.ui-progress-intro,.pulse-banner,.report-metrics,.longitudinal-card,.session-rail,.rep-highlight,.ai-note,.heatmap-card,.review-card),
 html[data-axion-patient-surface="true"] body[data-axion-ui-screen="patient-report"] :is(.patient-report-hero,.patient-checkin-card,.patient-report-side>article){
