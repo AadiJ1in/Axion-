@@ -400,7 +400,8 @@ test("pose-model failure preserves a recoverable UI and writes no clinical sessi
   await page.evaluate(() => window.__AXION_E2E_CONTROL__.setPoseModelFailure(true));
   await startAssignment(page);
   await expect(page.locator("#camera-recovery")).toBeVisible();
-  await expect(page.locator("#camera-recovery-copy")).toHaveText(/movement model stopped responding/i);
+  await expect(page.locator("#camera-recovery-title")).toHaveText(/movement tracker unavailable/i);
+  await expect(page.locator("#camera-recovery-copy")).toHaveText(/movement tracking model needs a restart/i);
   expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
 });
 
