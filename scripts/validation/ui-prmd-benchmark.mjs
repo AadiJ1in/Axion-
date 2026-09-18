@@ -193,9 +193,13 @@ function aggregateMovement(movementKey) {
   const frames = rows.map((row) => row.frameCount);
   const metricCoverage = {};
   for (const metricKey of VALIDATION_METRICS) {
-    const matched = rows.flatMap((row) => row.metrics.filter((metric) => metric.metricKey === metricKey));
+    const episodeMatches = rows.map((row) => row.metrics.filter((metric) => metric.metricKey === metricKey));
+    const matched = episodeMatches.flat();
     metricCoverage[metricKey] = {
-      episodeCount: new Set(matched.map((metric, index) => index)).size,
+      episodeCount: episodeMatches.filter((metrics) => metrics.length > 0).length,
+      episodeCoverageFraction: rows.length
+        ? episodeMatches.filter((metrics) => metrics.length > 0).length / rows.length
+        : 0,
       sideSummaries: matched.length,
     };
   }
@@ -229,7 +233,7 @@ const result = {
       "force, joint-moment, or tissue-load estimation",
     ],
   },
-  datasetRoot: root,
+  datasetRootIncludedInOutput: false,
   discoveredPositionFiles: positionFiles.length,
   benchmarkedEpisodes: episodes.length,
   skipped,
