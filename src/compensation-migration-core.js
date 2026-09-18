@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.11.0";
+export const COMPENSATION_ENGINE_VERSION = "0.12.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -172,7 +172,7 @@ function summarizeMetric(points, config) {
   const recent = median(points.slice(-recentCount).map((point) => point.value));
   if (baseline === null || recent === null) return null;
   const absoluteDelta = recent - baseline;
-  const denominator = Math.max(Math.abs(baseline), 1);
+  const denominator = Math.max(Math.abs(baseline), 1e-6);
   return {
     baseline,
     recent,
@@ -211,7 +211,7 @@ function directionalAbsoluteDrift(summary, worseningDirection) {
   return Math.max(0, summary.absoluteDelta);
 }
 
-function replicationByExercise(points, config, worseningDirection, relativeThreshold, absoluteThreshold) {
+function replicationByExercise(points, config, worseningDirection, relativeThreshold, absoluteThreshold, relativeBaselineFloor) {
   const groups = new Map();
   points.forEach((point) => {
     const key = point.exerciseKey || "unknown";
@@ -229,7 +229,9 @@ function replicationByExercise(points, config, worseningDirection, relativeThres
       recentSessions: Math.min(2, Math.max(1, config.minSessionsPerExercise - 1)),
     });
     if (!summary || summary.spanDays < config.minObservationSpanDays) continue;
-    const relativeDrift = driftFraction(summary, worseningDirection);
+    const relativeDrift = Math.abs(summary.baseline) >= relativeBaselineFloor
+      ? driftFraction(summary, worseningDirection)
+      : 0;
     const absoluteDrift = directionalAbsoluteDrift(summary, worseningDirection);
     const slopeMatches = worseningDirection === "decrease"
       ? summary.slope < 0
@@ -415,7 +417,6 @@ export function detectCompensationMigration({
     if (!summary) continue;
 
     const worseningDirection = related.worseningDirection || "increase";
-    const drift = driftFraction(summary, worseningDirection);
     const absoluteDrift = directionalAbsoluteDrift(summary, worseningDirection);
     const relativeThreshold = Number.isFinite(Number(related.minRelativeDrift))
       ? Math.max(0, Number(related.minRelativeDrift))
@@ -423,6 +424,12 @@ export function detectCompensationMigration({
     const absoluteThreshold = Number.isFinite(Number(related.minAbsoluteDrift))
       ? Math.max(0, Number(related.minAbsoluteDrift))
       : config.minSecondaryAbsoluteDrift;
+    const relativeBaselineFloor = Number.isFinite(Number(related.minRelativeBaseline))
+      ? Math.max(0, Number(related.minRelativeBaseline))
+      : Math.max(absoluteThreshold, 1e-6);
+    const drift = Math.abs(summary.baseline) >= relativeBaselineFloor
+      ? driftFraction(summary, worseningDirection)
+      : 0;
     if (drift < relativeThreshold && absoluteDrift < absoluteThreshold) continue;
 
     const observationWindowSatisfied = summary.spanDays >= config.minObservationSpanDays;
@@ -438,6 +445,7 @@ export function detectCompensationMigration({
       worseningDirection,
       relativeThreshold,
       absoluteThreshold,
+      relativeBaselineFloor,
     );
     const replicatedExerciseCount = replicationEvidence.length;
     const exerciseConsistency = clamp(replicatedExerciseCount / Math.max(config.minExercises, 1), 0, 1);
@@ -459,6 +467,7 @@ export function detectCompensationMigration({
         thresholds: {
           minRelativeDrift: relativeThreshold,
           minAbsoluteDrift: absoluteThreshold,
+          minRelativeBaseline: relativeBaselineFloor,
         },
       },
       summary,
