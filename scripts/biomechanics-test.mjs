@@ -81,6 +81,11 @@ const occludedFrame = extractBiomechanicsFrame({ imageLandmarks: occluded, world
 assert.equal(occludedFrame.features.left_knee_flexion_deg, null, "occluded joints are not fabricated");
 assert(occludedFrame.quality.minVisibility < 0.55, "low landmark visibility is retained in quality metadata");
 
+const invalidDepth = skeleton();
+invalidDepth[25] = { ...invalidDepth[25], z: Number.NaN };
+const invalidDepthFrame = extractBiomechanicsFrame({ imageLandmarks: invalidDepth, worldLandmarks: invalidDepth });
+assert.equal(invalidDepthFrame.features.left_knee_flexion_deg, null, "non-finite depth coordinates are rejected instead of contaminating angles");
+
 const accumulator = createRepBiomechanicsAccumulator();
 accumulator.start(100);
 accumulator.push(standingFrame);
