@@ -24,14 +24,14 @@ export function createVideoFrameScheduler(video, {
         handle = video.requestVideoFrameCallback((now, metadata) => {
           handle = null;
           mode = null;
-          callback(now, metadata);
+          return callback(now, metadata);
         });
       } else {
         mode = "animation";
         handle = requestAnimation((now) => {
           handle = null;
           mode = null;
-          callback(now, null);
+          return callback(now, null);
         });
       }
       return handle;
