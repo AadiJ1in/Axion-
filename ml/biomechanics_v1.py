@@ -259,7 +259,7 @@ def extract_biomechanics_frame(
     timestamp_ms: float | int | None = None,
     minimum_visibility: float = 0.55,
 ) -> dict[str, Any] | None:
-    if not isinstance(image_landmarks, Sequence) or len(image_landmarks) < 33:
+    if not isinstance(image_landmarks, Sequence) or len(image_landmarks) < 29:
         return None
 
     angle_landmarks = (
