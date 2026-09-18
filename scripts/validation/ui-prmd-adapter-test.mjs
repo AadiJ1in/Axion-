@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { extractWholeBodyBiomechanics } from "../../src/biomechanics-feature-core.js";
+import { extractBiomechanicsFrame } from "../../src/biomechanics.js";
 import {
   UI_PRMD_ADAPTER_METADATA,
   UI_PRMD_KINECT_JOINTS,
@@ -91,28 +91,26 @@ function emptySkeleton() {
 
   const landmarks = uiPrmdKinectToAxionLandmarks(sequence[0]);
   assert.equal(landmarks.length, 33);
-  assert.ok(landmarks[11]);
-  assert.ok(landmarks[12]);
-  assert.ok(landmarks[23]);
-  assert.ok(landmarks[24]);
-  assert.ok(landmarks[25]);
-  assert.ok(landmarks[26]);
-  assert.ok(landmarks[27]);
-  assert.ok(landmarks[28]);
+  for (const index of [11, 12, 23, 24, 25, 26, 27, 28]) assert.ok(landmarks[index]);
 
-  const metrics = extractWholeBodyBiomechanics(landmarks, {
-    source: "ui_prmd_kinect_reconstruction",
-    cameraView: "dataset",
+  const frame = extractBiomechanicsFrame({
+    imageLandmarks: landmarks,
+    worldLandmarks: landmarks,
+    timestampMs: 0,
+    minimumVisibility: 0.55,
   });
-  const keys = new Set(metrics.map((metric) => metric.metricKey));
-  assert.ok(keys.has("knee_flexion_asymmetry_deg"));
-  assert.ok(keys.has("trunk_pelvis_lateral_deviation_3d_deg"));
-  assert.ok(keys.has("pelvis_over_stance_offset_3d_proxy"));
-  assert.equal(metrics.every((metric) => metric.context.source === "ui_prmd_kinect_reconstruction"), true);
+  assert.ok(frame);
+  assert.equal(frame.schemaVersion, 1);
+  assert.equal(frame.quality.usable, true);
+  assert.ok(Number.isFinite(frame.features.knee_flexion_asymmetry_deg));
+  assert.ok(Number.isFinite(frame.features.trunk_3d_tilt_deg));
+  assert.ok(Number.isFinite(frame.features.hip_flexion_asymmetry_deg));
+  assert.ok(Number.isFinite(frame.features.ankle_angle_asymmetry_deg));
+  assert.ok(Number.isFinite(frame.features.pelvis_depth_asymmetry_pct));
 }
 
 assert.equal(UI_PRMD_KINECT_JOINTS.length, 22);
 assert.equal(UI_PRMD_ADAPTER_METADATA.clinicalValidation, false);
 assert.equal(UI_PRMD_ADAPTER_METADATA.injuryPredictionValidation, false);
 
-console.log("UI-PRMD adapter tests passed");
+console.log("UI-PRMD adapter tests passed against canonical biomechanics extractor");
