@@ -61,6 +61,11 @@ assert.ok(scalar);
 assert.ok(scalar.confidence >= 90);
 assert.equal(Object.values(scalar.values).filter(Number.isFinite).length >= 10, true);
 
+const missingRep = repBiomechanics();
+missingRep.features.left_knee_flexion_deg.range = null;
+const missingScalar = repMovementSignature(missingRep);
+assert.equal(missingScalar.values.left_knee_flexion_range_deg, null, "missing biomechanics must not be coerced into a zero measurement");
+
 const engine = createAdaptiveMovementIntelligence({ baselineReps: 3 });
 const first = engine.analyzeRep(repBiomechanics(0));
 const second = engine.analyzeRep(repBiomechanics(0.25));
