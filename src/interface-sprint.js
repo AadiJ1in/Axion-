@@ -283,6 +283,9 @@ function contextualizeConcernButton(reportButton) {
   reportButton.classList.add("ui-report-concern");
   reportButton.classList.remove("active");
   reportButton.removeAttribute("aria-current");
+  reportButton.hidden = false;
+  reportButton.removeAttribute("aria-hidden");
+  reportButton.tabIndex = 0;
 
   const root = document.documentElement;
   const today = document.querySelector(".patient-portal.journey-page");
