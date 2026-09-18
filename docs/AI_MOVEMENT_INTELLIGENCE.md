@@ -1,58 +1,105 @@
-# Axion Movement Intelligence v0.1
+# Axion Movement Intelligence v0.2
 
-## What is implemented
+## Implemented product architecture
 
-Axion now has two on-device movement-intelligence layers in the live rehabilitation workflow:
+Axion now has three separate layers. Keeping these layers separate is important for validation.
 
-1. **AI pose estimation.** MediaPipe Pose Landmarker estimates body landmarks from the live camera feed in the browser.
-2. **Adaptive movement modeling.** For supported exercises, Axion converts those landmarks into interpretable kinematic features and learns a patient-specific movement signature from the first three valid repetitions in the current session.
+1. **On-device pose AI** — MediaPipe Pose Landmarker estimates body landmarks from the live camera stream.
+2. **Canonical biomechanics** — `src/biomechanics.js` converts those landmarks into derived measurements such as knee/hip flexion, ankle angles, trunk and pelvis geometry, side-to-side differences, knee-path offsets, and tracking-quality metadata.
+3. **Adaptive Movement Signature** — `src/movement-intelligence.js` learns a patient-specific pattern from high-quality repetitions and compares later repetitions and later compatible sessions with that derived signature.
 
-The first supported adaptive model is **bodyweight squat**.
+The first adaptive Movement Signature is enabled for **bodyweight squat**.
 
-For each valid squat repetition, the engine extracts:
-- left/right knee excursion,
-- left/right hip excursion,
-- left/right ankle excursion,
-- trunk position,
-- knee and hip excursion symmetry,
-- a frontal knee-spacing pattern,
-- pose-estimation confidence.
+## What changed from v0.1
 
-After three baseline repetitions, subsequent repetitions are compared with that patient's own session baseline. The engine reports a descriptive pattern band (`stable`, `changed`, or `notable_change`), a 0–100 stability score, confidence, and the largest contributing movement-feature changes.
+v0.2 no longer maintains a second set of squat geometry formulas. It consumes the same per-repetition biomechanics object that Axion already persists and that the research movement-quality pipeline uses.
+
+That gives Axion one measurement schema for:
+- live patient sessions,
+- session reports,
+- longitudinal comparison,
+- future clinician validation,
+- public-dataset model development.
+
+## Quality gating
+
+The adaptive model does not learn from every counted repetition automatically.
+
+A repetition must have sufficient:
+- usable-frame coverage,
+- mean landmark visibility,
+- feature completeness,
+- combined confidence.
+
+Low-quality repetitions can still remain part of the prescribed exercise record, but they are excluded from AI baseline learning and pattern comparison.
+
+## Robust baseline learning
+
+The first three high-quality repetitions are used to attempt a session baseline.
+
+Axion builds the baseline with robust medians and median absolute deviation rather than simple means. If the first repetitions vary too much, Axion extends baseline collection up to five high-quality repetitions.
+
+If a repeatable baseline still cannot be established, the system reports that limitation and does **not** manufacture a movement-pattern comparison.
+
+## Within-session comparison
+
+After the baseline is ready, later high-quality repetitions are compared with it.
+
+The product reports:
+- tracking confidence,
+- baseline cohesion,
+- movement-signature similarity,
+- a descriptive pattern band,
+- the largest contributing derived movement features.
+
+Similarity means only similarity to the measured reference pattern. It is not a score for recovery, technique quality, pathology, or injury risk.
+
+## Longitudinal comparison
+
+At the end of the session, Axion stores a compact derived Movement Signature containing feature centers and robust scales. It does not store raw video or raw landmark coordinates as part of this feature.
+
+When the patient starts a later compatible squat session, Axion can load the latest compatible stored signature and compare the new session with it.
+
+The movement report explicitly separates:
+- **within-session similarity** — comparison with today's baseline,
+- **longitudinal similarity** — comparison with the prior compatible session.
+
+The report also displays the largest derived feature shifts without assigning a medical cause.
 
 ## Safety and claim boundary
 
 This feature is **experimental movement analysis**, not a diagnostic or injury-prediction system.
 
-It does not infer pathology, weakness, pain source, tissue damage, or readiness to return to sport. A larger pattern shift means only that the measured movement signature differed from the patient's earlier repetitions under the current camera/session conditions.
+It does not infer:
+- pathology,
+- weakness,
+- pain source,
+- tissue damage,
+- reinjury probability,
+- readiness to return to sport,
+- treatment changes.
 
 Recommended external wording:
 
-> Axion uses on-device AI pose estimation and adaptive movement analysis to create patient-specific movement signatures and identify changes in exercise mechanics across repetitions.
+> Axion uses on-device AI pose estimation and adaptive movement analysis to build patient-specific Movement Signatures and identify measurable changes in exercise mechanics across repetitions and sessions.
 
-Do not describe this release as "clinically validated AI," an injury predictor, or an autonomous physical therapist.
+Do not describe this release as clinically validated AI, an injury predictor, or an autonomous physical therapist.
 
 ## Privacy boundary
 
-Raw camera video is not added to the session record by this feature. Landmark-derived features are processed on device. The persisted session summary contains only aggregate movement-intelligence metadata such as model version, number of analyzed repetitions, average stability score, and latest pattern band.
+The adaptive layer operates on derived biomechanics. The stored Movement Signature contains aggregate derived feature centers/scales and quality metadata, not images, video frames, or raw pose coordinates.
 
-## External supervised-model research
+## Public-dataset research track
 
-A supervised squat-quality experiment was reproduced on processed REHAB24-6 anatomical features. Using lower-extremity/trunk features and leave-one-subject-out evaluation over 98 squat repetitions from 9 usable subjects, the development reproduction produced approximately:
+A separate research pipeline now exists for movement-quality modeling using the same canonical biomechanics schema. The current public-data target documented in `docs/MOBIPHYSIO_TRAINING_PIPELINE.md` is MobiPhysio.
 
-- ROC AUC: 0.84
-- balanced accuracy: 0.77
-
-These are **research-development results, not Axion clinical-performance metrics** and are not exposed as product claims.
-
-The REHAB24-6 dataset is licensed for academic/nonprofit noncommercial research; commercial use requires permission from its owners. For that reason, weights trained on REHAB24-6 are intentionally **not embedded in the Axion product build**. The public-data work remains a validation/research track until commercial permission is obtained or a commercially usable/proprietary dataset is available.
-
-Dataset: Černek et al., REHAB24-6, Zenodo DOI 10.5281/zenodo.13305826.
+That research model is intentionally separate from the patient-facing adaptive Movement Signature. A public-dataset score should not be enabled in clinical-facing product surfaces until its dataset terms, grouped evaluation, exercise/view performance, measurement validity, and intended meaning are reviewed.
 
 ## Next validation steps
 
-1. Verify Axion's camera-derived joint measurements against a reference measurement system.
-2. Test repeatability across camera positions, lighting, clothing, body types, and devices.
-3. Have physical therapists independently annotate repetitions and compare agreement.
-4. Freeze a model version before prospective evaluation.
-5. Only after those steps, study whether the output improves therapist review or patient outcomes.
+1. Compare Axion-derived joint and trunk measurements with reference measurement and clinician annotation.
+2. Measure repeatability across camera positions, lighting, clothing, devices, and body types.
+3. Quantify how often quality gating appropriately suppresses unreliable comparisons.
+4. Have PT/biomechanics collaborators independently annotate movement changes and compare agreement.
+5. Freeze a versioned feature schema and model before prospective evaluation.
+6. Prospectively test whether longitudinal Movement Signatures improve therapist review without increasing false-alert burden.
