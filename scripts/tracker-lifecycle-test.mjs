@@ -7,6 +7,16 @@ import { chooseMediapipeDelegate, resolveMediapipeConfig } from '../src/mediapip
 
 assert.equal(resolveMediapipeConfig({baseUrl:'/'},{}).wasmRoot, '/mediapipe');
 assert.equal(resolveMediapipeConfig({baseUrl:'/Axion-'},{}).wasmRoot, '/Axion-/mediapipe', 'GitHub Pages resolves MediaPipe under the app base path');
+assert.equal(
+  resolveMediapipeConfig({baseUrl:'/'},{}).model.url,
+  '/models/pose-landmarker-lite-float16-v1.task',
+  'default pose model is same-origin rather than a runtime third-party dependency',
+);
+assert.equal(
+  resolveMediapipeConfig({baseUrl:'/Axion-'},{}).model.url,
+  '/Axion-/models/pose-landmarker-lite-float16-v1.task',
+  'same-origin model URL follows the deployment base path',
+);
 assert.equal(resolveMediapipeConfig({wasmRoot:'https://cdn.example.test/mp-wasm'},{}).wasmRoot, 'https://cdn.example.test/mp-wasm', 'WASM root can be configured without changing tracker code');
 assert.equal(resolveMediapipeConfig({delegate:'cpu'},{}).delegate, 'cpu');
 assert.equal(chooseMediapipeDelegate('auto',{webgl:true}), 'GPU');
@@ -46,9 +56,12 @@ Object.defineProperty(globalThis,'navigator',{value:{mediaDevices:{getUserMedia:
 const video={currentTime:0,readyState:2,videoWidth:640,videoHeight:480,srcObject:null,play:async()=>{}};
 const canvas={width:640,height:480,getContext:()=>({clearRect(){}})};
 const tracker=await createMovementTracker({video,canvas,onTrackingState:s=>states.push(s.code),onError:e=>errors.push(e),onCalibration:c=>calibrations.push(c)});
-async function step(ms=100){now+=ms;video.currentTime+=ms/1000;const callbacks=[...frames.values()];frames.clear();for(const fn of callbacks)await fn();await new Promise(resolve=>setImmediate(resolve));}
-await tracker.start();
+async function step(ms=100){now+=ms;video.currentTime+=ms/1000;const callbacks=[...frames.values()];frames.clear();for(const fn of callbacks)await fn();}
+await Promise.all([tracker.prepare(), tracker.prepare()]);
+assert.equal(delegates.length,1,'concurrent pose prewarm calls initialize one model instance');
 assert.equal(wasmRoots[0],'/mediapipe','tracker consumes the resolved local runtime root');
+await tracker.start();
+assert.equal(delegates.length,1,'camera start reuses the prewarmed pose model');
 for(let i=0;i<35;i++)await step();
 assert.equal(tracker.getMetrics().calibrated,true,'stable stance completes real tracker calibration');
 assert.equal(frames.size,1,'one active tracking loop');
