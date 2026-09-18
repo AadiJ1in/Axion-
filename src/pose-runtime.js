@@ -39,10 +39,6 @@ async function verifiedModelUrl(model) {
   return verifiedModelUrls.get(cacheKey);
 }
 
-/**
- * Proven main-thread MediaPipe runtime. Kept as the compatibility backend so
- * Axion can always fall back without changing movement/rep logic.
- */
 export function createDirectPoseRuntime({
   mediapipe = {},
   onState = () => {},
@@ -69,10 +65,7 @@ export function createDirectPoseRuntime({
     const options = {
       baseOptions: { modelAssetPath, delegate: desiredDelegate },
       runningMode: "VIDEO",
-      numPoses: 2,
-      minPoseDetectionConfidence: 0.55,
-      minPosePresenceConfidence: 0.55,
-      minTrackingConfidence: 0.55,
+      ...config.vision,
     };
 
     let createdLandmarker;
@@ -155,12 +148,6 @@ export function createDirectPoseRuntime({
   });
 }
 
-/**
- * Worker-first runtime with a synchronous buffered facade. pose.js can keep its
- * deterministic one-frame-at-a-time movement pipeline while the expensive
- * MediaPipe detectForVideo call happens in a dedicated worker. At most one
- * worker inference is in flight, preventing backlog during slow frames.
- */
 export function createPoseRuntime({
   mediapipe = {},
   onState = () => {},
@@ -284,9 +271,6 @@ export function createPoseRuntime({
   });
 }
 
-// Backward-compatible name used by the movement tracker. It now selects the
-// worker-backed runtime automatically when the browser supports transferable
-// ImageBitmap frames, while preserving the local runtime fallback contract.
 export function createLocalPoseRuntime(options) {
   return createPoseRuntime(options);
 }
