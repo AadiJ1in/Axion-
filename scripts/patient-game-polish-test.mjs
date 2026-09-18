@@ -10,6 +10,7 @@ const index=readFileSync('index.html','utf8');
 assert.ok(!js.includes('MutationObserver'), 'patient polish must remain observer-free');
 assert.ok(js.includes('acknowledgeSafety'), 'explicit resume must release the safety UI latch');
 assert.ok(js.includes('REST_SYNC_INTERVAL_MS = 250'), 'rest countdown cadence must remain explicit and lightweight');
+assert.ok(js.includes('if (!document.hidden) syncRestExperience();'), 'hidden tabs must not spend work on rest-state DOM polling');
 assert.ok(js.includes('startPolishTimer();'), 'rest synchronization must restart after a page restore');
 assert.ok(!js.includes("}, { once:true });"), 'page lifecycle cleanup must survive repeated bfcache hide/show cycles');
 assert.ok(js.includes('presentationFrame = 0;'), 'cancelled presentation frames must release the scheduling latch');
