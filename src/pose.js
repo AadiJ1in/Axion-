@@ -2,6 +2,7 @@ import { getMovementProfile, measureMovementSignal } from "./movement-profiles.j
 import { createRepBiomechanicsAccumulator, extractBiomechanicsFrame } from "./biomechanics.js";
 import { createLocalPoseRuntime } from "./pose-runtime.js";
 import { createVideoFrameScheduler, resolveCameraVideoConstraints } from "./video-frame-scheduler.js";
+import { classifyCameraError, openCameraStream, stopMediaStream } from "./camera-runtime.js";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const MIN_TRACKING_SCORE = 0.62;
@@ -441,15 +442,21 @@ export async function createMovementTracker(options) {
     const generation = cameraGeneration;
     repCycle.cancelPending();
     try {
-      if (!navigator.mediaDevices?.getUserMedia) { onTrackingState({ code: "no_camera", label: "No compatible camera found", quality: null }); throw new Error("This browser does not expose a compatible camera."); }
+      const secureContext = typeof window === "undefined" || window.isSecureContext !== false;
+      if (!secureContext) {
+        const error = new Error("Camera access requires a secure context.");
+        error.name = "SecurityError";
+        throw error;
+      }
       if (!poseRuntime.getState().initialized) await initialize();
       if (generation !== cameraGeneration) return;
       onTrackingState({ code: "camera_starting", label: "Starting camera", quality: null });
-      const openedStream = await navigator.mediaDevices.getUserMedia({
-        video: resolveCameraVideoConstraints(camera),
-        audio: false,
-      });
-      if (generation !== cameraGeneration) { openedStream.getTracks().forEach(track => track.stop()); return; }
+      const openedStream = await openCameraStream(
+        navigator.mediaDevices,
+        resolveCameraVideoConstraints(camera),
+        { timeoutMs: camera.startTimeoutMs },
+      );
+      if (generation !== cameraGeneration) { stopMediaStream(openedStream); return; }
       stream = openedStream; video.srcObject = stream;
       stream.getVideoTracks().forEach((track) => { track.addEventListener("ended", () => { if (generation !== cameraGeneration) return; running = false; onTrackingState({ code: "camera_disconnected", label: "Camera disconnected", quality: null }); onError("Camera disconnected. Reconnect it and restart the camera scan."); }, { once: true }); });
       await video.play();
@@ -457,10 +464,11 @@ export async function createMovementTracker(options) {
       lastVideoTime = -1; running = true; sessionStart = performance.now(); calibrationStart = null; calibrated = false; baselineAngle = null; baselineLeft = null; baselineRight = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; scheduleNextFrame();
     } catch (error) {
       if (generation !== cameraGeneration) return;
+      const secureContext = typeof window === "undefined" || window.isSecureContext !== false;
+      const cameraError = classifyCameraError(error, { secureContext });
       stop();
-      const code = error?.name === "NotAllowedError" ? "permission_denied" : error?.name === "NotFoundError" ? "no_camera" : error?.name === "NotReadableError" ? "camera_busy" : "camera_error";
-      const messages = { permission_denied: "Camera permission was denied. Allow access in browser settings and try again.", no_camera: "No camera was found. Connect a camera and try again.", camera_busy: "The camera is being used by another application. Close it there and try again.", camera_error: error instanceof Error ? error.message : "Camera initialization failed." };
-      onTrackingState({ code, label: messages[code], quality: null }); onError(messages[code]);
+      onTrackingState({ code: cameraError.code, label: cameraError.message, quality: null });
+      onError(cameraError.message);
     }
   }
 
