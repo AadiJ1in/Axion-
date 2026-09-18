@@ -251,19 +251,19 @@ const sharedLowerBodyRelatedMetrics = Object.freeze([
   { metricKey: "pelvis_over_stance_offset_3d_proxy", region: "lower_limb", side: "bilateral", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
 ]);
 
-function primarySymmetryMetric(exerciseKey, unit) {
+function primarySymmetryMetric(exerciseKey) {
   return {
-    metricKey: "primary_movement_symmetry_delta",
-    region: "primary_movement",
+    metricKey: "knee_flexion_asymmetry_deg",
+    region: "knee",
     side: "bilateral",
-    unit,
+    unit: "deg",
     improvementDirection: "decrease",
     exerciseKey,
     recoveryGuard: {
       metricKey: "primary_movement_range",
       region: "primary_movement",
       side: "any",
-      unit,
+      unit: "deg",
       exerciseKey,
       maxRelativeDecrease: 0.15,
     },
@@ -273,15 +273,15 @@ function primarySymmetryMetric(exerciseKey, unit) {
 export const LOWER_BODY_COMPENSATION_GRAPH = Object.freeze({
   byExercise: Object.freeze({
     bodyweight_squat: Object.freeze({
-      primaryMetric: primarySymmetryMetric("bodyweight_squat", "deg"),
+      primaryMetric: primarySymmetryMetric("bodyweight_squat"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
     half_squat: Object.freeze({
-      primaryMetric: primarySymmetryMetric("half_squat", "deg"),
+      primaryMetric: primarySymmetryMetric("half_squat"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
     sit_to_stand: Object.freeze({
-      primaryMetric: primarySymmetryMetric("sit_to_stand", "deg"),
+      primaryMetric: primarySymmetryMetric("sit_to_stand"),
       relatedMetrics: sharedLowerBodyRelatedMetrics,
     }),
   }),
