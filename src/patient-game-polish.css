@@ -42,6 +42,39 @@
 }
 .game-how-to>span b{color:#edf5ef;font-size:11px;font-weight:700}
 
+/* Keep the animated canvas and overlays inside one paint/layout boundary. */
+.adventure-card .adventure-viewport{
+  contain:layout paint;
+  isolation:isolate;
+}
+.adventure-card .game-hud b,
+.adventure-card .game-mission-progress,
+.adventure-card #game-pause,
+.adventure-lab #session-pause,
+.adventure-card .set-rest-overlay strong i{
+  font-variant-numeric:tabular-nums;
+}
+.adventure-card #game-pause,
+.adventure-lab #session-pause{
+  min-width:116px;
+  white-space:nowrap;
+}
+
+
+/* Keep live-camera surfaces cheap to composite during presentations. */
+body.axion-adventure-lab-surface .topbar,
+.adventure-lab .calibration-overlay,
+.adventure-card .set-rest-overlay,
+.adventure-card .game-feedback,
+.adventure-card .game-completion{
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+body.axion-adventure-lab-surface .topbar{background:rgba(7,16,15,.985)!important}
+.adventure-lab .calibration-overlay{background:rgba(8,19,16,.96)!important}
+.adventure-card .game-feedback{background:rgba(4,11,9,.92)!important}
+.adventure-card .game-completion{background:rgba(5,13,10,.96)!important}
+
 /* The timer belongs inside the game, for every exercise family, not only squat. */
 .adventure-card .adventure-viewport>.set-rest-overlay:not(.hidden){
   position:absolute!important;
@@ -57,9 +90,8 @@
   border:0!important;
   border-radius:0!important;
   background:
-    linear-gradient(180deg,rgba(7,17,29,.80),rgba(9,25,22,.92)),
+    linear-gradient(180deg,rgba(7,17,29,.90),rgba(9,25,22,.96)),
     url('/journey/landscape.webp') center/cover!important;
-  backdrop-filter:blur(3px)!important;
   box-shadow:none!important;
 }
 .adventure-card .adventure-viewport>.set-rest-overlay>span{display:none!important}
@@ -67,16 +99,18 @@
   display:flex!important;
   flex-direction:column!important;
   align-items:center!important;
+  width:min(520px,calc(100% - 28px))!important;
   max-width:520px!important;
+  box-sizing:border-box!important;
   padding:26px 30px!important;
   border:1px solid rgba(241,216,157,.26)!important;
   border-radius:18px!important;
-  background:rgba(7,19,18,.74)!important;
+  background:rgba(7,19,18,.86)!important;
   box-shadow:0 22px 60px rgba(0,0,0,.28)!important;
 }
 .adventure-card .set-rest-overlay small{color:#f1d89d!important;font-size:11px!important;letter-spacing:.12em!important}
 .adventure-card .set-rest-overlay b{margin-top:7px!important;color:#fff8e8!important;font-size:25px!important}
-.adventure-card .set-rest-overlay p{max-width:440px!important;margin:8px 0 15px!important;color:#d8e3dc!important;font-size:14px!important;line-height:1.55!important}
+.adventure-card .set-rest-overlay p{max-width:440px!important;margin:8px 0 15px!important;color:#d8e3dc!important;font-size:14px!important;line-height:1.55!important;overflow-wrap:anywhere}
 .adventure-card .set-rest-overlay strong{
   display:flex!important;
   flex-direction:column!important;
@@ -94,7 +128,7 @@
 }
 .adventure-card .set-rest-overlay strong i{font-size:54px!important;line-height:1!important;color:#8cf0ba!important}
 .adventure-card .set-rest-overlay strong i::after{content:'s';font-size:20px;margin-left:4px;color:#a7d7bb}
-.adventure-card .movement-game-stage.paused .adventure-viewport:has(>.set-rest-overlay:not(.hidden))::after{display:none!important}
+body.axion-rest-active .adventure-card .movement-game-stage.paused .adventure-viewport::after{display:none!important}
 body.axion-rest-active .adventure-card #game-pause:disabled{opacity:1!important;color:#f5e8c7!important;border-color:rgba(241,216,157,.28)!important;background:rgba(241,216,157,.08)!important}
 
 /* Never show a browser's empty/broken media surface before the camera stream exists. */
@@ -102,8 +136,8 @@ body.axion-rest-active .adventure-card #game-pause:disabled{opacity:1!important;
 .adventure-lab .camera-pane.camera-on video{opacity:1!important}
 
 /* Make the unused lower viewport part of the world rather than a black void. */
-body:has(.journey-page),
-.app-shell:has(.journey-page){
+body.axion-journey-surface,
+.app-shell.axion-journey-surface{
   background:linear-gradient(180deg,#eee8d8 0%,#ddd1b7 100%)!important;
 }
 .journey-page{min-height:0!important;padding-bottom:16px!important}
@@ -113,18 +147,20 @@ body:has(.journey-page),
     url('/axion-kingdom-world.webp') center bottom/cover no-repeat!important;
 }
 .campaign-final-goal{margin-bottom:18px!important}
-body:has(.journey-page) .footer{
+body.axion-journey-surface .footer{
   background:#d9cdb3!important;
   border-top:1px solid #c9bc9f!important;
   color:#506052!important;
 }
 
-/* Movement Lab also gets a finished world surface below its content. */
-body:has(.adventure-lab),
-.app-shell:has(.adventure-lab){
+/* Movement Lab also gets a finished world surface below its content. Avoid a
+   fixed attachment here: it forces costly full-viewport repaints on Safari and
+   lower-power laptops while the camera/canvas is animating. */
+body.axion-adventure-lab-surface,
+.app-shell.axion-adventure-lab-surface{
   background:
     linear-gradient(180deg,rgba(7,16,15,.91),rgba(7,16,15,.78)),
-    url('/journey/landscape.webp') center bottom/cover fixed!important;
+    url('/journey/landscape.webp') center bottom/cover no-repeat!important;
 }
 .adventure-lab{min-height:calc(100vh - 145px);padding-bottom:22px!important}
 
@@ -136,6 +172,8 @@ body:has(.adventure-lab),
   .game-how-to{grid-template-columns:1fr}
   .game-how-to>strong{grid-column:auto}
   .adventure-card .adventure-viewport>.set-rest-overlay>div{margin:14px!important;padding:22px 18px!important}
+  .adventure-card #game-pause,
+  .adventure-lab #session-pause{min-width:104px}
 }
 @media(prefers-reduced-motion:reduce){
   .game-how-to *{transition:none!important}
