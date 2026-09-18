@@ -1,24 +1,25 @@
-import { aggregateBiomechanicsFrames } from "./biomechanics-feature-core.js";
 import { detectCompensationMigration } from "./compensation-migration-core.js";
 
-export const BIOMECHANICS_FEATURE_SCHEMA_VERSION = 3;
-export const COMPENSATION_ANALYSIS_VERSION = 3;
+export const BIOMECHANICS_FEATURE_SCHEMA_VERSION = 4;
+export const COMPENSATION_ANALYSIS_VERSION = 4;
+export const SESSION_BIOMECHANICS_DEFINITION = "main-biomechanics-v1";
 
 function assertClient(supabase) {
   if (!supabase?.from) throw new Error("A configured Supabase client is required.");
 }
 
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
-const average = (values) => {
-  const usable = values.map(finite).filter(Number.isFinite);
-  return usable.length ? usable.reduce((sum, value) => sum + value, 0) / usable.length : null;
-};
 
 function canonicalMeasurementUnit(unit) {
   const raw = String(unit || "").trim();
   if (!raw || raw === "°" || /^deg(?:ree)?s?$/i.test(raw)) return "deg";
   if (raw === "%" || /^percent$/i.test(raw)) return "%";
   return raw;
+}
+
+function clamp01(value) {
+  const numeric = finite(value);
+  return numeric === null ? null : Math.min(1, Math.max(0, numeric));
 }
 
 function metricPayload(metric) {
@@ -47,6 +48,7 @@ function rowObservations(row) {
     unit: metric.unit || null,
     quality: Number(metric.quality ?? row.tracking_quality ?? 1),
     source: metric.context?.source || "pose_session_aggregate",
+    supportCount: finite(metric.context?.supportCount ?? metric.context?.acceptedFrames),
     context: metric.context || {},
   })).filter((item) => item.metricKey && Number.isFinite(item.value));
 }
@@ -69,7 +71,6 @@ export async function loadBiomechanicsHistory({
   }
   const { data, error } = await query.limit(safeLimit);
   if (error) throw error;
-
   return [...(data || [])].reverse().flatMap(rowObservations);
 }
 
@@ -81,7 +82,7 @@ export async function analyzePatientCompensation({
   config,
   historyLimit = 250,
   additionalObservations = [],
-  featureDefinitionVersion = null,
+  featureDefinitionVersion = SESSION_BIOMECHANICS_DEFINITION,
 } = {}) {
   const history = await loadBiomechanicsHistory({
     supabase,
@@ -97,28 +98,49 @@ export async function analyzePatientCompensation({
   });
 }
 
-function sessionSummaryMetrics(session, trackingQuality, prescribedSide) {
+const FEATURE_DEFINITIONS = Object.freeze({
+  knee_flexion_asymmetry_deg: Object.freeze({ region: "knee", side: "bilateral", unit: "deg" }),
+  trunk_3d_tilt_deg: Object.freeze({ region: "trunk", side: "midline", unit: "deg" }),
+  hip_flexion_asymmetry_deg: Object.freeze({ region: "hip", side: "bilateral", unit: "deg" }),
+  ankle_angle_asymmetry_deg: Object.freeze({ region: "ankle", side: "bilateral", unit: "deg" }),
+  pelvis_depth_asymmetry_pct: Object.freeze({ region: "pelvis", side: "bilateral", unit: "%" }),
+});
+
+function sessionBiomechanicsMetrics(session, prescribedSide = "either") {
   const summary = session?.movement_summary || {};
-  const quality = Number.isFinite(Number(trackingQuality)) ? Number(trackingQuality) : 1;
-  const symmetry = finite(summary.average_symmetry_delta);
-  const movementRange = finite(summary.average_joint_movement_range_degrees ?? summary.average_signal_excursion);
-  const measurementUnit = canonicalMeasurementUnit(summary.measurement_unit || "deg");
+  const biomechanics = summary.biomechanics_v1 || null;
+  if (!biomechanics || biomechanics.schemaVersion !== 1 || biomechanics.clinicalStatus !== "descriptive_unvalidated") return [];
+
+  const quality = clamp01(biomechanics.averageVisibility) ?? 0;
+  const coverage = clamp01(biomechanics.averageCoverage);
+  const defaultSupport = Math.max(0, Math.round(Number(biomechanics.repsWithBiomechanics || 0)));
   const metrics = [];
-  if (symmetry !== null) {
+
+  Object.entries(FEATURE_DEFINITIONS).forEach(([metricKey, definition]) => {
+    const feature = biomechanics.features?.[metricKey];
+    const value = finite(feature?.mean);
+    if (value === null) return;
+    const supportCount = Math.max(0, Math.round(Number(feature?.reps ?? defaultSupport)));
     metrics.push({
-      metricKey: "primary_movement_symmetry_delta",
-      region: "primary_movement",
-      side: "bilateral",
-      value: symmetry,
-      unit: measurementUnit,
+      metricKey,
+      region: definition.region,
+      side: definition.side,
+      value: Math.abs(value),
+      unit: definition.unit,
       quality,
       context: {
-        source: "verified_session_summary",
-        aggregation: "session_mean",
-        exerciseKey: session.exercise_key,
+        source: "exercise_sessions.movement_summary.biomechanics_v1",
+        aggregation: "session_rep_mean",
+        supportCount,
+        acceptedFrames: supportCount,
+        averageCoverage: coverage,
+        biomechanicsSchemaVersion: biomechanics.schemaVersion,
       },
     });
-  }
+  });
+
+  const movementRange = finite(summary.average_joint_movement_range_degrees ?? summary.average_signal_excursion);
+  const measurementUnit = canonicalMeasurementUnit(summary.measurement_unit || "deg");
   if (movementRange !== null) {
     metrics.push({
       metricKey: "primary_movement_range",
@@ -130,45 +152,47 @@ function sessionSummaryMetrics(session, trackingQuality, prescribedSide) {
       context: {
         source: "verified_session_summary",
         aggregation: "session_mean",
-        exerciseKey: session.exercise_key,
+        supportCount: Math.max(defaultSupport, Number(session.repetitions || 0)),
       },
     });
   }
+
   return metrics;
+}
+
+export function extractSessionCompensationMetrics(session, { prescribedSide = "either" } = {}) {
+  return sessionBiomechanicsMetrics(session, prescribedSide).map(metricPayload);
 }
 
 export async function persistSessionBiomechanics({
   supabase,
   patientId,
   session,
-  frames = [],
-  acceptedSampleCount = null,
   prescribedSide = "either",
   primaryMetric = null,
   relatedMetrics = [],
-  minQuality = 0.55,
   historyLimit = 250,
-  featureDefinitionVersion = "whole-body-v1",
+  featureDefinitionVersion = SESSION_BIOMECHANICS_DEFINITION,
 } = {}) {
   assertClient(supabase);
   if (!patientId || !session?.id || !session?.assignment_id || !session?.exercise_key) {
     return { saved: false, reason: "verified_session_required", metrics: [], analysis: null };
   }
 
-  const frameMetrics = aggregateBiomechanicsFrames(frames, { minQuality });
-  if (!frameMetrics.length) return { saved: false, reason: "no_reliable_biomechanics", metrics: [], analysis: null };
+  const metrics = extractSessionCompensationMetrics(session, { prescribedSide });
+  if (!metrics.length) return { saved: false, reason: "no_reliable_biomechanics", metrics: [], analysis: null };
 
-  const trackingQuality = average(frameMetrics.map((metric) => metric.quality));
-  const metrics = [
-    ...frameMetrics,
-    ...sessionSummaryMetrics(session, trackingQuality, prescribedSide),
-  ];
+  const biomechanics = session.movement_summary?.biomechanics_v1 || {};
+  const trackingQuality = clamp01(biomechanics.averageVisibility);
+  const repCount = Math.max(0, Number(session.repetitions || 0));
+  const sampleCount = Math.max(0, Number(biomechanics.repsWithBiomechanics || repCount));
   const occurredAt = session.completed_at || session.created_at || session.started_at || new Date().toISOString();
   const currentObservations = metrics.map((metric) => ({
     sessionId: session.id,
     exerciseKey: session.exercise_key,
     occurredAt,
-    ...metricPayload(metric),
+    ...metric,
+    supportCount: finite(metric.context?.supportCount),
   }));
 
   const analysis = primaryMetric?.metricKey
@@ -189,19 +213,20 @@ export async function persistSessionBiomechanics({
       disclaimer: "Movement-pattern signal for clinician review only. It does not diagnose or predict an injury.",
     };
 
-  const totalAcceptedSamples = Number.isFinite(Number(acceptedSampleCount))
-    ? Math.max(frames.length, Math.round(Number(acceptedSampleCount)))
-    : frames.length;
   const features = {
     definitionVersion: featureDefinitionVersion,
-    aggregation: "median_active_phase_plus_verified_session_summary",
+    sourceSchemaVersion: biomechanics.schemaVersion || null,
+    sourceClinicalStatus: biomechanics.clinicalStatus || null,
+    aggregation: "exercise_session_biomechanics_v1",
     sessionCompletedAt: occurredAt,
-    retainedSampleCount: frames.length,
-    totalAcceptedSampleCount: totalAcceptedSamples,
-    metrics: metrics.map(metricPayload),
+    repsWithBiomechanics: Math.max(0, Number(biomechanics.repsWithBiomechanics || 0)),
+    averageCoverage: clamp01(biomechanics.averageCoverage),
+    averageVisibility: trackingQuality,
+    metrics,
   };
-  const symmetry = finite(session?.movement_summary?.average_symmetry_delta)
-    ?? frameMetrics.find((metric) => metric.metricKey === "knee_flexion_asymmetry_deg")?.value
+
+  const symmetry = metrics.find((metric) => metric.metricKey === "knee_flexion_asymmetry_deg")?.value
+    ?? finite(session?.movement_summary?.average_symmetry_delta)
     ?? null;
 
   const row = {
@@ -212,8 +237,8 @@ export async function persistSessionBiomechanics({
     prescribed_side: ["left", "right"].includes(prescribedSide) ? prescribedSide : "either",
     feature_schema_version: BIOMECHANICS_FEATURE_SCHEMA_VERSION,
     analysis_version: COMPENSATION_ANALYSIS_VERSION,
-    sample_count: totalAcceptedSamples,
-    rep_count: Math.max(0, Number(session.repetitions || 0)),
+    sample_count: sampleCount,
+    rep_count: repCount,
     tracking_quality: trackingQuality,
     primary_movement_range: finite(session?.movement_summary?.average_joint_movement_range_degrees ?? session?.movement_summary?.average_signal_excursion),
     primary_symmetry_delta: finite(symmetry),
@@ -229,13 +254,10 @@ export async function persistSessionBiomechanics({
   return { saved: true, reason: "saved", metrics, analysis };
 }
 
-// Candidate scoring deliberately uses 3D body-internal geometry.
-// This reduces false drift from rigid camera-coordinate rotation between home
-// sessions. Camera-plane metrics are still stored for research display,
-// but they do not drive candidate status.
-// Prototype sensitivity thresholds are expressed in each metric's native
-// scale. They are engineering gates for longitudinal review signals, not
-// clinically validated diagnostic cutoffs.
+// The first longitudinal release deliberately uses only summary features that
+// current Axion already derives from MediaPipe and stores without raw landmarks.
+// Thresholds are engineering gates for clinician review, not validated clinical
+// cutoffs, diagnoses, load estimates, or injury probabilities.
 const BILATERAL_RECOVERY_EXERCISES = Object.freeze([
   "bodyweight_squat",
   "half_squat",
@@ -243,12 +265,10 @@ const BILATERAL_RECOVERY_EXERCISES = Object.freeze([
 ]);
 
 const sharedLowerBodyRelatedMetrics = Object.freeze([
-  { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "shoulder_pelvis_axis_mismatch_3d_deg", region: "trunk", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "hip_flexion_asymmetry_3d_deg", region: "hip", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "left", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "right", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "pelvis_over_stance_offset_3d_proxy", region: "lower_limb", side: "bilateral", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "trunk_3d_tilt_deg", region: "trunk", side: "midline", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "hip_flexion_asymmetry_deg", region: "hip", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "ankle_angle_asymmetry_deg", region: "ankle", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "pelvis_depth_asymmetry_pct", region: "pelvis", side: "bilateral", unit: "%", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
 ]);
 
 function primarySymmetryMetric(exerciseKey) {
@@ -257,7 +277,7 @@ function primarySymmetryMetric(exerciseKey) {
     region: "knee",
     side: "bilateral",
     unit: "deg",
-    minAcceptedFrames: 8,
+    minAcceptedFrames: 6,
     minBaselineMagnitude: 3,
     minAbsoluteImprovement: 2,
     improvementDirection: "decrease",
