@@ -48,39 +48,75 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-column", default="assessment_score")
     parser.add_argument("--group-column", default="participant_id")
     parser.add_argument("--exercise-column", default="exercise_id")
+    parser.add_argument("--view-column", default="camera_view")
     parser.add_argument("--model-version", default="mobiphysio-ridge-v1")
     parser.add_argument("--test-size", type=float, default=0.20)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument("--min-feature-coverage", type=float, default=0.70)
     return parser.parse_args()
 
 
 def metric_block(y_true: pd.Series, prediction: np.ndarray) -> dict:
-    return {
+    result = {
         "mae": round(float(mean_absolute_error(y_true, prediction)), 4),
         "rmse": round(float(mean_squared_error(y_true, prediction) ** 0.5), 4),
-        "r2": round(float(r2_score(y_true, prediction)), 4),
     }
+    result["r2"] = round(float(r2_score(y_true, prediction)), 4) if len(y_true) >= 2 else None
+    return result
+
+
+def sliced_metrics(values: pd.Series, y_true: pd.Series, prediction: np.ndarray) -> dict:
+    output = {}
+    value_array = values.astype(str).to_numpy()
+    for value in sorted(set(value_array)):
+        mask = value_array == value
+        count = int(mask.sum())
+        if count < 2:
+            continue
+        positions = np.flatnonzero(mask)
+        output[value] = {"n": count, **metric_block(y_true.iloc[positions], prediction[mask])}
+    return output
 
 
 def main() -> None:
     args = parse_args()
-    frame = pd.read_csv(args.features_csv)
+    if not 0 < args.test_size < 0.5:
+        raise SystemExit("--test-size must be greater than 0 and less than 0.5")
+    if not 0 < args.min_feature_coverage <= 1:
+        raise SystemExit("--min-feature-coverage must be within (0, 1]")
 
+    frame = pd.read_csv(args.features_csv)
     required = set(FEATURES + [args.target_column, args.group_column])
     missing = sorted(required.difference(frame.columns))
     if missing:
         raise SystemExit(f"Missing required columns: {', '.join(missing)}")
 
+    if "video_id" in frame.columns:
+        duplicate_ids = frame[frame["video_id"].astype(str).duplicated()]["video_id"].astype(str).tolist()
+        if duplicate_ids:
+            raise SystemExit(f"Duplicate video_id rows detected; first duplicate: {duplicate_ids[0]}")
+
     frame = frame.copy()
+    rows_before_quality_filter = len(frame)
     frame[args.target_column] = pd.to_numeric(frame[args.target_column], errors="coerce")
     frame = frame.dropna(subset=[args.target_column, args.group_column])
+    if ((frame[args.target_column] < 0) | (frame[args.target_column] > 100)).any():
+        raise SystemExit("Target scores must be within 0-100.")
+
+    numeric_features = frame[FEATURES].apply(pd.to_numeric, errors="coerce")
+    frame["_computed_feature_coverage"] = numeric_features.notna().mean(axis=1)
+    frame = frame.loc[frame["_computed_feature_coverage"] >= args.min_feature_coverage].copy()
     if frame.empty:
-        raise SystemExit("No rows remain after removing records without a target/group.")
+        raise SystemExit("No rows remain after target/group and feature-coverage filtering.")
+
+    missing_entirely = [feature for feature in FEATURES if pd.to_numeric(frame[feature], errors="coerce").notna().sum() == 0]
+    if missing_entirely:
+        raise SystemExit(f"Required features contain no usable observations: {', '.join(missing_entirely)}")
 
     groups = frame[args.group_column].astype(str)
     unique_groups = groups.nunique()
     if unique_groups < 5:
-        raise SystemExit("At least five distinct participants/groups are required for a useful grouped split.")
+        raise SystemExit("At least five distinct participants/groups are required after quality filtering.")
 
     X = frame[FEATURES].apply(pd.to_numeric, errors="coerce")
     y = frame[args.target_column].astype(float)
@@ -95,6 +131,13 @@ def main() -> None:
     y_train, y_test = y.iloc[train_index], y.iloc[test_index]
     train_groups = groups.iloc[train_index]
 
+    train_empty_features = [feature for feature in FEATURES if X_train[feature].notna().sum() == 0]
+    if train_empty_features:
+        raise SystemExit(
+            "Grouped split left features completely absent from training data; change the split or collect more coverage: "
+            + ", ".join(train_empty_features)
+        )
+
     pipeline = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("scaler", StandardScaler()),
@@ -102,6 +145,8 @@ def main() -> None:
     ])
 
     cv_splits = min(5, train_groups.nunique())
+    if cv_splits < 2:
+        raise SystemExit("Grouped cross-validation requires at least two training participants/groups.")
     search = GridSearchCV(
         pipeline,
         param_grid={"ridge__alpha": [0.01, 0.1, 1.0, 10.0, 100.0]},
@@ -118,17 +163,9 @@ def main() -> None:
     scaler: StandardScaler = model.named_steps["scaler"]
     ridge: Ridge = model.named_steps["ridge"]
 
-    by_exercise = {}
-    if args.exercise_column in frame.columns:
-        exercise_values = frame.iloc[test_index][args.exercise_column].astype(str)
-        for exercise in sorted(exercise_values.unique()):
-            mask = exercise_values.to_numpy() == exercise
-            if int(mask.sum()) < 2:
-                continue
-            by_exercise[exercise] = {
-                "n": int(mask.sum()),
-                **metric_block(y_test.iloc[np.flatnonzero(mask)], prediction[mask]),
-            }
+    test_frame = frame.iloc[test_index]
+    by_exercise = sliced_metrics(test_frame[args.exercise_column], y_test, prediction) if args.exercise_column in frame.columns else {}
+    by_view = sliced_metrics(test_frame[args.view_column], y_test, prediction) if args.view_column in frame.columns else {}
 
     artifact = {
         "schemaVersion": 1,
@@ -147,13 +184,19 @@ def main() -> None:
             "intendedUse": "research_movement_quality_assessment",
             "clinicalStatus": "not_clinically_validated",
             "groupSplit": args.group_column,
+            "minimumFeatureCoverage": args.min_feature_coverage,
+            "rowsBeforeQualityFilter": int(rows_before_quality_filter),
             "rows": int(len(frame)),
+            "rowsExcluded": int(rows_before_quality_filter - len(frame)),
             "participantsOrGroups": int(unique_groups),
             "trainRows": int(len(train_index)),
             "testRows": int(len(test_index)),
+            "trainParticipantsOrGroups": int(train_groups.nunique()),
+            "testParticipantsOrGroups": int(groups.iloc[test_index].nunique()),
             "bestAlpha": float(search.best_params_["ridge__alpha"]),
             "metrics": metric_block(y_test, prediction),
             "metricsByExercise": by_exercise,
+            "metricsByView": by_view,
         },
     }
 
@@ -164,8 +207,9 @@ def main() -> None:
         "output": str(args.output),
         "best_alpha": artifact["training"]["bestAlpha"],
         "test": artifact["training"]["metrics"],
-        "train_groups": int(train_groups.nunique()),
-        "test_groups": int(groups.iloc[test_index].nunique()),
+        "train_groups": artifact["training"]["trainParticipantsOrGroups"],
+        "test_groups": artifact["training"]["testParticipantsOrGroups"],
+        "rows_excluded": artifact["training"]["rowsExcluded"],
     }, indent=2))
 
 
