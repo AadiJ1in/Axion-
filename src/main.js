@@ -2190,6 +2190,18 @@ async function initializeLab() {
     },
   });
   if (!video.isConnected) { destroyMovementTracker(); return; }
+
+  // Warm the local pose runtime as soon as the real Movement Lab is visible.
+  // This does not request camera permission; it only prepares WASM/model state
+  // so the user's explicit Start action can reach camera capture faster.
+  if (!currentSession?.demo) {
+    const warmingTracker = tracker;
+    void warmingTracker.prepare?.().catch(() => {
+      if (tracker !== warmingTracker || !video.isConnected) return;
+      console.warn("Movement model prewarm did not complete; Axion will retry when the camera starts.");
+    });
+  }
+
   document.querySelector("#start-camera")?.addEventListener("click", async () => {
     if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return; stopDemo(); document.querySelector(".camera-pane")?.classList.add("camera-on"); setText("#capture-status", "CAMERA ACTIVE"); await tracker.start(); });
   document.querySelector("#run-demo")?.addEventListener("click", runPitchDemo);
@@ -2339,7 +2351,7 @@ function handleTrackingState({ code, label, quality, confidence }) {
   const bodyState = document.querySelector("#body-state");
   const qualityState = document.querySelector("#quality-state");
   if (bodyState) {
-    bodyState.className = code === "body_detected" ? "detected" : code.includes("loading") || code.includes("starting") ? "loading" : "warning";
+    bodyState.className = code === "body_detected" ? "detected" : code.startsWith("model_") || code.includes("loading") || code.includes("starting") ? "loading" : "warning";
     bodyState.innerHTML = code === "body_detected" ? `<i></i> Body detected ✓` : `<i></i> ${escapeHtml(label)}`;
   }
   if (qualityState) {
