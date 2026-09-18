@@ -258,6 +258,8 @@ function primarySymmetryMetric(exerciseKey) {
     side: "bilateral",
     unit: "deg",
     minAcceptedFrames: 8,
+    minBaselineMagnitude: 3,
+    minAbsoluteImprovement: 2,
     improvementDirection: "decrease",
     exerciseKey,
     recoveryGuard: {
