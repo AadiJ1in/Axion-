@@ -1,8 +1,34 @@
 import { defineConfig } from "vite";
-import { cpSync, existsSync, readFileSync, statSync } from "node:fs";
-import { isAbsolute, relative, resolve } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { DEFAULT_MEDIAPIPE_POSE_MODEL } from "./src/mediapipe-config.js";
 
 const mediapipeRuntimeSource = resolve("node_modules/@mediapipe/tasks-vision/wasm");
+const bundledPoseModelPath = `/${DEFAULT_MEDIAPIPE_POSE_MODEL.appPath}`;
+let verifiedPoseModelPromise = null;
+
+async function verifiedPoseModelBytes() {
+  if (!verifiedPoseModelPromise) {
+    verifiedPoseModelPromise = (async () => {
+      const response = await fetch(DEFAULT_MEDIAPIPE_POSE_MODEL.sourceUrl, {
+        redirect: "follow",
+        referrerPolicy: "no-referrer",
+      });
+      if (!response.ok) throw new Error(`MediaPipe pose model download failed: HTTP ${response.status}`);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      if (hash !== DEFAULT_MEDIAPIPE_POSE_MODEL.sha256) {
+        throw new Error("MediaPipe pose model build-time integrity verification failed.");
+      }
+      return bytes;
+    })().catch((error) => {
+      verifiedPoseModelPromise = null;
+      throw error;
+    });
+  }
+  return verifiedPoseModelPromise;
+}
 
 function resolveMediapipeDevAsset(requestUrl = "") {
   const pathname = new URL(requestUrl, "http://localhost").pathname;
@@ -29,6 +55,32 @@ export default defineConfig({
           code: `window.__AXION_PATIENT_RENDERER__ = "progressive-v2";\n${code.replace(source, 'from "./journey-map-v2.js";')}`,
           map: null,
         };
+      },
+    },
+    {
+      name: "bundle-mediapipe-model",
+      configureServer(server) {
+        // Development uses the same same-origin URL as production. The source
+        // model is fetched and integrity-checked once, then cached in memory.
+        server.middlewares.use((req, res, next) => {
+          const pathname = new URL(req.url || "", "http://localhost").pathname;
+          if (pathname !== bundledPoseModelPath) return next();
+          void verifiedPoseModelBytes()
+            .then((bytes) => {
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/octet-stream");
+              res.setHeader("Cache-Control", "no-store");
+              res.end(bytes);
+            })
+            .catch(next);
+        });
+      },
+      async closeBundle() {
+        // Production is self-contained: the browser never needs Google's model
+        // host during a live movement session.
+        const output = resolve("dist", DEFAULT_MEDIAPIPE_POSE_MODEL.appPath);
+        mkdirSync(dirname(output), { recursive: true });
+        writeFileSync(output, await verifiedPoseModelBytes());
       },
     },
     {
