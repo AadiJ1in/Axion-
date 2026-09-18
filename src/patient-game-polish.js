@@ -168,14 +168,16 @@ function startLateClinicSyncWindow() {
     }
   }, LATE_CLINIC_SYNC_INTERVAL_MS);
 }
-window.addEventListener('pagehide', () => {
+function stopPresentationLifecycle() {
   if (polishTimer) window.clearInterval(polishTimer);
   polishTimer = 0;
   if (lateClinicTimer) window.clearInterval(lateClinicTimer);
   lateClinicTimer = 0;
   if (presentationFrame) window.cancelAnimationFrame(presentationFrame);
   presentationFrame = 0;
-});
+}
+
+window.addEventListener('pagehide', stopPresentationLifecycle);
 window.addEventListener('pageshow', () => {
   schedulePresentationHierarchy();
   startPolishTimer();
