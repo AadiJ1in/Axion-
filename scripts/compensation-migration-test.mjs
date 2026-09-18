@@ -72,7 +72,48 @@ const related = [
   });
   assert.equal(result.status, "insufficient_data");
   assert.equal(result.reason, "observation_window_too_short");
-  assert.ok(result.primary.spanDays < 1);
+  assert.ok(result.primary.summary.spanDays < 1);
+}
+
+{
+  const observations = [];
+  const knee = [1.8, 1.5, 1.2, 0.9, 0.7, 0.5, 0.3];
+  for (let i = 0; i < knee.length; i += 1) {
+    observations.push(observation(i + 1, "squat", "right_knee_asymmetry", "knee", "right", knee[i]));
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: {
+      ...primary,
+      minBaselineMagnitude: 3,
+      minAbsoluteImprovement: 2,
+    },
+    relatedMetrics: [],
+  });
+  assert.equal(result.status, "stable");
+  assert.equal(result.reason, "primary_baseline_below_analysis_floor");
+  assert.equal(result.primary.metric.analysisFloors.minBaselineMagnitude, 3);
+}
+
+{
+  const observations = [];
+  const knee = [5.0, 4.8, 4.6, 4.4, 4.2, 4.0, 3.9];
+  for (let i = 0; i < knee.length; i += 1) {
+    observations.push(observation(i + 1, "squat", "right_knee_asymmetry", "knee", "right", knee[i]));
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: {
+      ...primary,
+      minBaselineMagnitude: 3,
+      minAbsoluteImprovement: 2,
+    },
+    relatedMetrics: [],
+  });
+  assert.equal(result.status, "stable");
+  assert.equal(result.reason, "primary_absolute_improvement_below_floor");
+  assert.ok(result.primary.absoluteImprovement < 2);
+  assert.equal(result.primary.metric.analysisFloors.minAbsoluteImprovement, 2);
 }
 
 {
