@@ -105,12 +105,14 @@ export function createLocalPoseRuntime({
     config,
     async initialize() {
       if (landmarker) return { delegate };
-      if (!initializationPromise) {
-        initializationPromise = buildLandmarker().finally(() => {
-          initializationPromise = null;
-        });
+      if (!initializationPromise) initializationPromise = buildLandmarker();
+      const pending = initializationPromise;
+      try {
+        await pending;
+      } finally {
+        // Do not let an older cancelled initialization clear a newer one.
+        if (initializationPromise === pending) initializationPromise = null;
       }
-      await initializationPromise;
       return { delegate };
     },
     infer(source, timestampMs) {
