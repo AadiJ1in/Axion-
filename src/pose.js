@@ -1,6 +1,7 @@
 import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
 import { createRepBiomechanicsAccumulator, extractBiomechanicsFrame } from "./biomechanics.js";
 import { createLocalPoseRuntime } from "./pose-runtime.js";
+import { createVideoFrameScheduler, resolveCameraVideoConstraints } from "./video-frame-scheduler.js";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const MIN_TRACKING_SCORE = 0.62;
@@ -29,14 +30,6 @@ export function acceptsTrackingQuality(score) {
   return Number.isFinite(score) && score >= MIN_TRACKING_SCORE;
 }
 
-function supportsWebGL() {
-  try {
-    const probe = document.createElement("canvas");
-    return Boolean(probe.getContext("webgl2") || probe.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
 
 // Pure, deterministic hysteresis used by the live tracker and the test suite.
 // A repetition requires a sustained movement away from baseline and a sustained,
@@ -123,13 +116,14 @@ export async function createMovementTracker(options) {
     onTiming = () => {},
     onError = () => {},
     mediapipe = {},
+    camera = {},
   } = options || {};
   const profile = getMovementProfile(exerciseKey, trackingMode);
   const poseRuntime = createLocalPoseRuntime({ mediapipe, onState: onTrackingState });
   let stream;
   let running = false;
   let cameraGeneration = 0;
-  let rafId = null;
+  const frameScheduler = createVideoFrameScheduler(video);
   let lastVideoTime = -1;
   let stage = "up";
   let reps = 0;
@@ -365,6 +359,11 @@ export async function createMovementTracker(options) {
     onUpdate({ reps, stage, angle: Math.round(metrics.value), jointAngle: Math.round(metrics.value), angleLabel: profile.label, measurementUnit: profile.unit, movementRange: Math.round(movementDelta), symmetryDelta: metrics.symmetryDelta === null ? null : Number(metrics.symmetryDelta.toFixed(1)), measurementSide, message });
   }
 
+  function scheduleNextFrame() {
+    if (!running) return;
+    frameScheduler.schedule(() => { void frame(); });
+  }
+
   async function frame() {
     if (!running) return;
     if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
@@ -387,7 +386,7 @@ export async function createMovementTracker(options) {
             await poseRuntime.switchToCpu();
             if (!running || recoveryGeneration !== cameraGeneration) return;
             lastVideoTime = -1;
-            rafId = requestAnimationFrame(frame);
+            scheduleNextFrame();
             return;
           } catch {
             // If compatibility mode also fails, use the normal recoverable
@@ -404,7 +403,7 @@ export async function createMovementTracker(options) {
       if ((result.landmarks?.length ?? 0) > 1) {
         onTrackingState({ code: "multiple_people", label: "Multiple people detected", quality: "Low" });
         pauseMeasurement("Only one person should be visible during the session. Rep counting is paused.");
-        rafId = requestAnimationFrame(frame);
+        scheduleNextFrame();
         return;
       }
       const landmarks = result.landmarks?.[0];
@@ -420,7 +419,7 @@ export async function createMovementTracker(options) {
       if (landmarks) onPose(landmarks);
       if (!landmarks || !acceptsTrackingQuality(quality?.score)) {
         pauseMeasurement(landmarks ? `Reposition for a clearer ${profile.label.toLowerCase()} view. Rep counting is paused.` : `Return to frame. ${profile.cameraHint}`);
-        rafId = requestAnimationFrame(frame); return;
+        scheduleNextFrame(); return;
       }
       const worldLandmarks = result.worldLandmarks?.[0] || null;
       const measurementLandmarks = worldLandmarks || landmarks;
@@ -434,7 +433,7 @@ export async function createMovementTracker(options) {
       onTiming({ id: ++timingSequence, cameraFrameAt, poseAt, movementAt });
       updateState(metrics, now, latestBiomechanicsFrame);
     }
-    rafId = requestAnimationFrame(frame);
+    scheduleNextFrame();
   }
 
   async function start() {
@@ -446,13 +445,16 @@ export async function createMovementTracker(options) {
       if (!poseRuntime.getState().initialized) await initialize();
       if (generation !== cameraGeneration) return;
       onTrackingState({ code: "camera_starting", label: "Starting camera", quality: null });
-      const openedStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
+      const openedStream = await navigator.mediaDevices.getUserMedia({
+        video: resolveCameraVideoConstraints(camera),
+        audio: false,
+      });
       if (generation !== cameraGeneration) { openedStream.getTracks().forEach(track => track.stop()); return; }
       stream = openedStream; video.srcObject = stream;
       stream.getVideoTracks().forEach((track) => { track.addEventListener("ended", () => { if (generation !== cameraGeneration) return; running = false; onTrackingState({ code: "camera_disconnected", label: "Camera disconnected", quality: null }); onError("Camera disconnected. Reconnect it and restart the camera scan."); }, { once: true }); });
       await video.play();
       if (generation !== cameraGeneration) return;
-      lastVideoTime = -1; running = true; sessionStart = performance.now(); calibrationStart = null; calibrated = false; baselineAngle = null; baselineLeft = null; baselineRight = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; frame();
+      lastVideoTime = -1; running = true; sessionStart = performance.now(); calibrationStart = null; calibrated = false; baselineAngle = null; baselineLeft = null; baselineRight = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; scheduleNextFrame();
     } catch (error) {
       if (generation !== cameraGeneration) return;
       stop();
@@ -469,8 +471,7 @@ export async function createMovementTracker(options) {
   function stop() {
     cameraGeneration++;
     running = false;
-    if (rafId !== null) cancelAnimationFrame(rafId);
-    rafId = null;
+    frameScheduler.cancel();
     stream?.getTracks().forEach((track) => track.stop());
     stream = null;
     video.srcObject = null;
@@ -482,8 +483,8 @@ export async function createMovementTracker(options) {
     poseRuntime.close();
     repCycle.cancelPending();
   }
-  function pause() { if (!running) return; running = false; if (rafId !== null) cancelAnimationFrame(rafId); rafId = null; repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
-  function resume() { if (running || !stream?.active) return; running = true; lastVideoTime = -1; frame(); }
+  function pause() { if (!running) return; running = false; frameScheduler.cancel(); repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
+  function resume() { if (running || !stream?.active) return; running = true; lastVideoTime = -1; scheduleNextFrame(); }
 
   return { start, stop, destroy, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint, biomechanicsFrame: latestBiomechanicsFrame ? { ...latestBiomechanicsFrame, features: { ...latestBiomechanicsFrame.features }, quality: { ...latestBiomechanicsFrame.quality } } : null }) };
 }
