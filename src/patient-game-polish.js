@@ -25,6 +25,28 @@ import {
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
 // that were removed by the core-safe build.
 
+let biomechanicsBridgePromise = null;
+let biomechanicsReviewPromise = null;
+
+function syncBiomechanicsModules() {
+  // Keep longitudinal biomechanics out of the login-critical bundle and load it
+  // only when the corresponding authenticated surface is actually present.
+  if (document.querySelector(".lab-page") && !biomechanicsBridgePromise) {
+    biomechanicsBridgePromise = import("./biomechanics-session-bridge.js")
+      .catch((error) => {
+        biomechanicsBridgePromise = null;
+        console.warn("AXION_BIOMECHANICS_EVENT", { event: "bridge_load_failed", errorCode: String(error?.code || "BRIDGE_LOAD_FAILED") });
+      });
+  }
+  if (document.querySelector(".checkin-row[data-clinic-session-id], .clinic-session-modal") && !biomechanicsReviewPromise) {
+    biomechanicsReviewPromise = import("./biomechanics-review-panel.js")
+      .catch((error) => {
+        biomechanicsReviewPromise = null;
+        console.warn("AXION_BIOMECHANICS_EVENT", { event: "review_load_failed", errorCode: String(error?.code || "REVIEW_LOAD_FAILED") });
+      });
+  }
+}
+
 function gameController() {
   return typeof window !== 'undefined' ? window.__axionMovementGameController : null;
 }
@@ -48,6 +70,7 @@ function syncLateClinicPresentation() {
 }
 
 function syncPresentationHierarchy() {
+  syncBiomechanicsModules();
   syncUiHierarchy();
   syncUiHierarchyP1();
   syncUiStability();

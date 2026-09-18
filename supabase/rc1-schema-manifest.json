@@ -94,6 +94,22 @@
       "destructive": false
     },
     {
+      "id": "movement_biomechanics_sessions",
+      "repositoryFile": "20260917165752_add_compensation_migration_snapshots.sql",
+      "productionMigration": "add_compensation_migration_snapshots",
+      "productionVersion": "20260917165752",
+      "changeType": "additive-schema-and-rls",
+      "destructive": false
+    },
+    {
+      "id": "movement_biomechanics_assignment_index",
+      "repositoryFile": "20260917171123_index_compensation_assignment.sql",
+      "productionMigration": "index_compensation_assignment",
+      "productionVersion": "20260917171123",
+      "changeType": "additive-index",
+      "destructive": false
+    },
+    {
       "id": "rc1_verified_session_identity",
       "repositoryFile": "20260911131500_rc1_verified_session_identity.sql",
       "productionMigration": "rc1_verified_session_identity",
