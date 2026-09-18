@@ -46,7 +46,7 @@ jobs:
       - name: Install ML dependencies
         run: python -m pip install -r ml/requirements.txt -r ml/requirements-extraction.txt
       - name: Compile offline Python pipeline
-        run: python -m py_compile ml/biomechanics_v1.py ml/mediapipe_model.py ml/download_pose_model.py ml/extract_mobiphysio_features.py ml/train_movement_quality.py
+        run: python -m py_compile ml/biomechanics_v1.py ml/mediapipe_model.py ml/download_pose_model.py ml/extract_mobiphysio_features.py ml/train_movement_quality.py ml/validate_research_artifact.py
       - name: Verify browser/offline feature parity
         run: python ml/test_biomechanics_parity.py
       - name: Verify browser/offline pose model identity
