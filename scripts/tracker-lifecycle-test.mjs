@@ -57,8 +57,11 @@ const video={currentTime:0,readyState:2,videoWidth:640,videoHeight:480,srcObject
 const canvas={width:640,height:480,getContext:()=>({clearRect(){}})};
 const tracker=await createMovementTracker({video,canvas,onTrackingState:s=>states.push(s.code),onError:e=>errors.push(e),onCalibration:c=>calibrations.push(c)});
 async function step(ms=100){now+=ms;video.currentTime+=ms/1000;const callbacks=[...frames.values()];frames.clear();for(const fn of callbacks)await fn();}
-await tracker.start();
+await Promise.all([tracker.prepare(), tracker.prepare()]);
+assert.equal(delegates.length,1,'concurrent pose prewarm calls initialize one model instance');
 assert.equal(wasmRoots[0],'/mediapipe','tracker consumes the resolved local runtime root');
+await tracker.start();
+assert.equal(delegates.length,1,'camera start reuses the prewarmed pose model');
 for(let i=0;i<35;i++)await step();
 assert.equal(tracker.getMetrics().calibrated,true,'stable stance completes real tracker calibration');
 assert.equal(frames.size,1,'one active tracking loop');
