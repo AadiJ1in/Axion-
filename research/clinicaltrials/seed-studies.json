@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "curatedAt": "2026-09-18",
+  "source": "ClinicalTrials.gov",
+  "purpose": "Research discovery and validation planning only. Registry evidence must not be interpreted as validation of Axion outputs.",
+  "studies": [
+    {
+      "nctId": "NCT07016295",
+      "title": "Monitoring Arm Recovery After Stroke (MARS)",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT07016295",
+      "domain": "stroke_upper_limb",
+      "evidenceRole": ["reference_validation", "compensation_vs_recovery", "longitudinal_kinematics"],
+      "movementSignals": ["markerless_pose_kinematics", "movement_compensation", "true_recovery_vs_compensation"],
+      "referenceMethods": ["marker_based_kinematic_analysis"],
+      "axionUse": "Methodology reference: compare markerless pose-derived kinematics with reference biomechanics before assigning clinical meaning to movement changes.",
+      "dataSharing": {"ipdPlan": "NO", "note": "Registry states participant videos cannot be adequately anonymized."},
+      "directAxionValidation": false
+    },
+    {
+      "nctId": "NCT05454007",
+      "title": "Tracking Post-stroke Walking Improvements From the Clinic Into the Home",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT05454007",
+      "domain": "stroke_gait",
+      "evidenceRole": ["clinic_home_transfer", "longitudinal_generalization", "symmetry_tracking"],
+      "movementSignals": ["step_length_symmetry", "step_time_symmetry", "home_vs_clinic_transfer", "retention_over_time"],
+      "referenceMethods": [],
+      "axionUse": "Strong design precedent for measuring whether a movement improvement transfers from a controlled setting into the home and persists over time.",
+      "dataSharing": {"ipdPlan": "YES", "note": "Registry states de-identified behavioral data may be deposited or available by reasonable request and software will be posted to GitHub after study conclusion."},
+      "directAxionValidation": false
+    },
+    {
+      "nctId": "NCT05799235",
+      "title": "Telerehabilitation for Anterior Cruciate Ligament Reconstruction - TAR Program in Adolescents",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT05799235",
+      "domain": "acl_rehabilitation",
+      "evidenceRole": ["home_rehabilitation", "pose_feedback", "clinical_outcome_linkage"],
+      "movementSignals": ["knee_range_of_motion", "one_leg_sit_to_stand_rate", "exercise_adherence", "pose_based_execution_feedback"],
+      "referenceMethods": ["goniometer_for_knee_rom", "strength_machine"],
+      "axionUse": "Links camera-assisted home exercise to clinically interpretable ACL outcomes and provides a candidate validation reference for knee ROM.",
+      "dataSharing": {"ipdPlan": "UNKNOWN"},
+      "directAxionValidation": false
+    },
+    {
+      "nctId": "NCT07145996",
+      "title": "AI-Enhanced Telerehabilitation Program Using Automated Video Analysis and Personalized Feedback on Pain, Disability, Mobility, Endurance, for Chronic Non-Specific Low Back Pain in College Students",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT07145996",
+      "domain": "low_back_pain",
+      "evidenceRole": ["mediapipe_rehabilitation", "form_monitoring", "adherence_workflow"],
+      "movementSignals": ["joint_movement_tracking", "repetition_count", "hold_time", "technique_error", "functional_mobility", "trunk_endurance", "exercise_adherence"],
+      "referenceMethods": ["timed_up_and_go", "prone_plank_test", "patient_reported_outcomes"],
+      "axionUse": "Direct precedent for using MediaPipe-based video analysis for repetitions, hold time and technique feedback while retaining therapist oversight.",
+      "dataSharing": {"ipdPlan": "UNKNOWN"},
+      "directAxionValidation": false
+    },
+    {
+      "nctId": "NCT06183970",
+      "title": "Recovery of Motor Skills With the Use of Artificial Intelligence and Computer Vision",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT06183970",
+      "domain": "stroke_rehabilitation",
+      "evidenceRole": ["compensation_detection", "movement_deviation", "longitudinal_session_review"],
+      "movementSignals": ["movement_deviation", "amplitude_reduction", "compensatory_pattern", "session_progress"],
+      "referenceMethods": [],
+      "axionUse": "Conceptual precedent for flagging observable movement deviations, amplitude reductions and compensatory patterns without treating the flag itself as a diagnosis.",
+      "dataSharing": {"ipdPlan": "UNKNOWN"},
+      "directAxionValidation": false
+    },
+    {
+      "nctId": "NCT06973642",
+      "title": "Evaluation of Home-based Telerehabilitation Platform to Augment Orthopedic Rehabilitation",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT06973642",
+      "domain": "orthopedic_acl_rehabilitation",
+      "evidenceRole": ["markerless_telerehabilitation", "workflow_feasibility", "safety_monitoring"],
+      "movementSignals": ["home_program_compliance", "visit_compliance", "pain", "functional_status", "adverse_events"],
+      "referenceMethods": [],
+      "axionUse": "Useful for Axion's clinic-pilot design: feasibility, access, compliance and adverse-event monitoring alongside AI/markerless-motion-capture telerehabilitation.",
+      "dataSharing": {"ipdPlan": "UNDECIDED"},
+      "directAxionValidation": false
+    },
+    {
+      "nctId": "NCT03519087",
+      "title": "Nonarthritic Hip Disease Evaluation And Treatment (NEAT)",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT03519087",
+      "domain": "lower_extremity_biomechanics",
+      "evidenceRole": ["reference_biomechanics", "cross_task_assessment"],
+      "movementSignals": ["trunk_kinematics", "pelvis_kinematics", "hip_kinematics", "knee_kinematics", "ankle_kinematics", "joint_moments"],
+      "referenceMethods": ["3d_marker_motion_capture", "force_platforms", "dynamometry"],
+      "tasks": ["walking", "sit_to_stand", "forward_tap_down"],
+      "axionUse": "Lower-extremity reference protocol for cross-task validation of trunk/pelvis/hip/knee/ankle measurements against laboratory biomechanics.",
+      "dataSharing": {"ipdPlan": "UNKNOWN"},
+      "directAxionValidation": false
+    }
+  ]
+}
