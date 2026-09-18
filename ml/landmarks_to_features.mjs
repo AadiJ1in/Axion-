@@ -29,6 +29,7 @@ const QUALITY_COLUMNS = [
   "feature_coverage",
 ];
 const COLUMNS = [...META_COLUMNS, ...QUALITY_COLUMNS, ...MODEL_FEATURES_V1];
+const EXPECTED_HEADER = COLUMNS.join(",");
 
 const csvCell = (value) => {
   if (value === null || value === undefined || value === "") return "";
@@ -38,7 +39,14 @@ const csvCell = (value) => {
 
 function ensureHeader() {
   const exists = fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
-  if (!exists) fs.appendFileSync(outputPath, `${COLUMNS.map(csvCell).join(",")}\n`, "utf8");
+  if (!exists) {
+    fs.appendFileSync(outputPath, `${EXPECTED_HEADER}\n`, "utf8");
+    return;
+  }
+  const firstLine = fs.readFileSync(outputPath, "utf8").split(/\r?\n/, 1)[0].replace(/^\uFEFF/, "");
+  if (firstLine !== EXPECTED_HEADER) {
+    throw new Error("existing output CSV schema does not match MODEL_FEATURES_V1; use a new output path or explicitly reprocess with --force");
+  }
 }
 
 function appendRow(row) {
