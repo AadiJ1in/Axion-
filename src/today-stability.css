@@ -1,0 +1,446 @@
+/* Patient Today must be a single deterministic presentation.
+   The full campaign remains available on Journey; clinical/session authority is unchanged. */
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) [data-clinic-today],
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) [data-clinic-phases],
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .ui-journey-intro,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .beacon-world-banner,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-heading,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .beacon-current-mission,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-care-note,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-map-controls,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region-nav,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .campaign-scenery,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .campaign-final-goal,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region > header,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .today-plan {
+  display: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-atlas {
+  display: block !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0 0 1.1rem !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Today uses a stable two-column dashboard: session on the left, PT guidance on the right. */
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-body {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, .75fr) !important;
+  grid-template-areas:
+    "mission notes"
+    "pathway pathway" !important;
+  align-items: stretch !important;
+  gap: 1rem !important;
+  min-height: 0 !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-mission {
+  grid-area: mission !important;
+  position: static !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .beacon-prescription-launch {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card {
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 100% !important;
+  margin: 0 !important;
+  padding: clamp(1.2rem, 2.2vw, 1.7rem) !important;
+  border: 1px solid rgba(31, 73, 59, .16) !important;
+  border-radius: 20px !important;
+  background: linear-gradient(135deg, rgba(255, 253, 246, .99), rgba(247, 243, 227, .98)) !important;
+  color: #183d32 !important;
+  box-shadow: 0 14px 40px rgba(38, 55, 43, .08) !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card > small:first-child {
+  display: inline-block !important;
+  margin-bottom: .35rem !important;
+  color: #447768 !important;
+  font: 700 .72rem/1.2 "DM Mono", monospace !important;
+  letter-spacing: .12em !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card > small:first-child::after {
+  content: " · TODAY";
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card h2 {
+  margin: .15rem 0 .2rem !important;
+  color: #183d32 !important;
+  font-size: clamp(1.7rem, 3vw, 2.2rem) !important;
+  letter-spacing: -.035em !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card > p {
+  margin: 0 0 1.05rem !important;
+  color: #677b73 !important;
+}
+
+/* Keep individual exercises visually distinct rather than compressing them into one row. */
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: .85rem 1rem !important;
+  min-height: 68px !important;
+  margin: 0 0 .7rem !important;
+  padding: .85rem 1rem !important;
+  border: 1px solid rgba(31, 73, 59, .12) !important;
+  border-radius: 13px !important;
+  background: rgba(255, 255, 255, .78) !important;
+  color: #183d32 !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose b {
+  color: #183d32 !important;
+  font-size: .98rem !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose span {
+  color: #70837b !important;
+  font-size: .84rem !important;
+  text-align: right !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card .button {
+  width: min(100%, 260px) !important;
+  min-height: 52px !important;
+  margin-top: .35rem !important;
+  border-radius: 12px !important;
+  background: #1f624a !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .next-session-card > small:last-child {
+  display: block !important;
+  margin-top: .65rem !important;
+  color: #7b8d85 !important;
+}
+
+/* Therapist-authored patient guidance. Content comes from prescription instructions already published by the PT. */
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .today-pt-panel {
+  grid-area: notes !important;
+  min-width: 0 !important;
+  min-height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1rem !important;
+  padding: clamp(1.2rem, 2vw, 1.55rem) !important;
+  border: 1px solid rgba(31, 73, 59, .16) !important;
+  border-radius: 20px !important;
+  background: linear-gradient(160deg, rgba(239, 247, 241, .98), rgba(250, 247, 233, .98)) !important;
+  box-shadow: 0 14px 40px rgba(38, 55, 43, .07) !important;
+  color: #183d32 !important;
+}
+
+.today-pt-panel__header {
+  padding-bottom: .85rem;
+  border-bottom: 1px solid rgba(31, 73, 59, .12);
+}
+
+.today-pt-panel__eyebrow,
+.today-pathway-header__eyebrow {
+  display: block;
+  margin-bottom: .35rem;
+  color: #447768;
+  font: 700 .7rem/1.2 "DM Mono", monospace;
+  letter-spacing: .12em;
+}
+
+.today-pt-panel__header h2,
+.today-pathway-header h2 {
+  margin: 0;
+  color: #183d32;
+  font-size: 1.3rem;
+  letter-spacing: -.02em;
+}
+
+.today-pt-panel__header p {
+  margin: .28rem 0 0;
+  color: #6b8178;
+  font-size: .88rem;
+}
+
+.today-pt-note-list {
+  display: grid;
+  gap: .7rem;
+}
+
+.today-pt-note {
+  padding: .9rem;
+  border: 1px solid rgba(31, 73, 59, .11);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .7);
+}
+
+.today-pt-note strong {
+  display: block;
+  margin-bottom: .3rem;
+  color: #183d32;
+  font-size: .9rem;
+}
+
+.today-pt-note p {
+  margin: 0;
+  color: #5f756c;
+  font-size: .88rem;
+  line-height: 1.45;
+}
+
+.today-pt-note--empty {
+  border-style: dashed;
+}
+
+.today-pt-panel__footer {
+  margin: auto 0 0;
+  padding-top: .85rem;
+  border-top: 1px solid rgba(31, 73, 59, .1);
+  color: #70837b;
+  font-size: .78rem;
+  line-height: 1.4;
+}
+
+/* Expanded current-phase pathway. The full campaign stays on Journey. */
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-world {
+  grid-area: pathway !important;
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 1rem !important;
+  border: 1px solid rgba(31, 73, 59, .14) !important;
+  border-radius: 20px !important;
+  background: rgba(255, 253, 246, .78) !important;
+  box-shadow: 0 14px 40px rgba(38, 55, 43, .06) !important;
+}
+
+.today-pathway-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .8rem;
+}
+
+.today-pathway-action {
+  min-height: 42px;
+  padding: .65rem .9rem;
+  border: 1px solid rgba(31, 73, 59, .18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .75);
+  color: #1f624a;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.today-pathway-action:hover,
+.today-pathway-action:focus-visible {
+  background: #eef6f0;
+  outline: none;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .campaign-scroll {
+  width: 100% !important;
+  min-height: 250px !important;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 1.15rem !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(31, 73, 59, .12) !important;
+  border-radius: 15px !important;
+  background-position: center 54% !important;
+  background-size: cover !important;
+  box-shadow: none !important;
+  scroll-behavior: auto !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region {
+  display: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region:has(.journey-node.current),
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-region:has(.journey-node.override) {
+  display: block !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)) !important;
+  align-items: stretch !important;
+  gap: .8rem !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-step {
+  display: block !important;
+  position: static !important;
+  min-width: 0 !important;
+  min-height: 118px !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node {
+  position: static !important;
+  inset: auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 118px !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: .55rem !important;
+  margin: 0 !important;
+  padding: .8rem !important;
+  transform: none !important;
+  border: 1px solid rgba(255, 255, 255, .55) !important;
+  border-radius: 14px !important;
+  background: rgba(251, 249, 238, .91) !important;
+  color: #183d32 !important;
+  box-shadow: 0 6px 18px rgba(18, 48, 39, .09) !important;
+  text-align: center !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node.current,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node.override {
+  border-color: rgba(50, 155, 112, .55) !important;
+  background: rgba(235, 248, 238, .96) !important;
+  box-shadow: 0 8px 22px rgba(31, 98, 74, .14) !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node.locked {
+  opacity: .62 !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node .journey-pawn,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node .journey-node-stars,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node .journey-node-story,
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node .journey-node-game {
+  display: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node-core {
+  position: static !important;
+  width: 48px !important;
+  height: 48px !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node-name {
+  display: block !important;
+  position: static !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  color: #183d32 !important;
+  font-size: .9rem !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  transform: none !important;
+}
+
+.patient-portal.journey-page:not([data-axion-stable-section="journey"]) .roadmap-support-grid {
+  margin-top: 1rem !important;
+}
+
+/* Journey owns the full campaign presentation. */
+.patient-portal.journey-page[data-axion-stable-section="journey"] .clinic-today-recovery,
+.patient-portal.journey-page[data-axion-stable-section="journey"] [data-clinic-phases],
+.patient-portal.journey-page[data-axion-stable-section="journey"] .roadmap-support-grid,
+.patient-portal.journey-page[data-axion-stable-section="journey"] .today-plan,
+.patient-portal.journey-page[data-axion-stable-section="journey"] .today-pt-panel,
+.patient-portal.journey-page[data-axion-stable-section="journey"] .today-pathway-header {
+  display: none !important;
+}
+
+.patient-portal.journey-page[data-axion-stable-section="journey"] .journey-welcome {
+  margin-bottom: 1rem !important;
+}
+
+@media (max-width: 960px) {
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas:
+      "mission"
+      "notes"
+      "pathway" !important;
+  }
+
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .today-pt-panel {
+    min-height: 0 !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose {
+    grid-template-columns: 1fr !important;
+    gap: .2rem !important;
+  }
+
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .mission-dose span {
+    text-align: left !important;
+  }
+
+  .today-pathway-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 460px) {
+  .patient-portal.journey-page:not([data-axion-stable-section="journey"]) .journey-node-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
