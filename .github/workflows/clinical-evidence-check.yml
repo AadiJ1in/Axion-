@@ -5,8 +5,10 @@ on:
     paths:
       - "research/clinicaltrials/**"
       - "src/clinical-evidence-registry.js"
+      - "src/evidence-informed-movement.js"
       - "scripts/sync-clinicaltrials-evidence.mjs"
       - "scripts/clinicaltrials-evidence-test.mjs"
+      - "scripts/evidence-informed-movement-test.mjs"
       - ".github/workflows/clinical-evidence-check.yml"
   push:
     branches:
@@ -14,8 +16,10 @@ on:
     paths:
       - "research/clinicaltrials/**"
       - "src/clinical-evidence-registry.js"
+      - "src/evidence-informed-movement.js"
       - "scripts/sync-clinicaltrials-evidence.mjs"
       - "scripts/clinicaltrials-evidence-test.mjs"
+      - "scripts/evidence-informed-movement-test.mjs"
 
 permissions:
   contents: read
@@ -32,7 +36,11 @@ jobs:
       - name: Syntax check evidence modules
         run: |
           node --check src/clinical-evidence-registry.js
+          node --check src/evidence-informed-movement.js
           node --check scripts/sync-clinicaltrials-evidence.mjs
           node --check scripts/clinicaltrials-evidence-test.mjs
+          node --check scripts/evidence-informed-movement-test.mjs
       - name: Run evidence registry regression
         run: node scripts/clinicaltrials-evidence-test.mjs
+      - name: Run evidence-informed movement regression
+        run: node scripts/evidence-informed-movement-test.mjs
