@@ -1,87 +1,125 @@
 import assert from "node:assert/strict";
 import {
   MOVEMENT_INTELLIGENCE_VERSION,
+  MOVEMENT_SIGNATURE_SCHEMA_VERSION,
   createAdaptiveMovementIntelligence,
-  squatFrameFeatures,
-  summarizeSquatFrames,
+  latestCompatibleMovementReference,
+  repMovementSignature,
   supportsAdaptiveMovementIntelligence,
 } from "../src/movement-intelligence.js";
 
-function pose(depth = 0, shift = 0) {
-  const points = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, visibility: 1 }));
-  points[11] = { x: 0.42 + shift, y: 0.25 + depth * 0.10, visibility: 0.98 };
-  points[12] = { x: 0.58 + shift, y: 0.25 + depth * 0.10, visibility: 0.98 };
-  points[23] = { x: 0.44, y: 0.48 + depth * 0.08, visibility: 0.98 };
-  points[24] = { x: 0.56, y: 0.48 + depth * 0.08, visibility: 0.98 };
-  points[25] = { x: 0.44 - depth * 0.075, y: 0.68 + depth * 0.04, visibility: 0.98 };
-  points[26] = { x: 0.56 + depth * 0.075, y: 0.68 + depth * 0.04, visibility: 0.98 };
-  points[27] = { x: 0.43, y: 0.88, visibility: 0.98 };
-  points[28] = { x: 0.57, y: 0.88, visibility: 0.98 };
-  points[31] = { x: 0.41, y: 0.94, visibility: 0.98 };
-  points[32] = { x: 0.59, y: 0.94, visibility: 0.98 };
-  return points;
+function featureEntry(mean, range = 12, spread = 3) {
+  return {
+    samples: 24,
+    min: mean - range / 2,
+    max: mean + range / 2,
+    mean,
+    range,
+    start: mean - spread,
+    end: mean + spread,
+    delta: spread * 2,
+  };
 }
 
-function repFrames(shift = 0, amplitude = 1) {
-  const frames = [];
-  for (let i = 0; i <= 12; i++) frames.push(pose((i / 12) * amplitude, shift));
-  for (let i = 11; i >= 0; i--) frames.push(pose((i / 12) * amplitude, shift));
-  return frames;
+function repBiomechanics(offset = 0, {
+  coverage = 0.95,
+  visibility = 0.94,
+  minVisibility = 0.88,
+} = {}) {
+  return {
+    schemaVersion: 1,
+    totalFrames: 28,
+    usableFrames: Math.round(28 * coverage),
+    coverage,
+    quality: { meanVisibility: visibility, minVisibility },
+    features: {
+      left_knee_flexion_deg: featureEntry(48 + offset, 78 + offset * 0.2),
+      right_knee_flexion_deg: featureEntry(49 + offset * 0.7, 79 + offset * 0.2),
+      knee_flexion_asymmetry_deg: featureEntry(3 + Math.abs(offset) * 0.18, 4),
+      left_hip_flexion_deg: featureEntry(42 + offset * 0.8, 68 + offset * 0.16),
+      right_hip_flexion_deg: featureEntry(43 + offset * 0.6, 69 + offset * 0.16),
+      hip_flexion_asymmetry_deg: featureEntry(2.5 + Math.abs(offset) * 0.15, 3),
+      left_ankle_angle_deg: featureEntry(101 - offset * 0.15, 28 + offset * 0.08),
+      right_ankle_angle_deg: featureEntry(102 - offset * 0.10, 29 + offset * 0.08),
+      ankle_angle_asymmetry_deg: featureEntry(2 + Math.abs(offset) * 0.08, 2.5),
+      pelvis_line_tilt_deg: featureEntry(offset * 0.4, 5 + Math.abs(offset) * 0.2),
+      trunk_image_tilt_deg: featureEntry(offset * 0.5, 8 + Math.abs(offset) * 0.3),
+      trunk_3d_tilt_deg: featureEntry(9 + offset * 0.45, 10 + Math.abs(offset) * 0.25),
+      left_knee_path_offset_pct: featureEntry(-3 - offset * 0.9, 8 + Math.abs(offset) * 0.4),
+      right_knee_path_offset_pct: featureEntry(3 + offset * 0.8, 8 + Math.abs(offset) * 0.4),
+      ankle_separation_pct: featureEntry(31 + offset * 0.2, 4),
+      pelvis_depth_asymmetry_pct: featureEntry(2 + Math.abs(offset) * 0.1, 2),
+    },
+  };
 }
 
 assert.equal(supportsAdaptiveMovementIntelligence("bodyweight_squat"), true);
 assert.equal(supportsAdaptiveMovementIntelligence("heel_raise"), false);
 
-const one = squatFrameFeatures(pose(0.5));
-assert.ok(Number.isFinite(one.l_knee));
-assert.ok(Number.isFinite(one.r_hip));
-assert.ok(Number.isFinite(one.trunk_flex));
-
-const summary = summarizeSquatFrames(repFrames().map(squatFrameFeatures));
-assert.ok(summary.frameCount >= 20);
-assert.ok(summary.features.l_knee_rom > 0);
-assert.ok(summary.features.r_hip_rom > 0);
-assert.ok(Number.isFinite(summary.features.knee_valgus_min));
+const scalar = repMovementSignature(repBiomechanics());
+assert.ok(scalar);
+assert.ok(scalar.confidence >= 90);
+assert.equal(Object.values(scalar.values).filter(Number.isFinite).length >= 10, true);
 
 const engine = createAdaptiveMovementIntelligence({ baselineReps: 3 });
-function analyze(frames) {
-  engine.startRep();
-  frames.forEach((frame) => engine.observe(frame));
-  return engine.finishRep();
-}
-
-const first = analyze(repFrames(0, 0.98));
-const second = analyze(repFrames(0.002, 1.01));
-const third = analyze(repFrames(-0.002, 1));
+const first = engine.analyzeRep(repBiomechanics(0));
+const second = engine.analyzeRep(repBiomechanics(0.25));
+const third = engine.analyzeRep(repBiomechanics(-0.2));
 assert.equal(first.status, "baseline_learning");
 assert.equal(second.status, "baseline_learning");
 assert.equal(third.status, "baseline_ready");
 assert.equal(third.modelVersion, MOVEMENT_INTELLIGENCE_VERSION);
 
-const stable = analyze(repFrames(0.002, 1.01));
-assert.equal(stable.status, "analyzed");
-assert.ok(stable.confidence >= 80);
-assert.ok(stable.stabilityScore >= 50);
+const similar = engine.analyzeRep(repBiomechanics(0.4));
+assert.equal(similar.status, "analyzed");
+assert.ok(similar.similarityScore >= 70);
+assert.equal(similar.patternBand, "similar");
 
-const shifted = analyze(repFrames(0.09, 0.72));
+const shifted = engine.analyzeRep(repBiomechanics(8));
 assert.equal(shifted.status, "analyzed");
-assert.ok(shifted.driftIndex > stable.driftIndex, "larger movement change should produce more baseline drift");
+assert.ok(shifted.driftIndex > similar.driftIndex);
+assert.ok(shifted.similarityScore < similar.similarityScore);
 assert.ok(shifted.factors.length > 0);
 assert.ok(!/diagnos|injury|cause/i.test(shifted.message));
 
-const session = engine.sessionSummary();
-assert.equal(session.enabled, true);
-assert.equal(session.diagnostic, false);
-assert.equal(session.processing, "on_device");
-assert.equal(session.baseline_repetitions, 3);
-assert.equal(session.analyzed_repetitions, 2);
+const lowQuality = engine.analyzeRep(repBiomechanics(0, { coverage: 0.2, visibility: 0.55, minVisibility: 0.2 }));
+assert.equal(lowQuality.status, "insufficient_quality");
+assert.equal(lowQuality.reason, "low_coverage");
+
+const summary = engine.sessionSummary();
+assert.equal(summary.enabled, true);
+assert.equal(summary.diagnostic, false);
+assert.equal(summary.processing, "on_device");
+assert.equal(summary.signature.schemaVersion, MOVEMENT_SIGNATURE_SCHEMA_VERSION);
+assert.equal(summary.baselineStatus, "ready");
+assert.equal(summary.baselineRepetitions, 3);
+assert.equal(summary.analyzedRepetitions, 2);
+assert.equal(summary.qualityGatedRepetitions, 1);
+
+const referenceSession = {
+  id: "session-prior",
+  exercise_key: "bodyweight_squat",
+  completed_at: "2026-09-10T12:00:00Z",
+  movement_summary: {
+    movement_intelligence: {
+      signature: summary.signature,
+    },
+  },
+};
+const reference = latestCompatibleMovementReference([referenceSession], "bodyweight_squat");
+assert.equal(reference.sessionId, "session-prior");
+
+const longitudinalEngine = createAdaptiveMovementIntelligence({ baselineReps: 3, priorReference: reference });
+longitudinalEngine.analyzeRep(repBiomechanics(1.0));
+longitudinalEngine.analyzeRep(repBiomechanics(1.2));
+longitudinalEngine.analyzeRep(repBiomechanics(0.9));
+longitudinalEngine.analyzeRep(repBiomechanics(1.1));
+const longitudinal = longitudinalEngine.sessionSummary().longitudinal;
+assert.equal(longitudinal.status, "available");
+assert.equal(longitudinal.referenceSessionId, "session-prior");
+assert.ok(Number.isFinite(longitudinal.similarityScore));
 
 engine.reset();
-assert.equal(engine.sessionSummary().baseline_repetitions, 0);
+assert.equal(engine.sessionSummary().baselineRepetitions, 0);
 
-const shortEngine = createAdaptiveMovementIntelligence();
-shortEngine.startRep();
-repFrames().slice(0, 4).forEach((frame) => shortEngine.observe(frame));
-assert.equal(shortEngine.finishRep().status, "insufficient_data");
-
-console.log("Adaptive movement intelligence: feature extraction, session learning, drift, confidence and reset passed.");
+console.log("Adaptive movement intelligence v0.2: quality gating, robust baseline, rep comparison, persistence and longitudinal reference passed.");
