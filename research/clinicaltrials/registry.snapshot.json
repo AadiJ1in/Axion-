@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-09-18",
+  "source": "ClinicalTrials.gov public study records",
+  "clinicalValidationStatus": "does_not_validate_axion",
+  "studies": [
+    {
+      "nctId": "NCT07016295",
+      "status": "RECRUITING",
+      "lastUpdatePosted": "2025-08-11",
+      "sponsor": "King's College London",
+      "population": "Stroke survivors and healthy age-matched controls",
+      "technology": ["pose estimation", "smartphone video", "marker-free kinematics"],
+      "reference": ["marker-based kinematic analysis"],
+      "outcomeSignals": ["agreement between pose estimation and biomechanics measurements"],
+      "axionLearning": ["reference-method agreement", "compensation-versus-recovery research framework", "longitudinal kinematics"],
+      "ipdPlan": "NO",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT07016295"
+    },
+    {
+      "nctId": "NCT05454007",
+      "status": "RECRUITING",
+      "lastUpdatePosted": "2024-04-26",
+      "sponsor": "Western University of Health Sciences",
+      "population": "Adults with chronic post-stroke hemiparetic gait",
+      "technology": ["video recording", "home and clinic assessment"],
+      "reference": [],
+      "outcomeSignals": ["step length symmetry", "step time symmetry", "transfer across clinic/home/time"],
+      "axionLearning": ["clinic-to-home transfer", "movement generalization", "longitudinal retention"],
+      "ipdPlan": "YES",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT05454007"
+    },
+    {
+      "nctId": "NCT05799235",
+      "status": "RECRUITING",
+      "sponsor": "KK Women's and Children's Hospital",
+      "population": "Adolescents and young adults after ACL reconstruction",
+      "technology": ["mobile deep-learning pose estimation", "real-time exercise feedback"],
+      "reference": ["goniometer for knee range of motion", "knee flexion-extension strength machine"],
+      "outcomeSignals": ["exercise adherence", "knee range of motion", "one-leg sit-to-stand rate", "strength", "pain", "self-reported function"],
+      "axionLearning": ["ACL ROM validation target", "functional task linkage", "adherence-outcome linkage"],
+      "ipdPlan": "UNKNOWN",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT05799235"
+    },
+    {
+      "nctId": "NCT07145996",
+      "status": "NOT_YET_RECRUITING",
+      "lastUpdatePosted": "2025-09-30",
+      "sponsor": "Majmaah University",
+      "population": "College students with chronic non-specific low back pain",
+      "technology": ["Google MediaPipe Pose", "webcam/smartphone video", "automated movement analysis"],
+      "reference": ["Timed Up and Go", "prone plank test", "patient-reported outcomes"],
+      "outcomeSignals": ["joint movement", "repetition count", "hold time", "technique errors", "adherence", "functional mobility", "trunk endurance"],
+      "axionLearning": ["rep/hold integrity", "form-monitoring workflow", "therapist review of AI-generated performance data"],
+      "ipdPlan": "UNKNOWN",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT07145996"
+    },
+    {
+      "nctId": "NCT06183970",
+      "status": "UNKNOWN",
+      "lastUpdatePosted": "2023-12-28",
+      "sponsor": "Federal Center of Cerebrovascular Pathology and Stroke, Russian Federation Ministry of Health",
+      "population": "Patients undergoing stroke rehabilitation",
+      "technology": ["AI", "computer vision", "video movement analysis", "machine learning"],
+      "reference": [],
+      "outcomeSignals": ["movement deviations", "amplitude reductions", "compensatory patterns", "session progress"],
+      "axionLearning": ["observable compensation flags", "amplitude drift", "clinician-accessible longitudinal session data"],
+      "ipdPlan": "UNKNOWN",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT06183970"
+    },
+    {
+      "nctId": "NCT06973642",
+      "status": "RECRUITING",
+      "lastUpdatePosted": "2025-07-24",
+      "sponsor": "University of Mississippi Medical Center",
+      "population": "Adults undergoing ACL reconstruction rehabilitation",
+      "technology": ["AI-capable telerehabilitation", "markerless motion capture"],
+      "reference": [],
+      "outcomeSignals": ["home program compliance", "scheduled visit compliance", "major adverse events", "pain", "functional status"],
+      "axionLearning": ["pilot feasibility", "safety-event monitoring", "provider/patient workflow metrics"],
+      "ipdPlan": "UNDECIDED",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT06973642"
+    },
+    {
+      "nctId": "NCT03519087",
+      "status": "TERMINATED",
+      "lastUpdatePosted": "2020-05-06",
+      "sponsor": "Ohio State University",
+      "population": "Adults evaluated for nonarthritic hip disease",
+      "technology": ["3D biomechanics"],
+      "reference": ["12-camera marker-based motion analysis", "force platforms", "dynamometry"],
+      "tasks": ["walking", "sit-to-stand", "forward tap-down"],
+      "outcomeSignals": ["trunk kinematics", "pelvis kinematics", "hip kinematics", "knee kinematics", "ankle kinematics", "external joint moments"],
+      "axionLearning": ["lower-extremity reference protocol", "cross-task validation", "kinematics-versus-kinetics separation"],
+      "ipdPlan": "UNKNOWN",
+      "studyUrl": "https://clinicaltrials.gov/study/NCT03519087"
+    }
+  ]
+}

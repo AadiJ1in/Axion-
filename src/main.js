@@ -2,6 +2,11 @@ import { isConfigured, supabase } from "./supabase.js";
 import { createMovementTracker } from "./pose.js";
 import { getMovementProfile } from "./movement-profiles.js";
 import { summarizeSessionBiomechanics } from "./biomechanics.js";
+import {
+  createAdaptiveMovementIntelligence,
+  latestCompatibleMovementReference,
+  supportsAdaptiveMovementIntelligence,
+} from "./movement-intelligence.js";
 import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "./movement-game.js";
 import { ownsActiveAssignment } from "./squat-camera.js";
 import { journeyMapMarkup, sessionPathPresentation, layoutJourney } from "./journey-map.js";
@@ -135,6 +140,7 @@ let activeSessionContext = null;
 let selectedPatient = null;
 let onboardingStep = 0;
 let tracker = null;
+let movementIntelligence = null;
 let demoTimer = null;
 let calibrationTimer = null;
 let demoTimeouts = [];
@@ -165,6 +171,8 @@ let lastTwinPoints = null;
 function destroyMovementTracker() {
   const activeTracker = tracker;
   tracker = null;
+  movementIntelligence?.reset?.();
+  movementIntelligence = null;
   if (!activeTracker) return;
   try {
     if (typeof activeTracker.destroy === "function") activeTracker.destroy();
@@ -1166,6 +1174,46 @@ function realReportView() {
   const dailyCopy = dailyHasActivity
     ? `${daily.period}'s summary combines ${daily.completedCount} unique exercise${daily.completedCount === 1 ? "" : "s"}. Repeated attempts do not inflate completion.`
     : "The daily summary resets at the start of each day. Older sessions remain available in the history below.";
+  const movementAi = latest?.movement_summary?.movement_intelligence || null;
+  const longitudinalAi = movementAi?.longitudinal || null;
+  const aiBaselineReady = movementAi?.baselineStatus === "ready";
+  const aiFactors = longitudinalAi?.status === "available"
+    ? longitudinalAi.factors || []
+    : [];
+  const aiReferenceDate = longitudinalAi?.referenceCompletedAt
+    ? new Date(longitudinalAi.referenceCompletedAt).toLocaleDateString()
+    : null;
+  const aiCard = movementAi?.enabled ? `
+    <section class="longitudinal-card movement-signature-card">
+      <div class="analysis-head">
+        <div>
+          <span class="section-kicker">EXPERIMENTAL MOVEMENT SIGNATURE</span>
+          <h3>${aiBaselineReady ? "Patient-specific movement pattern captured" : "Movement signature quality check"}</h3>
+          <p>${aiBaselineReady
+            ? `Axion used ${movementAi.baselineRepetitions || 0} high-quality repetitions to establish this session baseline. Similarity describes measured mechanics only; it is not an injury-risk or recovery score.`
+            : "Axion did not establish a repeatable high-confidence baseline, so pattern comparisons are intentionally limited."}</p>
+        </div>
+        <span class="info-pill">ON-DEVICE AI · EXPERIMENTAL</span>
+      </div>
+      <div class="report-metrics">
+        <article><span>TRACKING CONFIDENCE</span><b>${movementAi.averageConfidence ?? "—"}${Number.isFinite(movementAi.averageConfidence) ? "%" : ""}</b><em>Derived pose quality</em></article>
+        <article><span>BASELINE COHESION</span><b>${movementAi.baselineCohesionScore ?? "—"}${Number.isFinite(movementAi.baselineCohesionScore) ? "/100" : ""}</b><em>Repeatability of baseline reps</em></article>
+        <article><span>WITHIN-SESSION SIMILARITY</span><b>${movementAi.averageSimilarityScore ?? "—"}${Number.isFinite(movementAi.averageSimilarityScore) ? "/100" : ""}</b><em>Compared with this session baseline</em></article>
+        <article><span>QUALITY-GATED REPS</span><b>${movementAi.qualityGatedRepetitions ?? 0}</b><em>Excluded from AI learning</em></article>
+      </div>
+      ${longitudinalAi?.status === "available" ? `
+        <div class="analysis-callout">
+          <b>Compared with prior compatible session${aiReferenceDate ? ` · ${escapeHtml(aiReferenceDate)}` : ""}</b>
+          <p>Movement-signature similarity: <strong>${longitudinalAi.similarityScore}/100</strong>. ${longitudinalAi.patternBand === "similar"
+            ? "The derived mechanics are similar to the prior stored signature."
+            : longitudinalAi.patternBand === "shifted"
+              ? "The derived mechanics show a measurable shift from the prior stored signature."
+              : "The derived mechanics show a larger shift from the prior stored signature."} This does not identify the cause of the change.</p>
+          ${aiFactors.length ? `<div class="insight-list">${aiFactors.map((factor) => `<span><b>${escapeHtml(factor.label)}</b><small>standardized change ${factor.standardizedChange > 0 ? "+" : ""}${factor.standardizedChange}</small></span>`).join("")}</div>` : ""}
+        </div>
+      ` : `<div class="empty-state compact"><h3>No prior compatible Movement Signature yet</h3><p>This session can become the reference for the next compatible squat session.</p></div>`}
+    </section>
+  ` : "";
 
   app.innerHTML = layout(`
     <main class="report-page container-wide">
@@ -1186,6 +1234,7 @@ function realReportView() {
         <article><span>MOVEMENT CONSISTENCY</span><b>${stats.consistency || "—"}</b><em>Session value</em></article>
         <article><span>SYMMETRY DELTA</span><b>${metric(stats.symmetry, "°")}</b><em>Measured difference</em></article>
       </section>
+      ${aiCard}
       <section class="longitudinal-card">
         <div class="analysis-head"><div><span class="section-kicker">SESSION HISTORY</span><h3>${reportSessions.length} private session${reportSessions.length === 1 ? "" : "s"}</h3><p>Only sessions authorized by the patient–therapist relationship are returned by row-level security.</p></div><span class="info-pill">LIVE DATA</span></div>
         <div class="progress-timeline">
@@ -2065,6 +2114,12 @@ async function initializeLab() {
   sessionSafetyEvents = [];
   updateSyntheticTwin(0);
   const activeProfile = getMovementProfile(currentAssignment.exercise_key, currentAssignment.tracking_mode);
+  const priorMovementReference = supportsAdaptiveMovementIntelligence(currentAssignment.exercise_key) && !currentSession?.demo
+    ? latestCompatibleMovementReference(patientWorkspace?.sessions || [], currentAssignment.exercise_key)
+    : null;
+  movementIntelligence = supportsAdaptiveMovementIntelligence(currentAssignment.exercise_key)
+    ? createAdaptiveMovementIntelligence({ priorReference: priorMovementReference })
+    : null;
   movementGameController = createMovementGameController({
     exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
     targetReps: demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10),
@@ -2084,7 +2139,11 @@ async function initializeLab() {
     onPose: (points) => { updateTwinFromLandmarks(points); movementGameController?.updateCameraPose(points); },
     onTiming: (trace) => { pendingPerformanceTrace = trace; },
     onTrackingState: handleTrackingState,
-    onRep: acceptValidatedRep,
+    onRep: (rep) => {
+      const aiMovement = movementIntelligence?.analyzeRep?.(rep?.biomechanics) || null;
+      if (aiMovement) rep.aiMovement = aiMovement;
+      acceptValidatedRep(rep);
+    },
     onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
       if (setRestEndsAt || movementGameController?.getState().safetyFlagged || doseProgress(currentAssignment, sessionReps.length).done) return;
       const sideLabel = measurementSide ? `${measurementSide} ` : "";
@@ -2570,7 +2629,9 @@ function updateLiveSession() {
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
   if (last) {
     let message = `Rep ${last.index} captured at ${Math.round(angleValue)}${unit} ${trackingProfile.label.toLowerCase()}. Keep that rhythm.`;
-
+    if (last.aiMovement?.message && last.aiMovement.status !== "insufficient_quality") {
+      message += ` ${last.aiMovement.message}`;
+    }
 
     setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${Math.round(angleValue)}${unit}`);
     updateSyntheticTwin(jointAngleToTwinDepth(angleValue, last.movementRangeDegrees), true);
@@ -2582,6 +2643,7 @@ function updateLiveSession() {
 function resetLab() {
   if (setRestEndsAt || movementGameController?.getState().safetyFlagged) return;
   clearSetRest(); stopDemo(); gameTrackingReady = false; backgroundPaused = false; tracker?.reset?.(); sessionReps = [];
+  movementIntelligence?.reset?.();
   sessionSafetyEvents = [];
   movementGameController?.consume({ type: MOVEMENT_EVENT.RESET });
   tracker?.resume?.();
@@ -2768,6 +2830,7 @@ async function saveSessionSummary(reps, feedback = {}) {
         average_symmetry_delta: Number.isFinite(Number(stats.symmetry)) ? Number(stats.symmetry) : null,
         movement_consistency: Number.isFinite(Number(stats.consistency)) ? Number(stats.consistency) : null,
         biomechanics_v1: biomechanicsSummary,
+        movement_intelligence: movementIntelligence?.sessionSummary?.() || null,
         completed_sets: doseProgress(currentAssignment, reps.length).completedSets,
         prescribed_sets: context.prescribedSets,
         prescribed_reps_per_set: context.prescribedReps,

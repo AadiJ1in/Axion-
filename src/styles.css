@@ -957,3 +957,20 @@ body:has(.journey-page) .brand{color:#edf4e9}
 .ruins-runner-lab .game-story-bar small{grid-column:auto}
 .ruins-runner-lab .set-rest-overlay strong i{width:auto;height:auto;background:none;transition:none}
 @media(max-width:650px){.ruins-runner-lab .game-hud>div{padding:8px}.ruins-runner-lab .game-hud small{font-size:8px}.ruins-runner-lab .game-hud>button{margin:5px;padding:6px;font-size:12px}.ruins-runner-lab .game-mission-progress small{font-size:10px}}
+
+
+/* Experimental Movement Signature v0.2 */
+.movement-signature-card{border-color:rgba(110,240,177,.2);background:linear-gradient(135deg,rgba(110,240,177,.045),rgba(10,21,18,.88) 42%)}
+.movement-signature-card .report-metrics{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:.7rem}
+.movement-signature-card .analysis-callout{margin-top:.75rem;padding:.8rem;border:1px solid rgba(110,240,177,.16);border-radius:10px;background:rgba(110,240,177,.035)}
+.movement-signature-card .analysis-callout>p{margin:.35rem 0 0;font-size:.6rem;line-height:1.55}
+.movement-signature-card .insight-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem;margin-top:.7rem}
+.movement-signature-card .insight-list span{display:grid;gap:.18rem;padding:.55rem;border:1px solid var(--line);border-radius:8px;background:rgba(5,13,11,.55)}
+.movement-signature-card .insight-list b{font-size:.58rem}
+.movement-signature-card .insight-list small{color:#6f837b;font:500 .48rem "DM Mono",monospace}
+@media (max-width:860px){
+  .movement-signature-card .report-metrics,.movement-signature-card .insight-list{grid-template-columns:1fr 1fr}
+}
+@media (max-width:560px){
+  .movement-signature-card .report-metrics,.movement-signature-card .insight-list{grid-template-columns:1fr}
+}
