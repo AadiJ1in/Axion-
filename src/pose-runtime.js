@@ -53,8 +53,11 @@ export function createLocalPoseRuntime({
   let landmarker = null;
   let forceCpu = false;
   let delegate = null;
+  let initializationPromise = null;
+  let lifecycleGeneration = 0;
 
   async function buildLandmarker() {
+    const generation = lifecycleGeneration;
     onState({ code: "model_loading", label: "Loading movement model", quality: null });
     const [vision, modelAssetPath] = await Promise.all([
       FilesetResolver.forVisionTasks(config.wasmRoot),
@@ -73,19 +76,26 @@ export function createLocalPoseRuntime({
       minTrackingConfidence: 0.55,
     };
 
+    let createdLandmarker;
+    let createdDelegate = desiredDelegate;
     try {
-      landmarker = await PoseLandmarker.createFromOptions(vision, options);
-      delegate = desiredDelegate;
+      createdLandmarker = await PoseLandmarker.createFromOptions(vision, options);
     } catch (gpuError) {
       if (desiredDelegate !== "GPU") throw gpuError;
       onState({ code: "model_fallback", label: "Starting compatibility mode", quality: null });
       forceCpu = true;
-      delegate = "CPU";
-      landmarker = await PoseLandmarker.createFromOptions(vision, {
+      createdDelegate = "CPU";
+      createdLandmarker = await PoseLandmarker.createFromOptions(vision, {
         ...options,
         baseOptions: { ...options.baseOptions, delegate: "CPU" },
       });
     }
+    if (generation !== lifecycleGeneration) {
+      try { createdLandmarker?.close?.(); } catch { /* stale initialization cleanup */ }
+      return null;
+    }
+    landmarker = createdLandmarker;
+    delegate = createdDelegate;
     onState({ code: "model_ready", label: `Movement model ready · ${delegate}`, quality: null });
     return delegate;
   }
@@ -94,7 +104,13 @@ export function createLocalPoseRuntime({
     kind: "mediapipe-local",
     config,
     async initialize() {
-      if (!landmarker) await buildLandmarker();
+      if (landmarker) return { delegate };
+      if (!initializationPromise) {
+        initializationPromise = buildLandmarker().finally(() => {
+          initializationPromise = null;
+        });
+      }
+      await initializationPromise;
       return { delegate };
     },
     infer(source, timestampMs) {
@@ -127,9 +143,11 @@ export function createLocalPoseRuntime({
       drawing.drawLandmarks(result.landmarks[0], { color: "#6ef0b1", radius: 2.5 });
     },
     close() {
+      lifecycleGeneration += 1;
       try { landmarker?.close?.(); } catch { /* failed model may already be disposed */ }
       landmarker = null;
       delegate = null;
+      initializationPromise = null;
     },
     getState() {
       return Object.freeze({ delegate, forceCpu, initialized: Boolean(landmarker) });
