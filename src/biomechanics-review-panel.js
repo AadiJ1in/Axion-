@@ -105,6 +105,19 @@ function signalCard(signal) {
   return card;
 }
 
+function reviewNote(view) {
+  if (view.reason === "primary_metric_not_configured") {
+    return "This session contributes longitudinal movement evidence, but this task is not used as a bilateral primary-recovery anchor.";
+  }
+  if (view.reason === "primary_recovery_confounded_by_range_loss") {
+    return "Symmetry improved, but movement range fell beyond the recovery guard, so Axion does not interpret the change as primary recovery.";
+  }
+  if (view.status === "insufficient_data") {
+    return "Axion needs additional reliable sessions before it can evaluate longitudinal compensation migration.";
+  }
+  return "No secondary movement metric currently meets the sustained-drift criteria.";
+}
+
 function buildPanel(row) {
   const view = biomechanicsReviewPresentation(row);
   const panel = element("section", "biomechanics-review-panel");
@@ -122,7 +135,7 @@ function buildPanel(row) {
   const metrics = element("div", "biomechanics-review-metrics");
   if (view.showScore) metrics.append(metricCard("Migration signal", `${view.score}/100`));
   metrics.append(
-    metricCard("Accepted movement frames", String(view.sampleCount)),
+    metricCard("Biomechanics-supported reps", String(view.sampleCount)),
     metricCard("Tracking quality", view.trackingQualityPercent === null ? "—" : `${view.trackingQualityPercent}%`),
   );
   panel.append(metrics);
@@ -137,13 +150,7 @@ function buildPanel(row) {
     view.signals.forEach((signal) => signals.append(signalCard(signal)));
     panel.append(signals);
   } else {
-    panel.append(element(
-      "p",
-      "biomechanics-review-note",
-      view.status === "insufficient_data"
-        ? "Axion needs additional reliable sessions before it can evaluate longitudinal compensation migration."
-        : "No secondary movement metric currently meets the sustained-drift criteria.",
-    ));
+    panel.append(element("p", "biomechanics-review-note", reviewNote(view)));
   }
 
   panel.append(element(
@@ -186,7 +193,7 @@ document.addEventListener("click", (event) => {
 }, true);
 
 window.__axionBiomechanicsReview = Object.freeze({
-  version: 1,
+  version: 2,
   clinicianReviewOnly: true,
   autoDiagnoses: false,
   autoTreatmentChanges: false,
