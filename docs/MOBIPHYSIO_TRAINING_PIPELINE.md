@@ -1,99 +1,188 @@
 # Axion Public-Dataset Movement Model Pipeline
 
-## What this adds
+## Current scope
 
-Axion's first research AI should learn **movement quality**, not injury risk.
+Axion's first public-data model learns **exercise-specific movement quality**, not injury risk.
 
-The live product already uses MediaPipe Pose. The new `src/biomechanics.js` layer converts pose landmarks into a stable set of derived movement features such as knee/hip flexion, side-to-side differences, trunk/pelvis geometry, knee-path offsets, and tracking quality. Raw video and raw landmark coordinates are not persisted by this feature layer.
+The live product and the offline research pipeline now share the same biomechanics feature semantics. Browser features are implemented in `src/biomechanics.js`; the offline mirror is `ml/biomechanics_v1.py`. CI compares both implementations on the same synthetic poses so training cannot silently drift away from production geometry.
 
-The first public-data target is **MobiPhysio**:
+MobiPhysio is the first target dataset:
 
-- Data article: https://doi.org/10.1016/j.dib.2026.112635
-- Original dataset: https://doi.org/10.7910/DVN/XSI0QN
+- DOI: https://doi.org/10.7910/DVN/XSI0QN
 - 3,686 segmented smartphone videos
 - 9 active-range-of-motion physiotherapy exercises
 - 58 participants
-- front, left, and right views plus real-world recording variations
-- expert-guided exercise assessment scores
+- multiple camera views and recording perturbations
+- expert EAAQ assessment scores scaled to 0–100
 
-MobiPhysio is useful for bootstrapping movement-quality assessment. It is **not** a longitudinal injured-patient dataset and cannot validate Axion's future Compensation Migration or injury-prediction claims.
+MobiPhysio is useful for movement-quality bootstrapping. It does **not** contain longitudinal injury outcomes and must not be used to claim validated injury prediction or Compensation Migration.
 
-## Safety and privacy rules
+## Privacy and source-data rules
 
-1. Keep public-dataset video files outside the Git repository.
-2. Do not upload identifiable source videos to Axion production storage.
-3. The MobiPhysio publication states that the released videos contain visible faces. Treat source videos as identifiable research data even though the dataset is public.
-4. Persist only derived features needed for research/model development unless a separately approved protocol requires more.
-5. Verify the dataset's current Dataverse terms before redistributing source data or derived artifacts.
-6. A model trained here must remain labeled **research / not clinically validated** until prospective validation is complete.
+1. Keep source videos under a local ignored `datasets/` directory.
+2. Do not commit source videos, extracted faces, raw frames, or raw landmarks.
+3. Keep the downloaded MediaPipe model under `ml/models/`; task binaries are ignored.
+4. The extraction CSV stores relative source filenames only for auditability plus derived numeric features.
+5. Keep model outputs labeled research / not clinically validated until prospective validation is complete.
 
-## Canonical feature schema
-
-The browser and future batch processor must use the same feature names defined in:
-
-`src/biomechanics.js -> MODEL_FEATURES_V1`
-
-The current v1 features are derived measurements, not diagnoses. In particular, camera-plane offsets must never be relabeled as clinical valgus/varus or injury risk without validation.
-
-## Training table contract
-
-Create one row per usable video/rep aggregate with at least:
-
-- `participant_id`
-- `exercise_id`
-- `assessment_score`
-- every feature in `MODEL_FEATURES_V1`
-
-Optional columns can preserve camera angle, recording condition, gender category supplied by the dataset, and source filename for audit/debugging. Do not use the source filename itself as a model feature.
-
-Example:
-
-```csv
-participant_id,exercise_id,assessment_score,left_knee_flexion_deg,right_knee_flexion_deg,...
-P001,E07,87.3,74.1,75.8,...
-```
-
-## Why participant-level splitting matters
-
-MobiPhysio contains multiple recordings of the same participant under different views/conditions. Randomly splitting individual videos can place the same person in both training and test data and inflate apparent performance.
-
-`ml/train_movement_quality.py` therefore uses a **grouped split by participant** and grouped cross-validation.
-
-## Train the first model
+## 1. Install extraction dependencies
 
 Use Python 3.12+.
 
 ```bash
 python -m venv ml/.venv
 source ml/.venv/bin/activate
-pip install -r ml/requirements.txt
-
-python ml/train_movement_quality.py \
-  --features-csv datasets/mobiphysio/features_v1.csv \
-  --output public/models/movement-quality-v1.json \
-  --target-column assessment_score \
-  --group-column participant_id \
-  --exercise-column exercise_id
+python -m pip install -r ml/requirements-extraction.txt
 ```
 
-The output is a small JSON Ridge model that can be executed by `src/movement-quality-model.js` without shipping Python or scikit-learn to the browser.
+The extraction environment pins MediaPipe separately from the training stack.
 
-The artifact includes held-out MAE/RMSE/R² and per-exercise metrics when exercise IDs are available.
+## 2. Download and verify the pose model
 
-## Do not ship a weak model
+```bash
+python ml/download_pose_model.py
+```
 
-Before enabling a trained model in any patient-facing or therapist-facing screen:
+The downloader verifies the exact SHA-256 used by Axion's browser tracker before saving the model. `ml/test_model_config_sync.py` prevents the browser and offline model identities from drifting apart.
 
-1. Confirm participant-level test splitting.
-2. Inspect performance separately by exercise and camera view.
-3. Inspect missing-feature rate and low-visibility failures.
-4. Test against recordings not used during model tuning.
-5. Have PT/biomechanics collaborators review what the score actually means.
-6. Keep the label as **movement-quality research score** rather than compensation, diagnosis, injury risk, or treatment advice.
-7. Version the model artifact and feature schema together.
+## 3. Prepare a metadata CSV
 
-## What still needs to be built
+The extractor is deliberately column-configurable because public-dataset metadata names can change between releases.
 
-The next data-engineering step is a batch runner that feeds MobiPhysio videos through the same MediaPipe + `biomechanics.js` logic and emits `features_v1.csv`.
+Canonical input:
 
-After a public-data model works, Axion can add clinician-labeled and longitudinal patient datasets. That later dataset—not MobiPhysio alone—is what can be used to develop and validate Compensation Migration.
+```csv
+video_path,participant_id,exercise_id,assessment_score,camera_view,source
+P01/E01/front.mp4,P01,E01,82.4,front,expert
+P01/E02/front.mp4,P01,E02,78.0,front,expert
+```
+
+Required information:
+
+- relative video path
+- participant/group identity
+- exercise identity
+- assessment score already scaled to 0–100
+
+Optional camera-view/source fields are retained for later subgroup evaluation.
+
+If the downloaded CSV uses different headers, pass `--video-column`, `--participant-column`, `--exercise-column`, `--score-column`, `--camera-view-column`, and/or `--source-column`.
+
+## 4. Extract biomechanics locally
+
+```bash
+python ml/extract_mobiphysio_features.py \
+  --videos-root datasets/mobiphysio/videos \
+  --metadata-csv datasets/mobiphysio/metadata.csv \
+  --output-csv datasets/mobiphysio/features_v1.csv
+```
+
+Default extraction behavior:
+
+- samples video at 10 fps
+- uses MediaPipe VIDEO mode with the same 0.55 tracking/detection confidence settings used by Axion
+- allows up to two poses only so multi-person frames can be identified and excluded
+- computes the Axion v1 biomechanics feature set
+- stores per-video feature mean/min/max/range
+- measures pose-detection rate, tracking coverage, visibility, and missing-feature rate
+- marks each video `ok` or gives a rejection status
+
+Important statuses include:
+
+- `ok`
+- `no_decodable_frames`
+- `no_pose`
+- `low_tracking_coverage`
+- `too_many_missing_features`
+- `error`
+
+Rejected rows stay in the extraction file for auditing but are excluded by the trainer.
+
+For a small smoke run:
+
+```bash
+python ml/extract_mobiphysio_features.py \
+  --videos-root datasets/mobiphysio/videos \
+  --metadata-csv datasets/mobiphysio/metadata.csv \
+  --output-csv datasets/mobiphysio/features_smoke.csv \
+  --max-videos 10
+```
+
+## 5. Install model-training dependencies
+
+```bash
+python -m pip install -r ml/requirements.txt
+```
+
+## 6. Train held-out participant models
+
+```bash
+python ml/train_movement_quality.py \
+  --features-csv datasets/mobiphysio/features_v1.csv \
+  --output ml/output/movement-quality-v1.json
+```
+
+The default artifact is an `exercise_ridge_bundle`, not one global model.
+
+Why: MobiPhysio assessment uses exercise-specific EAAQs, so a knee/hip feature should not be interpreted through a different exercise's scoring rubric.
+
+Training safeguards:
+
+- one participant-level split is created before exercise models are fit
+- the same held-out participants remain held out across exercises
+- extraction-quality failures are filtered
+- rows with excessive missing biomechanics are filtered
+- duplicate source-video rows are rejected
+- each exercise must have enough distinct training groups and test rows
+- every model is compared against a mean-score baseline
+- feature missing rates and held-out MAE/RMSE/R² are written into the artifact
+- held-out metrics are also reported by camera view and source when each subgroup has enough samples
+
+The browser runtime refuses to score an exercise unless the model bundle contains that exact exercise ID.
+
+Before using an artifact anywhere else, run the fail-closed research gate:
+
+```bash
+python ml/validate_research_artifact.py ml/output/movement-quality-v1.json
+```
+
+This gate requires explicit no-leakage metadata, finite parameters/held-out metrics, enough held-out rows, and—by default—each exercise model beating its held-out mean-score baseline. Passing this gate is **not** clinical validation; it is a minimum software/research-quality requirement.
+
+## 7. Verify the pipeline
+
+The dedicated `ML research checks` GitHub Actions workflow verifies:
+
+- Python files compile
+- JS/Python biomechanics outputs match
+- browser/offline MediaPipe model URL and SHA-256 match
+- MediaPipe/OpenCV imports work
+- synthetic participant-grouped training produces separate exercise models without leakage
+- camera-view/source subgroup metrics are emitted on held-out data
+- the generated artifact passes the fail-closed research acceptance validator
+
+Local parity check:
+
+```bash
+python ml/test_biomechanics_parity.py
+python ml/test_model_config_sync.py
+python ml/test_training_pipeline.py
+python ml/validate_research_artifact.py ml/output/movement-quality-v1.json
+```
+
+## Before any model reaches Axion UI
+
+Do not enable a trained score in patient/therapist screens merely because training completed.
+
+At minimum:
+
+1. held-out participant MAE must materially beat the mean-score baseline
+2. performance must be inspected separately by exercise
+3. camera-view and recording-condition subgroup performance must be reviewed
+4. low-visibility and missing-feature behavior must be inspected
+5. an entirely independent recording set should be tested
+6. PT/biomechanics collaborators should review what the score means
+7. the UI must call it a research movement-quality score, not diagnosis, injury risk, or treatment advice
+
+## Next research layer
+
+After the public movement-quality model is functioning, the next dataset layer should include clinician-labeled compensation patterns and repeated longitudinal sessions. That is the data needed to develop Axion's Compensation Migration concept: detecting whether movement burden is shifting elsewhere in the kinetic chain over time.
