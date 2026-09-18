@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.13.0";
+export const COMPENSATION_ENGINE_VERSION = "0.14.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -197,6 +197,12 @@ function improvementFraction(summary, direction) {
   return Math.max(0, -delta);
 }
 
+function absoluteImprovement(summary, direction) {
+  if (!summary) return 0;
+  if (direction === "increase") return Math.max(0, summary.absoluteDelta);
+  return Math.max(0, -summary.absoluteDelta);
+}
+
 function driftFraction(summary, worseningDirection) {
   if (!summary) return 0;
   if (worseningDirection === "decrease") return Math.max(0, -summary.relativeDelta);
@@ -328,7 +334,32 @@ export function detectCompensationMigration({
   }
 
   const primaryDirection = primaryMetric.improvementDirection || "decrease";
+  const minPrimaryBaselineMagnitude = Math.max(0, Number(primaryMetric.minBaselineMagnitude || 0));
+  const minPrimaryAbsoluteImprovement = Math.max(0, Number(primaryMetric.minAbsoluteImprovement || 0));
+  if (Math.abs(primarySummary.baseline) < minPrimaryBaselineMagnitude) {
+    return {
+      status: "stable",
+      score: 0,
+      reason: "primary_baseline_below_analysis_floor",
+      primary: primarySummary,
+      signals: [],
+      engineVersion: COMPENSATION_ENGINE_VERSION,
+      config: configSnapshot,
+    };
+  }
   const primaryImprovement = improvementFraction(primarySummary, primaryDirection);
+  const primaryAbsoluteImprovement = absoluteImprovement(primarySummary, primaryDirection);
+  if (primaryAbsoluteImprovement < minPrimaryAbsoluteImprovement) {
+    return {
+      status: "stable",
+      score: 0,
+      reason: "primary_absolute_improvement_below_floor",
+      primary: primarySummary,
+      signals: [],
+      engineVersion: COMPENSATION_ENGINE_VERSION,
+      config: configSnapshot,
+    };
+  }
   if (primaryImprovement < config.minPrimaryRelativeImprovement) {
     return {
       status: "stable",
@@ -523,6 +554,7 @@ export function detectCompensationMigration({
       },
       summary: primarySummary,
       improvementFraction: primaryImprovement,
+      absoluteImprovement: primaryAbsoluteImprovement,
       recoveryGuard,
     },
     signals: reportedSignals,
