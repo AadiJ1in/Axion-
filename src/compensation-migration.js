@@ -73,7 +73,9 @@ function sessionQuality(session) {
   const coverage = finite(summary.averageCoverage);
   const visibility = finite(summary.averageVisibility);
   return {
-    usable: (coverage === null || coverage >= 0.55) && (visibility === null || visibility >= 0.55),
+    // Longitudinal inference fails closed when capture-quality metadata is absent.
+    usable: Number.isFinite(coverage) && coverage >= 0.55
+      && Number.isFinite(visibility) && visibility >= 0.55,
     coverage,
     visibility,
   };
@@ -112,11 +114,13 @@ function persistenceDirection(sessions, featureName, baseline) {
   return { persistent: positive || negative, direction: positive ? 1 : negative ? -1 : 0 };
 }
 
-function featureShift({ featureName, baselineSessions, recentSessions }) {
+function featureShift({ featureName, baselineSessions, recentSessions, minimumFeatureSamples }) {
   const baseline = baselineStats(baselineSessions, featureName);
   const recent = summarizeWindow(recentSessions, featureName);
+  if (!baseline || !recent) return null;
+  if (baseline.samples < minimumFeatureSamples || recent.samples < minimumFeatureSamples) return null;
   const shift = shiftAgainstBaseline(baseline, recent);
-  if (!baseline || !recent || !shift) return null;
+  if (!shift) return null;
   const persistence = persistenceDirection(recentSessions, featureName, baseline);
   const definition = FEATURE_DEFINITIONS[featureName];
   return {
@@ -124,14 +128,18 @@ function featureShift({ featureName, baselineSessions, recentSessions }) {
     family: definition.family,
     label: definition.label,
     unit: definition.unit,
-    baselineMedian: round(baseline.median),
+    earlyReferenceMedian: round(baseline.median),
     recentMedian: round(recent.median),
-    delta: round(shift.delta),
+    deltaFromEarlyReference: round(shift.delta),
     standardizedShift: round(shift.standardized),
     persistent: persistence.persistent,
     direction: persistence.direction,
     baselineSamples: baseline.samples,
     recentSamples: recent.samples,
+    supportFraction: round(Math.min(
+      baseline.samples / baselineSessions.length,
+      recent.samples / recentSessions.length,
+    )),
   };
 }
 
@@ -141,37 +149,62 @@ function aggregateFamilies(featureShifts) {
     if (!byFamily.has(shift.family)) byFamily.set(shift.family, []);
     byFamily.get(shift.family).push(shift);
   }
+
   return [...byFamily.entries()].map(([family, shifts]) => {
     const strongest = [...shifts].sort((a, b) => Math.abs(b.standardizedShift || 0) - Math.abs(a.standardizedShift || 0))[0];
-    const score = median(shifts.map((item) => item.standardizedShift));
+    const persistentShifts = shifts.filter((item) => item.persistent
+      && Number.isFinite(item.standardizedShift)
+      && item.direction !== 0);
+    const directions = [...new Set(persistentShifts.map((item) => item.direction))];
+    const directionallyConsistent = directions.length <= 1;
+    const direction = persistentShifts.length && directionallyConsistent ? directions[0] : 0;
+    const directionalValues = direction
+      ? persistentShifts.filter((item) => item.direction === direction).map((item) => item.standardizedShift)
+      : [];
+    const score = directionalValues.length
+      ? median(directionalValues)
+      : median(shifts.map((item) => item.standardizedShift));
+
     return {
       family,
       standardizedShift: round(score),
+      direction,
       strongestFeature: strongest?.feature || null,
       strongestFeatureLabel: strongest?.label || null,
-      persistent: shifts.some((item) => item.persistent),
+      persistent: persistentShifts.length > 0 && directionallyConsistent,
+      directionallyConsistent,
+      persistentFeatureCount: persistentShifts.length,
       features: shifts,
     };
   }).sort((a, b) => Math.abs(b.standardizedShift || 0) - Math.abs(a.standardizedShift || 0));
 }
 
 function redistributionCandidates(families) {
-  const improving = families.filter((family) => family.persistent && Number.isFinite(family.standardizedShift) && family.standardizedShift <= -0.75);
-  const increasing = families.filter((family) => family.persistent && Number.isFinite(family.standardizedShift) && family.standardizedShift >= 0.75);
+  const decreasing = families.filter((family) => family.persistent
+    && family.direction === -1
+    && Number.isFinite(family.standardizedShift)
+    && family.standardizedShift <= -0.75);
+  const increasing = families.filter((family) => family.persistent
+    && family.direction === 1
+    && Number.isFinite(family.standardizedShift)
+    && family.standardizedShift >= 0.75);
   const candidates = [];
-  for (const source of improving) {
-    for (const destination of increasing) {
-      if (source.family === destination.family) continue;
+
+  for (const lower of decreasing) {
+    for (const higher of increasing) {
+      if (lower.family === higher.family) continue;
       candidates.push({
-        fromFamily: source.family,
-        toFamily: destination.family,
-        sourceShift: source.standardizedShift,
-        destinationShift: destination.standardizedShift,
-        description: `${source.family} variation moved closer to this person's baseline while ${destination.family} variation moved farther from baseline across the same exercise.`,
+        patternType: "inverse_cross_family_change",
+        decreasingFamily: lower.family,
+        increasingFamily: higher.family,
+        decreasingShift: lower.standardizedShift,
+        increasingShift: higher.standardizedShift,
+        description: `${lower.family} deviation magnitude decreased relative to the early-session reference while ${higher.family} deviation magnitude increased during the same repeated exercise.`,
       });
     }
   }
-  return candidates.sort((a, b) => (Math.abs(b.sourceShift) + Math.abs(b.destinationShift)) - (Math.abs(a.sourceShift) + Math.abs(a.destinationShift)));
+  return candidates.sort((a, b) => (Math.abs(b.decreasingShift) + Math.abs(b.increasingShift))
+    - (Math.abs(a.decreasingShift) + Math.abs(a.increasingShift)));
 }
 
 function qualitySummary(sessions) {
@@ -201,6 +234,37 @@ function positiveInteger(value) {
   return Number.isInteger(value) && value > 0;
 }
 
+function knownContextValue(session, key) {
+  const summary = biomechanicsSummary(session);
+  if (key === "cameraView") {
+    return session?.camera_view
+      || session?.capture_context?.camera_view
+      || session?.movement_summary?.camera_view
+      || summary?.cameraView
+      || null;
+  }
+  if (key === "prescribedSide") {
+    return session?.prescribed_side
+      || session?.movement_summary?.prescribed_side
+      || null;
+  }
+  return null;
+}
+
+function comparisonContext(sessions) {
+  const cameraViews = [...new Set(sessions.map((session) => knownContextValue(session, "cameraView")).filter(Boolean))];
+  const prescribedSides = [...new Set(sessions.map((session) => knownContextValue(session, "prescribedSide")).filter(Boolean))];
+  if (cameraViews.length > 1) return { error: "mixed_capture_context" };
+  if (prescribedSides.length > 1) return { error: "mixed_prescribed_side" };
+  return {
+    cameraView: cameraViews[0] || null,
+    prescribedSide: prescribedSides[0] || null,
+    verification: cameraViews.length && prescribedSides.length
+      ? "verified_from_metadata"
+      : (cameraViews.length || prescribedSides.length ? "partially_verified" : "not_recorded"),
+  };
+}
+
 /**
  * Compare one repeated exercise across one person's chronological sessions.
  * A single anomalous recording cannot produce a persistent redistribution candidate.
@@ -209,23 +273,52 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
   baselineWindow = 3,
   recentWindow = 3,
   minimumSessions = 6,
+  minimumFeatureSupportFraction = 2 / 3,
 } = {}) {
-  if (![baselineWindow, recentWindow, minimumSessions].every(positiveInteger)) {
+  if (![baselineWindow, recentWindow, minimumSessions].every(positiveInteger)
+    || !Number.isFinite(minimumFeatureSupportFraction)
+    || minimumFeatureSupportFraction <= 0
+    || minimumFeatureSupportFraction > 1) {
     return unavailable("invalid_window_configuration");
   }
   const requiredSessions = Math.max(minimumSessions, baselineWindow + recentWindow);
+  const minimumFeatureSamples = Math.max(
+    2,
+    Math.ceil(Math.min(baselineWindow, recentWindow) * minimumFeatureSupportFraction),
+  );
 
   const candidateSessions = sessions.filter((session) => biomechanicsSummary(session));
-  const patientIds = [...new Set(candidateSessions.map((session) => session?.patient_id).filter(Boolean))];
+  if (!candidateSessions.length) return unavailable("no_biomechanics_sessions");
+  if (candidateSessions.some((session) => !session?.patient_id)) {
+    return unavailable("missing_patient_identity", {
+      message: "Patient identity is required for within-person longitudinal analysis.",
+    });
+  }
+  const patientIds = [...new Set(candidateSessions.map((session) => session.patient_id))];
   if (patientIds.length > 1) {
     return unavailable("mixed_patients", {
       message: "Compensation Migration only compares sessions belonging to one patient.",
     });
   }
+  if (candidateSessions.some((session) => !session?.exercise_key)) {
+    return unavailable("missing_exercise_identity", {
+      message: "Exercise identity is required before longitudinal sessions can be compared.",
+    });
+  }
+  const exerciseKeys = [...new Set(candidateSessions.map((session) => session.exercise_key))];
+  if (exerciseKeys.length > 1) {
+    return unavailable("mixed_exercises", {
+      message: "Compensation Migration compares repeated sessions of the same exercise only.",
+    });
+  }
+  if (candidateSessions.some((session) => !session?.id)) {
+    return unavailable("missing_session_identity", {
+      message: "Unique session identity is required before longitudinal analysis.",
+    });
+  }
 
   const seenIds = new Set();
   for (const session of candidateSessions) {
-    if (!session?.id) continue;
     if (seenIds.has(session.id)) {
       return unavailable("duplicate_sessions", {
         message: "Duplicate session records must be removed before longitudinal analysis.",
@@ -234,46 +327,86 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     seenIds.add(session.id);
   }
 
+  const exclusions = {
+    invalidTimestamp: 0,
+    lowOrMissingQuality: 0,
+  };
   const ordered = candidateSessions
-    .filter((session) => sessionQuality(session).usable)
-    .filter((session) => safeDateMs(session) !== null)
+    .filter((session) => {
+      const hasTimestamp = safeDateMs(session) !== null;
+      if (!hasTimestamp) exclusions.invalidTimestamp += 1;
+      return hasTimestamp;
+    })
+    .filter((session) => {
+      const usable = sessionQuality(session).usable;
+      if (!usable) exclusions.lowOrMissingQuality += 1;
+      return usable;
+    })
     .sort((a, b) => safeDateMs(a) - safeDateMs(b));
 
-  const exerciseKeys = [...new Set(ordered.map((session) => session.exercise_key).filter(Boolean))];
-  if (exerciseKeys.length > 1) {
-    return unavailable("mixed_exercises", {
-      message: "Compensation Migration compares repeated sessions of the same exercise only.",
-    });
-  }
   if (ordered.length < requiredSessions) {
     return unavailable("insufficient_sessions", {
       requiredSessions,
       availableSessions: ordered.length,
       excludedSessions: candidateSessions.length - ordered.length,
+      exclusions,
+    });
+  }
+
+  const context = comparisonContext(ordered);
+  if (context.error === "mixed_capture_context") {
+    return unavailable("mixed_capture_context", {
+      message: "Camera-view metadata changed across the comparison window; view-dependent biomechanics cannot be pooled safely.",
+    });
+  }
+  if (context.error === "mixed_prescribed_side") {
+    return unavailable("mixed_prescribed_side", {
+      message: "Prescribed side changed across the comparison window; sessions must be stratified before longitudinal analysis.",
     });
   }
 
   const baselineSessions = ordered.slice(0, baselineWindow);
   const recentSessions = ordered.slice(-recentWindow);
   const shifts = Object.keys(FEATURE_DEFINITIONS)
-    .map((featureName) => featureShift({ featureName, baselineSessions, recentSessions }))
+    .map((featureName) => featureShift({
+      featureName,
+      baselineSessions,
+      recentSessions,
+      minimumFeatureSamples,
+    }))
     .filter(Boolean);
   const families = aggregateFamilies(shifts);
   const candidates = redistributionCandidates(families);
-  const strongestAway = families.find((family) => Number.isFinite(family.standardizedShift) && family.standardizedShift > 0) || null;
-  const strongestToward = [...families]
-    .sort((a, b) => (a.standardizedShift || 0) - (b.standardizedShift || 0))
-    .find((family) => Number.isFinite(family.standardizedShift) && family.standardizedShift < 0) || null;
+  const strongestIncrease = families.find((family) => family.persistent
+    && family.direction === 1
+    && Number.isFinite(family.standardizedShift)) || null;
+  const strongestDecrease = [...families]
+    .filter((family) => family.persistent && family.direction === -1 && Number.isFinite(family.standardizedShift))
+    .sort((a, b) => a.standardizedShift - b.standardizedShift)[0] || null;
+
+  const limitations = [];
+  if (!context.cameraView) {
+    limitations.push("Camera-view metadata was not recorded. Consistent capture position should be verified before interpreting longitudinal changes.");
+  }
+  if (!context.prescribedSide) {
+    limitations.push("Prescribed-side metadata was not recorded for this comparison.");
+  }
 
   return {
     schemaVersion: COMPENSATION_MIGRATION_SCHEMA_VERSION,
     status: "available",
     clinicalStatus: "descriptive_unvalidated",
-    patientId: patientIds[0] || null,
-    exerciseKey: exerciseKeys[0] || null,
+    referenceType: "early_session_within_person",
+    patientId: patientIds[0],
+    exerciseKey: exerciseKeys[0],
     sessionCount: ordered.length,
     excludedSessions: candidateSessions.length - ordered.length,
+    exclusions,
+    minimumFeatureSamples,
+    comparisonContext: context,
+    limitations,
     baselineWindow: {
+      label: "early_session_reference",
       count: baselineSessions.length,
       start: baselineSessions[0]?.completed_at || baselineSessions[0]?.created_at || baselineSessions[0]?.started_at || null,
       end: baselineSessions.at(-1)?.completed_at || baselineSessions.at(-1)?.created_at || baselineSessions.at(-1)?.started_at || null,
@@ -287,17 +420,26 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     featureShifts: shifts,
     familyShifts: families,
     redistributionCandidates: candidates,
-    strongestShiftAwayFromBaseline: strongestAway,
-    strongestShiftTowardBaseline: strongestToward,
+    strongestIncreaseFromEarlyReference: strongestIncrease,
+    strongestDecreaseFromEarlyReference: strongestDecrease,
     interpretation: candidates.length
-      ? "A repeated same-exercise pattern shows one movement family moving toward the person's early-session baseline while another moves farther away. This is a descriptive redistribution signal for therapist review, not evidence that an injury moved."
-      : "No persistent cross-family redistribution signal met the current within-person descriptive threshold.",
+      ? "A repeated same-exercise pattern shows one movement-feature family decreasing while another increases relative to the person's early-session reference. This inverse longitudinal pattern is for therapist review only; it does not establish mechanical load transfer, causation, injury migration, or injury risk."
+      : "No persistent, directionally consistent cross-family inverse-change pattern met the current within-person descriptive threshold.",
   };
 }
 
 /** Analyze a single patient's history without mixing exercise types. */
 export function analyzeCompensationMigrationHistory(sessions = [], options = {}) {
-  const patientIds = [...new Set(sessions.map((session) => session?.patient_id).filter(Boolean))];
+  const sessionsWithBiomechanics = sessions.filter((session) => biomechanicsSummary(session));
+  if (sessionsWithBiomechanics.some((session) => !session?.patient_id)) {
+    return [{
+      exerciseKey: null,
+      ...unavailable("missing_patient_identity", {
+        message: "Compensation Migration history must be scoped to one identified patient before grouping by exercise.",
+      }),
+    }];
+  }
+  const patientIds = [...new Set(sessionsWithBiomechanics.map((session) => session.patient_id))];
   if (patientIds.length > 1) {
     return [{
       exerciseKey: null,
@@ -307,9 +449,9 @@ export function analyzeCompensationMigrationHistory(sessions = [], options = {})
     }];
   }
   const groups = new Map();
-  for (const session of sessions) {
+  for (const session of sessionsWithBiomechanics) {
     const exerciseKey = session?.exercise_key;
-    if (!exerciseKey || !biomechanicsSummary(session)) continue;
+    if (!exerciseKey) continue;
     if (!groups.has(exerciseKey)) groups.set(exerciseKey, []);
     groups.get(exerciseKey).push(session);
   }
