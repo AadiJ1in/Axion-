@@ -1,5 +1,6 @@
 import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { chooseMediapipeDelegate, resolveMediapipeConfig } from "./mediapipe-config.js";
+import { createWorkerPoseRuntime, supportsPoseWorker } from "./pose-worker-runtime.js";
 
 const verifiedModelUrls = new Map();
 
@@ -110,7 +111,6 @@ export function createLocalPoseRuntime({
       try {
         await pending;
       } finally {
-        // Do not let an older cancelled initialization clear a newer one.
         if (initializationPromise === pending) initializationPromise = null;
       }
       return { delegate };
@@ -152,7 +152,107 @@ export function createLocalPoseRuntime({
       initializationPromise = null;
     },
     getState() {
-      return Object.freeze({ delegate, forceCpu, initialized: Boolean(landmarker) });
+      return Object.freeze({ delegate, forceCpu, initialized: Boolean(landmarker), worker: false });
+    },
+  });
+}
+
+/**
+ * Worker-first runtime. In modern browsers, MediaPipe inference receives an
+ * ImageBitmap in a dedicated worker so synchronous detectForVideo() does not
+ * monopolize Axion's UI/game thread. If worker startup or inference fails, Axion
+ * transparently returns to the proven local runtime for the same session.
+ */
+export function createPoseRuntime({
+  mediapipe = {},
+  onState = () => {},
+  worker = {},
+} = {}) {
+  const workerPreference = mediapipe.worker ?? "auto";
+  const workerAllowed = workerPreference !== false && workerPreference !== "off";
+  const canUseWorker = workerAllowed && supportsPoseWorker();
+  const localRuntime = createLocalPoseRuntime({ mediapipe, onState });
+  let workerRuntime = canUseWorker ? createWorkerPoseRuntime({ mediapipe, onState, ...worker }) : null;
+  let activeRuntime = workerRuntime || localRuntime;
+  let initialized = false;
+  let initializationPromise = null;
+
+  async function activateLocal(reason) {
+    if (activeRuntime !== localRuntime) {
+      try { activeRuntime?.close?.(); } catch { /* worker may already have failed */ }
+      activeRuntime = localRuntime;
+      workerRuntime = null;
+      onState({ code: "model_fallback", label: reason || "Using compatibility tracking", quality: null });
+    }
+    await localRuntime.initialize();
+    initialized = true;
+    return localRuntime.getState();
+  }
+
+  async function initialize() {
+    if (initialized) return activeRuntime.getState();
+    if (initializationPromise) return initializationPromise;
+    initializationPromise = (async () => {
+      if (activeRuntime === workerRuntime && workerRuntime) {
+        try {
+          await workerRuntime.initialize();
+          initialized = true;
+          return workerRuntime.getState();
+        } catch {
+          return activateLocal("Background tracking unavailable · using compatibility mode");
+        }
+      }
+      await localRuntime.initialize();
+      initialized = true;
+      return localRuntime.getState();
+    })();
+    try {
+      return await initializationPromise;
+    } finally {
+      initializationPromise = null;
+    }
+  }
+
+  return Object.freeze({
+    kind: "adaptive-pose-runtime",
+    config: localRuntime.config,
+    initialize,
+    async infer(source, timestampMs) {
+      await initialize();
+      try {
+        return await activeRuntime.infer(source, timestampMs);
+      } catch (error) {
+        if (activeRuntime === workerRuntime && workerRuntime) {
+          await activateLocal("Background tracking interrupted · continuing locally");
+          return localRuntime.infer(source, timestampMs);
+        }
+        throw error;
+      }
+    },
+    async switchToCpu() {
+      await initialize();
+      return activeRuntime.switchToCpu();
+    },
+    canFallbackToCpu() {
+      return activeRuntime.canFallbackToCpu();
+    },
+    draw(canvas, video, result) {
+      return activeRuntime.draw(canvas, video, result);
+    },
+    close() {
+      initialized = false;
+      initializationPromise = null;
+      try { workerRuntime?.close?.(); } catch { /* worker cleanup */ }
+      try { localRuntime.close(); } catch { /* local cleanup */ }
+      workerRuntime = null;
+      activeRuntime = localRuntime;
+    },
+    getState() {
+      return Object.freeze({
+        ...activeRuntime.getState(),
+        kind: activeRuntime.kind,
+        adaptive: true,
+      });
     },
   });
 }
