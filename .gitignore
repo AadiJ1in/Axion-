@@ -19,3 +19,6 @@ ml/.venv/
 ml/output/
 __pycache__/
 *.pyc
+
+# Local verified MediaPipe model assets.
+ml/models/*.task
