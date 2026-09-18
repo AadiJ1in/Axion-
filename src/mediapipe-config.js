@@ -1,6 +1,7 @@
 const DEFAULT_MODEL = Object.freeze({
   id: "pose-landmarker-lite-float16-v1",
-  url: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+  sourceUrl: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+  appPath: "models/pose-landmarker-lite-float16-v1.task",
   sha256: "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
 });
 
@@ -40,7 +41,7 @@ export function resolveMediapipeConfig(overrides = {}, env = import.meta.env || 
     || appRelativeRoot(baseUrl, "mediapipe");
 
   const customModelUrl = nonEmpty(overrides.modelUrl) || nonEmpty(env.VITE_MEDIAPIPE_MODEL_URL);
-  const modelUrl = customModelUrl || DEFAULT_MODEL.url;
+  const modelUrl = customModelUrl || appRelativeRoot(baseUrl, DEFAULT_MODEL.appPath);
   const configuredHash = nonEmpty(overrides.modelSha256) || nonEmpty(env.VITE_MEDIAPIPE_MODEL_SHA256);
   const modelSha256 = configuredHash || (customModelUrl ? null : DEFAULT_MODEL.sha256);
 
