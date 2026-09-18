@@ -41,6 +41,20 @@ function walk(directory) {
   return out;
 }
 
+function inferCondition(file) {
+  const relative = path.relative(root, file).toLowerCase().split(path.sep);
+  if (relative.includes("incorrect")) return "incorrect";
+  if (relative.includes("correct")) return "correct";
+  return "unspecified";
+}
+
+function medianAbsoluteDeviation(values) {
+  const usable = values.filter(Number.isFinite);
+  if (!usable.length) return null;
+  const center = percentile(usable, 0.5);
+  return percentile(usable.map((value) => Math.abs(value - center)), 0.5);
+}
+
 function percentile(values, q) {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
   if (!sorted.length) return null;
@@ -143,6 +157,7 @@ function benchmarkEpisode(positionFile, angleFile, parsed) {
   return {
     movementKey: parsed.movementKey,
     movementName: parsed.movement?.name || parsed.movementKey,
+    condition: inferCondition(positionFile),
     axionExerciseKey: parsed.movement?.axionExerciseKey || null,
     benchmarkScope: parsed.movement?.benchmarkScope || "research_only",
     subjectKey: parsed.subjectKey,
@@ -164,9 +179,17 @@ function benchmarkEpisode(positionFile, angleFile, parsed) {
   };
 }
 
+const labeledConditions = new Set(positionFiles.map(inferCondition));
+const defaultCondition = labeledConditions.has("correct") ? "correct" : "all";
+const requestedCondition = String(process.env.UI_PRMD_CONDITION || defaultCondition).toLowerCase();
+if (!["correct", "incorrect", "unspecified", "all"].includes(requestedCondition)) {
+  throw new Error(`UI_PRMD_INVALID_CONDITION ${requestedCondition}`);
+}
+
 const supportedPositions = positionFiles
-  .map((file) => ({ file, parsed: parseUiPrmdSegmentFilename(path.basename(file)) }))
-  .filter((item) => item.parsed?.movement?.axionExerciseKey);
+  .map((file) => ({ file, parsed: parseUiPrmdSegmentFilename(path.basename(file)), condition: inferCondition(file) }))
+  .filter((item) => item.parsed?.movement?.axionExerciseKey)
+  .filter((item) => requestedCondition === "all" || item.condition === requestedCondition);
 
 const episodes = [];
 const skipped = [];
@@ -215,6 +238,55 @@ function aggregateMovement(movementKey) {
   };
 }
 
+function repeatabilityReferences() {
+  const references = [];
+  for (const movementKey of [...new Set(episodes.map((episode) => episode.movementKey))]) {
+    const movementRows = episodes.filter((episode) => episode.movementKey === movementKey);
+    const subjects = [...new Set(movementRows.map((episode) => episode.subjectKey))];
+    const identities = [...new Set(movementRows.flatMap((episode) =>
+      episode.metrics.map((metric) => `${metric.metricKey}|${metric.side}|${metric.unit || ""}`)))];
+
+    for (const identity of identities) {
+      const [metricKey, side, unit] = identity.split("|");
+      const subjectStats = [];
+      for (const subjectKey of subjects) {
+        const medians = movementRows
+          .filter((episode) => episode.subjectKey === subjectKey)
+          .flatMap((episode) => episode.metrics.filter((metric) =>
+            metric.metricKey === metricKey && metric.side === side && String(metric.unit || "") === unit))
+          .map((metric) => metric.median)
+          .filter(Number.isFinite);
+        if (medians.length < 2) continue;
+        subjectStats.push({
+          subjectKey,
+          episodes: medians.length,
+          median: percentile(medians, 0.5),
+          medianAbsoluteDeviation: medianAbsoluteDeviation(medians),
+          p10: percentile(medians, 0.1),
+          p90: percentile(medians, 0.9),
+        });
+      }
+      if (!subjectStats.length) continue;
+      const mads = subjectStats.map((row) => row.medianAbsoluteDeviation).filter(Number.isFinite);
+      references.push({
+        movementKey,
+        movementName: movementRows[0]?.movementName || movementKey,
+        condition: movementRows[0]?.condition || "unspecified",
+        metricKey,
+        side,
+        unit: unit || null,
+        subjectsWithRepeatedEpisodes: subjectStats.length,
+        medianWithinSubjectMAD: percentile(mads, 0.5),
+        p90WithinSubjectMAD: percentile(mads, 0.9),
+        engineeringThreeMadReference: percentile(mads, 0.5) === null ? null : 3 * percentile(mads, 0.5),
+        subjectStats,
+        interpretation: "Healthy/repeated-movement variability reference only; not a clinical abnormality threshold.",
+      });
+    }
+  }
+  return references;
+}
+
 const movementKeys = [...new Set(episodes.map((episode) => episode.movementKey))].sort();
 const result = {
   benchmark: "ui-prmd-kinect-to-axion-world-v2",
@@ -234,10 +306,13 @@ const result = {
     ],
   },
   datasetRootIncludedInOutput: false,
+  requestedCondition,
+  discoveredConditions: [...labeledConditions].sort(),
   discoveredPositionFiles: positionFiles.length,
   benchmarkedEpisodes: episodes.length,
   skipped,
   movements: movementKeys.map(aggregateMovement).filter(Boolean),
+  repeatabilityReferences: repeatabilityReferences(),
   episodes,
 };
 
@@ -251,7 +326,7 @@ if (outputPath) {
   console.log(`UI-PRMD benchmark written to ${outputPath}`);
 }
 
-console.log(`UI-PRMD benchmark complete: ${episodes.length} episodes across ${movementKeys.length} supported movements; ${skipped.length} skipped.`);
+console.log(`UI-PRMD benchmark complete: ${episodes.length} ${requestedCondition} episodes across ${movementKeys.length} supported movements; ${skipped.length} skipped.`);
 for (const movement of result.movements) {
   console.log(`${movement.movementKey} ${movement.movementName}: ${movement.episodes} episodes, ${movement.subjects} subjects`);
 }
