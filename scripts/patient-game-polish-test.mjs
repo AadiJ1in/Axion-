@@ -11,6 +11,8 @@ assert.ok(!js.includes('MutationObserver'), 'patient polish must remain observer
 assert.ok(js.includes('acknowledgeSafety'), 'explicit resume must release the safety UI latch');
 assert.ok(js.includes('REST_SYNC_INTERVAL_MS = 250'), 'rest countdown cadence must remain explicit and lightweight');
 assert.ok(js.includes('startPolishTimer();'), 'rest synchronization must restart after a page restore');
+assert.ok(!js.includes("}, { once:true });"), 'page lifecycle cleanup must survive repeated bfcache hide/show cycles');
+assert.ok(js.includes('presentationFrame = 0;'), 'cancelled presentation frames must release the scheduling latch');
 assert.ok(js.includes('LATE_CLINIC_SYNC_WINDOW_MS = 12000'), 'late clinic presentation polling must be bounded');
 assert.ok(js.includes('startLateClinicSyncWindow();'), 'bounded clinic synchronization must start after initial render');
 assert.ok(js.includes("const lab = document.querySelector('.adventure-lab')"), 'rest polling must exit immediately outside Movement Lab');
