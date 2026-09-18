@@ -167,7 +167,9 @@ const related = [
 {
   const observations = [];
   const knee = [24, 21, 18, 14, 10, 7, 5];
-  const trunk = [10, 100, 20, 110, 30, 120, 40];
+  // Both exercises drift upward independently, but the interleaved series has
+  // only a moderate global rank correlation (rho = 0.50) with primary recovery.
+  const trunk = [50, 0, 60, 10, 70, 20, 80];
   for (let i = 0; i < knee.length; i += 1) {
     const exercise = i % 2 === 0 ? "squat" : "step_down";
     observations.push(observation(i + 1, exercise, "right_knee_asymmetry", "knee", "right", knee[i]));
