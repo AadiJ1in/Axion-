@@ -74,7 +74,7 @@ export function describeAmplitudeChange(currentValues = {}, referenceCenters = {
     sourceTrials: ["NCT06183970"],
     evidenceRelation: "conceptual_precedent",
     clinicalInterpretation: false,
-    note: "Describes measured excursion change relative to a reference Movement Signature. It does not identify weakness, pain, compensation, deterioration, or recovery.",
+    note: "Describes measured excursion change relative to a reference Movement Signature. It does not assign a clinical cause or clinical meaning to the change.",
   };
 }
 
