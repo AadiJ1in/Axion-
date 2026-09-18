@@ -37,6 +37,8 @@ assert.ok(js.includes('Every movement tells a story.'), 'brand statement remains
 assert.ok(js.includes('SYNTHETIC DEMO SESSION'), 'homepage example metrics must be clearly labeled synthetic');
 assert.ok(js.includes('Experience as Patient') && js.includes('Experience as Therapist'), 'demo entry must explain both roles');
 assert.ok(js.includes('Report a concern'), 'patient concern action must use distinct terminology');
+assert.ok(js.includes('function preferredScrollBehavior()'), 'public navigation motion must share one reduced-motion-aware behavior');
+assert.ok(js.includes('behavior: preferredScrollBehavior()'), 'public section/demo scrolling must respect reduced motion');
 assert.ok(!js.includes('Good afternoon,'), 'final patient greeting must not hardcode a daypart');
 
 assert.ok(css.includes('grid-template-columns:repeat(4,minmax(0,1fr))'), 'mobile patient nav must use four equal columns');
