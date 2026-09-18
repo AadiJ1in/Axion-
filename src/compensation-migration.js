@@ -82,11 +82,7 @@ function sessionQuality(session) {
 function summarizeWindow(sessions, featureName) {
   const values = sessions.map((session) => normalizedFeatureValue(session, featureName)).filter(Number.isFinite);
   if (!values.length) return null;
-  return {
-    samples: values.length,
-    median: median(values),
-    values,
-  };
+  return { samples: values.length, median: median(values), values };
 }
 
 function baselineStats(sessions, featureName) {
@@ -95,20 +91,13 @@ function baselineStats(sessions, featureName) {
   const deviation = mad(window.values, window.median);
   const definition = FEATURE_DEFINITIONS[featureName];
   const robustScale = Math.max(definition?.floor || 1, Number.isFinite(deviation) ? deviation * 1.4826 : 0);
-  return {
-    samples: window.samples,
-    median: window.median,
-    robustScale,
-  };
+  return { samples: window.samples, median: window.median, robustScale };
 }
 
 function shiftAgainstBaseline(baseline, recent) {
   if (!baseline || !recent) return null;
   const delta = recent.median - baseline.median;
-  return {
-    delta,
-    standardized: baseline.robustScale > 0 ? delta / baseline.robustScale : null,
-  };
+  return { delta, standardized: baseline.robustScale > 0 ? delta / baseline.robustScale : null };
 }
 
 function persistenceDirection(sessions, featureName, baseline) {
@@ -199,39 +188,69 @@ function qualitySummary(sessions) {
   };
 }
 
+function unavailable(reason, extra = {}) {
+  return {
+    schemaVersion: COMPENSATION_MIGRATION_SCHEMA_VERSION,
+    status: "unavailable",
+    reason,
+    ...extra,
+  };
+}
+
+function positiveInteger(value) {
+  return Number.isInteger(value) && value > 0;
+}
+
 /**
- * Compare one repeated exercise across a person's chronological sessions.
- *
- * Default windows intentionally require multiple sessions on each side. A single
- * anomalous recording cannot produce a persistent redistribution candidate.
+ * Compare one repeated exercise across one person's chronological sessions.
+ * A single anomalous recording cannot produce a persistent redistribution candidate.
  */
 export function analyzeExerciseCompensationMigration(sessions = [], {
   baselineWindow = 3,
   recentWindow = 3,
   minimumSessions = 6,
 } = {}) {
-  const ordered = sessions
-    .filter((session) => biomechanicsSummary(session))
+  if (![baselineWindow, recentWindow, minimumSessions].every(positiveInteger)) {
+    return unavailable("invalid_window_configuration");
+  }
+  const requiredSessions = Math.max(minimumSessions, baselineWindow + recentWindow);
+
+  const candidateSessions = sessions.filter((session) => biomechanicsSummary(session));
+  const patientIds = [...new Set(candidateSessions.map((session) => session?.patient_id).filter(Boolean))];
+  if (patientIds.length > 1) {
+    return unavailable("mixed_patients", {
+      message: "Compensation Migration only compares sessions belonging to one patient.",
+    });
+  }
+
+  const seenIds = new Set();
+  for (const session of candidateSessions) {
+    if (!session?.id) continue;
+    if (seenIds.has(session.id)) {
+      return unavailable("duplicate_sessions", {
+        message: "Duplicate session records must be removed before longitudinal analysis.",
+      });
+    }
+    seenIds.add(session.id);
+  }
+
+  const ordered = candidateSessions
     .filter((session) => sessionQuality(session).usable)
-    .sort((a, b) => (safeDateMs(a) ?? 0) - (safeDateMs(b) ?? 0));
+    .filter((session) => safeDateMs(session) !== null)
+    .sort((a, b) => safeDateMs(a) - safeDateMs(b));
 
   const exerciseKeys = [...new Set(ordered.map((session) => session.exercise_key).filter(Boolean))];
   if (exerciseKeys.length > 1) {
-    return {
-      schemaVersion: COMPENSATION_MIGRATION_SCHEMA_VERSION,
-      status: "unavailable",
-      reason: "mixed_exercises",
+    return unavailable("mixed_exercises", {
       message: "Compensation Migration compares repeated sessions of the same exercise only.",
-    };
+    });
   }
-  if (ordered.length < minimumSessions || ordered.length < baselineWindow + recentWindow) {
-    return {
-      schemaVersion: COMPENSATION_MIGRATION_SCHEMA_VERSION,
-      status: "unavailable",
-      reason: "insufficient_sessions",
-      requiredSessions: Math.max(minimumSessions, baselineWindow + recentWindow),
+  if (ordered.length < requiredSessions) {
+    return unavailable("insufficient_sessions", {
+      requiredSessions,
       availableSessions: ordered.length,
-    };
+      excludedSessions: candidateSessions.length - ordered.length,
+    });
   }
 
   const baselineSessions = ordered.slice(0, baselineWindow);
@@ -241,26 +260,28 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     .filter(Boolean);
   const families = aggregateFamilies(shifts);
   const candidates = redistributionCandidates(families);
-
   const strongestAway = families.find((family) => Number.isFinite(family.standardizedShift) && family.standardizedShift > 0) || null;
-  const strongestToward = [...families].sort((a, b) => (a.standardizedShift || 0) - (b.standardizedShift || 0))
+  const strongestToward = [...families]
+    .sort((a, b) => (a.standardizedShift || 0) - (b.standardizedShift || 0))
     .find((family) => Number.isFinite(family.standardizedShift) && family.standardizedShift < 0) || null;
 
   return {
     schemaVersion: COMPENSATION_MIGRATION_SCHEMA_VERSION,
     status: "available",
     clinicalStatus: "descriptive_unvalidated",
+    patientId: patientIds[0] || null,
     exerciseKey: exerciseKeys[0] || null,
     sessionCount: ordered.length,
+    excludedSessions: candidateSessions.length - ordered.length,
     baselineWindow: {
       count: baselineSessions.length,
-      start: baselineSessions[0]?.completed_at || baselineSessions[0]?.created_at || null,
-      end: baselineSessions.at(-1)?.completed_at || baselineSessions.at(-1)?.created_at || null,
+      start: baselineSessions[0]?.completed_at || baselineSessions[0]?.created_at || baselineSessions[0]?.started_at || null,
+      end: baselineSessions.at(-1)?.completed_at || baselineSessions.at(-1)?.created_at || baselineSessions.at(-1)?.started_at || null,
     },
     recentWindow: {
       count: recentSessions.length,
-      start: recentSessions[0]?.completed_at || recentSessions[0]?.created_at || null,
-      end: recentSessions.at(-1)?.completed_at || recentSessions.at(-1)?.created_at || null,
+      start: recentSessions[0]?.completed_at || recentSessions[0]?.created_at || recentSessions[0]?.started_at || null,
+      end: recentSessions.at(-1)?.completed_at || recentSessions.at(-1)?.created_at || recentSessions.at(-1)?.started_at || null,
     },
     quality: qualitySummary([...baselineSessions, ...recentSessions]),
     featureShifts: shifts,
@@ -274,10 +295,17 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
   };
 }
 
-/**
- * Analyze a patient history without mixing exercise types.
- */
+/** Analyze a single patient's history without mixing exercise types. */
 export function analyzeCompensationMigrationHistory(sessions = [], options = {}) {
+  const patientIds = [...new Set(sessions.map((session) => session?.patient_id).filter(Boolean))];
+  if (patientIds.length > 1) {
+    return [{
+      exerciseKey: null,
+      ...unavailable("mixed_patients", {
+        message: "Compensation Migration history must be scoped to exactly one patient before grouping by exercise.",
+      }),
+    }];
+  }
   const groups = new Map();
   for (const session of sessions) {
     const exerciseKey = session?.exercise_key;
