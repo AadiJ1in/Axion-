@@ -1,36 +1,6 @@
 import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
 import { createRepBiomechanicsAccumulator, extractBiomechanicsFrame } from "./biomechanics.js";
-import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
-import { chooseMediapipeDelegate, resolveMediapipeConfig } from "./mediapipe-config.js";
-
-const verifiedModelUrls = new Map();
-
-async function verifiedModelUrl(model) {
-  const cacheKey = `${model.url}#${model.sha256}`;
-  if (!verifiedModelUrls.has(cacheKey)) {
-    const promise = (async () => {
-      const response = await fetch(model.url, {
-        cache: "force-cache",
-        credentials: "omit",
-        referrerPolicy: "no-referrer",
-      });
-      if (!response.ok) throw new Error("The movement model could not be downloaded securely.");
-      const modelBytes = await response.arrayBuffer();
-      const actualHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", modelBytes)))
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
-      if (actualHash !== model.sha256) {
-        throw new Error("Movement model integrity verification failed.");
-      }
-      return URL.createObjectURL(new Blob([modelBytes], { type: "application/octet-stream" }));
-    })().catch((error) => {
-      verifiedModelUrls.delete(cacheKey);
-      throw error;
-    });
-    verifiedModelUrls.set(cacheKey, promise);
-  }
-  return verifiedModelUrls.get(cacheKey);
-}
+import { createLocalPoseRuntime } from "./pose-runtime.js";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const MIN_TRACKING_SCORE = 0.62;
@@ -155,10 +125,7 @@ export async function createMovementTracker(options) {
     mediapipe = {},
   } = options || {};
   const profile = getMovementProfile(exerciseKey, trackingMode);
-  const mediapipeConfig = resolveMediapipeConfig(mediapipe);
-  let landmarker;
-  let preferCpu = false;
-  const trackerApi = {};
+  const poseRuntime = createLocalPoseRuntime({ mediapipe, onState: onTrackingState });
   let stream;
   let running = false;
   let cameraGeneration = 0;
@@ -196,40 +163,7 @@ export async function createMovementTracker(options) {
   let latestBiomechanicsFrame = null;
 
   async function initialize() {
-    onTrackingState({ code: "model_loading", label: "Loading movement model", quality: null });
-    trackerApi.DrawingUtils = DrawingUtils;
-    trackerApi.PoseLandmarker = PoseLandmarker;
-    const [vision, modelAssetPath] = await Promise.all([
-      FilesetResolver.forVisionTasks(mediapipeConfig.wasmRoot),
-      verifiedModelUrl(mediapipeConfig.model),
-    ]);
-    const options = {
-      baseOptions: {
-        modelAssetPath,
-        delegate: chooseMediapipeDelegate(mediapipeConfig.delegate, {
-          webgl: supportsWebGL(),
-          forceCpu: preferCpu,
-        }),
-      },
-      runningMode: "VIDEO",
-      numPoses: 2,
-      minPoseDetectionConfidence: 0.55,
-      minPosePresenceConfidence: 0.55,
-      minTrackingConfidence: 0.55,
-    };
-    let activeDelegate = options.baseOptions.delegate;
-    try {
-      landmarker = await PoseLandmarker.createFromOptions(vision, options);
-    } catch (gpuError) {
-      if (options.baseOptions.delegate !== "GPU") throw gpuError;
-      onTrackingState({ code: "model_fallback", label: "Starting compatibility mode", quality: null });
-      activeDelegate = "CPU";
-      landmarker = await PoseLandmarker.createFromOptions(vision, {
-        ...options,
-        baseOptions: { ...options.baseOptions, delegate: "CPU" },
-      });
-    }
-    onTrackingState({ code: "model_ready", label: `Movement model ready · ${activeDelegate}`, quality: null });
+    await poseRuntime.initialize();
   }
 
   function trackingQuality(landmarks) {
@@ -258,16 +192,7 @@ export async function createMovementTracker(options) {
   }
 
   function draw(result) {
-    const ctx = canvas.getContext("2d");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!result.landmarks?.length) return;
-    const drawing = new trackerApi.DrawingUtils(ctx);
-    drawing.drawConnectors(result.landmarks[0], trackerApi.PoseLandmarker.POSE_CONNECTIONS, {
-      color: "rgba(231,255,246,.72)", lineWidth: 3,
-    });
-    drawing.drawLandmarks(result.landmarks[0], { color: "#6ef0b1", radius: 2.5 });
+    poseRuntime.draw(canvas, video, result);
   }
 
   function calibrate(metrics, now) {
@@ -449,35 +374,28 @@ export async function createMovementTracker(options) {
       let result;
       let poseAt = cameraFrameAt;
       try {
-        result = landmarker.detectForVideo(video, now);
+        result = poseRuntime.infer(video, now);
         poseAt = performance.now();
         draw(result);
       } catch (inferenceError) {
-        // A number of browsers/laptops can create the GPU landmarker successfully
-        // and then lose the WebGL context on the first real video inference. Recover
-        // once in-place on CPU so a presentation/session does not die after camera
-        // permission has already been granted. Completed reps and calibration state
-        // remain untouched.
-        if (!preferCpu && running) {
+        // Some laptops can initialize GPU inference successfully and then lose
+        // the graphics context on a real camera frame. The runtime owns that
+        // backend-specific recovery so movement state remains backend-agnostic.
+        if (poseRuntime.canFallbackToCpu() && running) {
           const recoveryGeneration = cameraGeneration;
-          preferCpu = true;
-          try { landmarker?.close?.(); } catch { /* The failed GPU model may already be disposed. */ }
-          landmarker = null;
-          onTrackingState({ code: "model_fallback", label: "Switching to compatibility tracking", quality: null });
           try {
-            await initialize();
+            await poseRuntime.switchToCpu();
             if (!running || recoveryGeneration !== cameraGeneration) return;
             lastVideoTime = -1;
             rafId = requestAnimationFrame(frame);
             return;
           } catch {
-            // If CPU initialization also fails, continue into the normal recoverable
+            // If compatibility mode also fails, use the normal recoverable
             // camera error state below.
           }
         }
         stop();
-        try { landmarker?.close?.(); } catch { /* The failed model may already be disposed. */ }
-        landmarker = null;
+        poseRuntime.close();
         pauseMeasurement("Tracking stopped. Your completed reps are preserved.");
         onTrackingState({ code: "camera_error", label: "Movement tracking needs a restart", quality: null });
         onError("The movement model stopped responding. Restart the camera scan to continue; your completed reps are preserved.");
@@ -525,7 +443,7 @@ export async function createMovementTracker(options) {
     repCycle.cancelPending();
     try {
       if (!navigator.mediaDevices?.getUserMedia) { onTrackingState({ code: "no_camera", label: "No compatible camera found", quality: null }); throw new Error("This browser does not expose a compatible camera."); }
-      if (!landmarker) await initialize();
+      if (!poseRuntime.getState().initialized) await initialize();
       if (generation !== cameraGeneration) return;
       onTrackingState({ code: "camera_starting", label: "Starting camera", quality: null });
       const openedStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
@@ -561,8 +479,7 @@ export async function createMovementTracker(options) {
   }
   function destroy() {
     stop();
-    try { landmarker?.close?.(); } catch { /* A failed model may already be disposed. */ }
-    landmarker = null;
+    poseRuntime.close();
     repCycle.cancelPending();
   }
   function pause() { if (!running) return; running = false; if (rafId !== null) cancelAnimationFrame(rafId); rafId = null; repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
