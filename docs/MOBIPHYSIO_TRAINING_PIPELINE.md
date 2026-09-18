@@ -136,8 +136,17 @@ Training safeguards:
 - each exercise must have enough distinct training groups and test rows
 - every model is compared against a mean-score baseline
 - feature missing rates and held-out MAE/RMSE/R² are written into the artifact
+- held-out metrics are also reported by camera view and source when each subgroup has enough samples
 
 The browser runtime refuses to score an exercise unless the model bundle contains that exact exercise ID.
+
+Before using an artifact anywhere else, run the fail-closed research gate:
+
+```bash
+python ml/validate_research_artifact.py ml/output/movement-quality-v1.json
+```
+
+This gate requires explicit no-leakage metadata, finite parameters/held-out metrics, enough held-out rows, and—by default—each exercise model beating its held-out mean-score baseline. Passing this gate is **not** clinical validation; it is a minimum software/research-quality requirement.
 
 ## 7. Verify the pipeline
 
@@ -148,6 +157,8 @@ The dedicated `ML research checks` GitHub Actions workflow verifies:
 - browser/offline MediaPipe model URL and SHA-256 match
 - MediaPipe/OpenCV imports work
 - synthetic participant-grouped training produces separate exercise models without leakage
+- camera-view/source subgroup metrics are emitted on held-out data
+- the generated artifact passes the fail-closed research acceptance validator
 
 Local parity check:
 
@@ -155,6 +166,7 @@ Local parity check:
 python ml/test_biomechanics_parity.py
 python ml/test_model_config_sync.py
 python ml/test_training_pipeline.py
+python ml/validate_research_artifact.py ml/output/movement-quality-v1.json
 ```
 
 ## Before any model reaches Axion UI
