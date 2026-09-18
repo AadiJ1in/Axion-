@@ -26,6 +26,7 @@ const supabase = {
 };
 
 const metricFrame = (offset = 0) => [
+  { metricKey: "knee_flexion_asymmetry_deg", region: "knee", side: "bilateral", value: 8 - offset * 0.5, unit: "deg", quality: 0.94, context: { source: "pose_world", invariant3d: true } },
   { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", value: 6 + offset, unit: "deg", quality: 0.92, context: { source: "pose_world", invariant3d: true } },
   { metricKey: "shoulder_pelvis_axis_mismatch_3d_deg", region: "trunk", side: "bilateral", value: 3 + offset, unit: "deg", quality: 0.91, context: { source: "pose_world", invariant3d: true } },
   { metricKey: "hip_flexion_asymmetry_3d_deg", region: "hip", side: "bilateral", value: 4 + offset, unit: "deg", quality: 0.91, context: { source: "pose_world", invariant3d: true } },
