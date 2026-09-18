@@ -362,7 +362,7 @@ export async function createMovementTracker(options) {
 
   function scheduleNextFrame() {
     if (!running) return;
-    frameScheduler.schedule(() => { void frame(); });
+    frameScheduler.schedule(() => frame());
   }
 
   async function frame() {
