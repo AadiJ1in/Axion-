@@ -3,11 +3,13 @@ import {
   BIOMECHANICS_FEATURE_SCHEMA_VERSION,
   COMPENSATION_ANALYSIS_VERSION,
   LOWER_BODY_COMPENSATION_GRAPH,
+  SESSION_BIOMECHANICS_DEFINITION,
+  extractSessionCompensationMetrics,
   persistSessionBiomechanics,
 } from "../src/compensation-migration-service.js";
 
 let insertedRow = null;
-let containsFilters = [];
+const containsFilters = [];
 const supabase = {
   from(table) {
     assert.equal(table, "movement_biomechanics_sessions");
@@ -25,15 +27,25 @@ const supabase = {
   },
 };
 
-const metricFrame = (offset = 0) => [
-  { metricKey: "knee_flexion_asymmetry_deg", region: "knee", side: "bilateral", value: 8 - offset * 0.5, unit: "deg", quality: 0.94, context: { source: "pose_world", invariant3d: true } },
-  { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", value: 6 + offset, unit: "deg", quality: 0.92, context: { source: "pose_world", invariant3d: true } },
-  { metricKey: "shoulder_pelvis_axis_mismatch_3d_deg", region: "trunk", side: "bilateral", value: 3 + offset, unit: "deg", quality: 0.91, context: { source: "pose_world", invariant3d: true } },
-  { metricKey: "hip_flexion_asymmetry_3d_deg", region: "hip", side: "bilateral", value: 4 + offset, unit: "deg", quality: 0.91, context: { source: "pose_world", invariant3d: true } },
-  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "left", value: 0.08 + offset / 100, unit: "ratio", quality: 0.9, context: { source: "pose_world", invariant3d: true } },
-  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "right", value: 0.09 + offset / 100, unit: "ratio", quality: 0.9, context: { source: "pose_world", invariant3d: true } },
-  { metricKey: "pelvis_over_stance_offset_3d_proxy", region: "lower_limb", side: "bilateral", value: 0.06 + offset / 100, unit: "ratio", quality: 0.93, context: { source: "pose_world", invariant3d: true } },
-];
+const biomechanicsV1 = {
+  schemaVersion: 1,
+  source: "mediapipe_pose_derived_features",
+  clinicalStatus: "descriptive_unvalidated",
+  repsWithBiomechanics: 10,
+  averageCoverage: 0.92,
+  averageVisibility: 0.91,
+  features: {
+    knee_flexion_asymmetry_deg: { reps: 10, mean: 8.5 },
+    trunk_3d_tilt_deg: { reps: 10, mean: 6.2 },
+    hip_flexion_asymmetry_deg: { reps: 9, mean: 4.4 },
+    ankle_angle_asymmetry_deg: { reps: 8, mean: 3.8 },
+    pelvis_depth_asymmetry_pct: { reps: 10, mean: 5.6 },
+    // Image-space metrics may exist in the canonical summary but are not
+    // promoted into compensation candidacy in the first release.
+    trunk_image_tilt_deg: { reps: 10, mean: 7.2 },
+    left_knee_path_offset_pct: { reps: 10, mean: -4.1 },
+  },
+};
 
 const session = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -46,53 +58,58 @@ const session = {
     average_symmetry_delta: 8.5,
     average_joint_movement_range_degrees: 74,
     measurement_unit: "\u00b0",
+    biomechanics_v1: biomechanicsV1,
   },
 };
+
+const extracted = extractSessionCompensationMetrics(session);
+assert.deepEqual(extracted.map((metric) => metric.metricKey), [
+  "knee_flexion_asymmetry_deg",
+  "trunk_3d_tilt_deg",
+  "hip_flexion_asymmetry_deg",
+  "ankle_angle_asymmetry_deg",
+  "pelvis_depth_asymmetry_pct",
+  "primary_movement_range",
+]);
+assert.equal(extracted.some((metric) => metric.metricKey === "trunk_image_tilt_deg"), false);
+assert.equal(extracted.some((metric) => metric.metricKey.includes("knee_path_offset")), false);
+assert.equal(extracted.some((metric) => "landmarks" in metric || "coordinates" in metric), false);
+assert.equal(extracted.find((metric) => metric.metricKey === "knee_flexion_asymmetry_deg").context.supportCount, 10);
+assert.equal(extracted.find((metric) => metric.metricKey === "hip_flexion_asymmetry_deg").context.supportCount, 9);
+assert.equal(extracted.find((metric) => metric.metricKey === "primary_movement_range").unit, "deg");
 
 const result = await persistSessionBiomechanics({
   supabase,
   patientId: session.patient_id,
   session,
-  frames: [metricFrame(0), metricFrame(1), metricFrame(2)],
-  acceptedSampleCount: 120,
   primaryMetric: LOWER_BODY_COMPENSATION_GRAPH.byExercise.bodyweight_squat.primaryMetric,
   relatedMetrics: LOWER_BODY_COMPENSATION_GRAPH.byExercise.bodyweight_squat.relatedMetrics,
-  featureDefinitionVersion: "whole-body-world-v2",
 });
 
 assert.equal(result.saved, true);
 assert.deepEqual(containsFilters.at(-1), {
   column: "features",
-  value: { definitionVersion: "whole-body-world-v2" },
+  value: { definitionVersion: SESSION_BIOMECHANICS_DEFINITION },
 });
 assert.ok(insertedRow);
 assert.equal(insertedRow.session_id, session.id);
-assert.equal(insertedRow.sample_count, 120);
-assert.equal(insertedRow.features.retainedSampleCount, 3);
-assert.equal(insertedRow.features.totalAcceptedSampleCount, 120);
+assert.equal(insertedRow.sample_count, 10);
 assert.equal(insertedRow.rep_count, 10);
 assert.equal(insertedRow.feature_schema_version, BIOMECHANICS_FEATURE_SCHEMA_VERSION);
 assert.equal(insertedRow.analysis_version, COMPENSATION_ANALYSIS_VERSION);
-assert.equal(BIOMECHANICS_FEATURE_SCHEMA_VERSION, 3);
-assert.equal(COMPENSATION_ANALYSIS_VERSION, 3);
+assert.equal(BIOMECHANICS_FEATURE_SCHEMA_VERSION, 4);
+assert.equal(COMPENSATION_ANALYSIS_VERSION, 4);
 assert.equal(insertedRow.primary_symmetry_delta, 8.5);
 assert.equal(insertedRow.primary_movement_range, 74);
-assert.equal(insertedRow.features.definitionVersion, "whole-body-world-v2");
+assert.equal(insertedRow.tracking_quality, 0.91);
+assert.equal(insertedRow.features.definitionVersion, SESSION_BIOMECHANICS_DEFINITION);
+assert.equal(insertedRow.features.sourceSchemaVersion, 1);
+assert.equal(insertedRow.features.sourceClinicalStatus, "descriptive_unvalidated");
+assert.equal(insertedRow.features.repsWithBiomechanics, 10);
+assert.equal(insertedRow.features.averageCoverage, 0.92);
 assert.equal(insertedRow.features.sessionCompletedAt, session.completed_at);
 assert.equal(insertedRow.compensation_analysis.status, "insufficient_data");
 assert.equal(insertedRow.compensation_analysis.reason, "not_enough_primary_sessions");
-
-const primarySymmetry = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_symmetry_delta");
-assert.ok(primarySymmetry);
-assert.equal(primarySymmetry.value, 8.5);
-assert.equal(primarySymmetry.context.source, "verified_session_summary");
-assert.equal(primarySymmetry.context.exerciseKey, "bodyweight_squat");
-assert.equal(primarySymmetry.unit, "deg");
-
-const primaryRange = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_range");
-assert.ok(primaryRange);
-assert.equal(primaryRange.value, 74);
-assert.equal(primaryRange.unit, "deg");
 assert.equal(insertedRow.features.metrics.some((metric) => "landmarks" in metric || "coordinates" in metric), false);
 
 for (const exerciseKey of ["bodyweight_squat", "half_squat", "sit_to_stand"]) {
@@ -102,10 +119,16 @@ for (const exerciseKey of ["bodyweight_squat", "half_squat", "sit_to_stand"]) {
   assert.equal(graph.primaryMetric.region, "knee");
   assert.equal(graph.primaryMetric.side, "bilateral");
   assert.equal(graph.primaryMetric.unit, "deg");
-  assert.equal(graph.primaryMetric.minAcceptedFrames, 8);
+  assert.equal(graph.primaryMetric.minAcceptedFrames, 6);
   assert.equal(graph.primaryMetric.recoveryGuard.metricKey, "primary_movement_range");
   assert.equal(graph.primaryMetric.recoveryGuard.exerciseKey, exerciseKey);
   assert.equal(graph.primaryMetric.recoveryGuard.maxRelativeDecrease, 0.15);
+  assert.deepEqual(graph.relatedMetrics.map((metric) => metric.metricKey), [
+    "trunk_3d_tilt_deg",
+    "hip_flexion_asymmetry_deg",
+    "ankle_angle_asymmetry_deg",
+    "pelvis_depth_asymmetry_pct",
+  ]);
   for (const relatedMetric of graph.relatedMetrics) {
     assert.deepEqual(relatedMetric.exerciseKeys, ["bodyweight_squat", "half_squat", "sit_to_stand"]);
   }
@@ -123,6 +146,7 @@ const stepSession = {
     average_symmetry_delta: 4.2,
     average_signal_excursion: 18,
     measurement_unit: "%",
+    biomechanics_v1: { ...biomechanicsV1, repsWithBiomechanics: 8 },
   },
 };
 
@@ -130,19 +154,23 @@ const stepResult = await persistSessionBiomechanics({
   supabase,
   patientId: stepSession.patient_id,
   session: stepSession,
-  frames: [metricFrame(0), metricFrame(1), metricFrame(2)],
   primaryMetric: null,
   relatedMetrics: [],
-  featureDefinitionVersion: "whole-body-world-v2",
 });
-
 assert.equal(stepResult.saved, true);
 assert.equal(stepResult.analysis.status, "insufficient_data");
 assert.equal(stepResult.analysis.reason, "primary_metric_not_configured");
-const stepSymmetry = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_symmetry_delta");
 const stepRange = insertedRow.features.metrics.find((metric) => metric.metricKey === "primary_movement_range");
-assert.equal(stepSymmetry.unit, "%");
 assert.equal(stepRange.unit, "%");
 assert.equal(stepRange.value, 18);
+
+const invalid = extractSessionCompensationMetrics({
+  ...session,
+  movement_summary: {
+    ...session.movement_summary,
+    biomechanics_v1: { ...biomechanicsV1, clinicalStatus: "validated_diagnostic" },
+  },
+});
+assert.equal(invalid.length, 0, "adapter must reject unexpected biomechanics provenance/status");
 
 console.log("compensation biomechanics persistence service tests passed");
