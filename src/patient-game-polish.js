@@ -151,7 +151,9 @@ let polishTimer = 0;
 function startPolishTimer() {
   if (polishTimer) window.clearInterval(polishTimer);
   syncRestExperience();
-  polishTimer = window.setInterval(syncRestExperience, REST_SYNC_INTERVAL_MS);
+  polishTimer = window.setInterval(() => {
+    if (!document.hidden) syncRestExperience();
+  }, REST_SYNC_INTERVAL_MS);
 }
 const LATE_CLINIC_SYNC_INTERVAL_MS = 500;
 const LATE_CLINIC_SYNC_WINDOW_MS = 12000;
