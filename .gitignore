@@ -12,3 +12,10 @@ dist/
 *.p12
 *.pfx
 
+
+# Local/public research datasets and Python training environments.
+datasets/
+ml/.venv/
+ml/output/
+__pycache__/
+*.pyc
