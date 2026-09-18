@@ -2124,10 +2124,11 @@ async function initializeLab() {
       }
     },
     onError: (message) => {
-      gameTrackingReady = false; movementGameController?.setCameraReady(false);
-      setText("#capture-status", "CAMERA NEEDS ATTENTION");
+      gameTrackingReady = false;
+      movementGameController?.setCameraReady(false);
       setText("#coach-message", message);
-      showCameraRecovery("Camera needs attention", message);
+      // Recovery title/status come from onTrackingState so model failures are
+      // never mislabeled as camera failures.
     },
   });
   if (!video.isConnected) { destroyMovementTracker(); return; }
@@ -2309,8 +2310,10 @@ function handleTrackingState({ code, label, quality, confidence }) {
   if (guidance[code]) setText("#coach-message", guidance[code]);
 
   if (code === "model_error") {
+    setText("#capture-status", "TRACKER NEEDS ATTENTION");
     showCameraRecovery("Movement tracker unavailable", label);
   } else if (["permission_denied", "no_camera", "camera_busy", "camera_timeout", "insecure_context", "camera_disconnected", "camera_error"].includes(code)) {
+    setText("#capture-status", "CAMERA NEEDS ATTENTION");
     showCameraRecovery("Camera unavailable", label);
   } else if (code === "body_detected") {
     hideCameraRecovery();
