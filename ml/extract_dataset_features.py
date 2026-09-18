@@ -20,7 +20,6 @@ import cv2
 import mediapipe as mp
 
 REQUIRED_COLUMNS = ["participant_id", "exercise_id", "assessment_score", "video_path"]
-OPTIONAL_COLUMNS = ["video_id", "camera_view", "recording_condition", "source_name"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,8 +30,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-fps", type=float, default=12.0, help="Maximum inference sampling rate per video")
     parser.add_argument("--max-videos", type=int, default=0, help="Optional cap for smoke testing; 0 means all")
     parser.add_argument("--failure-log", type=Path, default=None)
-    parser.add_argument("--force", action="store_true", help="Reprocess video_ids already present in output")
-    parser.add_argument("--dry-run", action="store_true", help="Validate manifest/paths without pose inference")
+    parser.add_argument("--force", action="store_true", help="Replace the existing output and reprocess selected videos")
+    parser.add_argument("--dry-run", action="store_true", help="Validate manifest/paths without pose inference or file mutation")
     return parser.parse_args()
 
 
@@ -75,6 +74,34 @@ def normalize_row(manifest: Path, row: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def validate_rows(rows: list[dict[str, Any]]) -> None:
+    empty = [row["video_id"] for row in rows if not row["participant_id"] or not row["exercise_id"] or not row["assessment_score"]]
+    if empty:
+        raise SystemExit(f"Rows contain empty participant/exercise/assessment fields; first affected video_id: {empty[0]}")
+
+    for row in rows:
+        try:
+            score = float(row["assessment_score"])
+        except ValueError as exc:
+            raise SystemExit(f"assessment_score must be numeric for video_id {row['video_id']}") from exc
+        if not 0 <= score <= 100:
+            raise SystemExit(f"assessment_score must be within 0-100 for video_id {row['video_id']}")
+
+    seen: set[str] = set()
+    duplicate = None
+    for row in rows:
+        if row["video_id"] in seen:
+            duplicate = row["video_id"]
+            break
+        seen.add(row["video_id"])
+    if duplicate:
+        raise SystemExit(f"Manifest contains duplicate video_id: {duplicate}")
+
+    missing_paths = [row["video_path"] for row in rows if not row["video_path"].exists()]
+    if missing_paths:
+        raise SystemExit(f"Video file not found: {missing_paths[0]}")
+
+
 def landmark_dict(landmark: Any) -> dict[str, float]:
     result = {
         "x": float(landmark.x),
@@ -91,6 +118,8 @@ def landmark_dict(landmark: Any) -> dict[str, float]:
 
 
 def write_event(process: subprocess.Popen[str], event: dict[str, Any]) -> None:
+    if process.poll() is not None:
+        raise RuntimeError(f"feature reducer exited early with code {process.returncode}")
     if process.stdin is None:
         raise RuntimeError("feature reducer stdin is unavailable")
     process.stdin.write(json.dumps(event, separators=(",", ":")) + "\n")
@@ -106,28 +135,43 @@ def failure_writer(path: Path):
     return handle, writer
 
 
+def start_reducer(output: Path) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        ["node", "ml/landmarks_to_features.mjs", "--output", str(output)],
+        stdin=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+
+def stop_reducer(process: subprocess.Popen[str], timeout: int = 30) -> int:
+    if process.stdin is not None and not process.stdin.closed:
+        process.stdin.close()
+    return process.wait(timeout=timeout)
+
+
 def main() -> None:
     args = parse_args()
     if args.target_fps <= 0 or args.target_fps > 60:
         raise SystemExit("--target-fps must be greater than 0 and at most 60")
+    if args.max_videos < 0:
+        raise SystemExit("--max-videos cannot be negative")
     if not args.manifest.exists():
         raise SystemExit(f"Manifest not found: {args.manifest}")
     if not args.pose_model.exists() and not args.dry_run:
         raise SystemExit(f"Pose model not found: {args.pose_model}")
 
     rows = [normalize_row(args.manifest, row) for row in read_manifest(args.manifest)]
-    bad = [row["video_id"] for row in rows if not row["participant_id"] or not row["exercise_id"] or not row["assessment_score"]]
-    if bad:
-        raise SystemExit(f"Rows contain empty participant/exercise/assessment fields; first affected video_id: {bad[0]}")
-
-    missing_paths = [row["video_path"] for row in rows if not row["video_path"].exists()]
-    if missing_paths:
-        raise SystemExit(f"Video file not found: {missing_paths[0]}")
-
+    validate_rows(rows)
     if args.max_videos > 0:
         rows = rows[: args.max_videos]
 
-    already_done = set() if args.force else completed_video_ids(args.output)
+    failure_log = args.failure_log or args.output.with_suffix(".failures.csv")
+    if args.force and not args.dry_run:
+        args.output.unlink(missing_ok=True)
+        failure_log.unlink(missing_ok=True)
+
+    already_done = completed_video_ids(args.output)
     pending = [row for row in rows if row["video_id"] not in already_done]
 
     print(json.dumps({
@@ -142,15 +186,8 @@ def main() -> None:
         return
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    failure_log = args.failure_log or args.output.with_suffix(".failures.csv")
     failure_handle, failure_csv = failure_writer(failure_log)
-
-    reducer = subprocess.Popen(
-        ["node", "ml/landmarks_to_features.mjs", "--output", str(args.output)],
-        stdin=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-    )
+    reducer = start_reducer(args.output)
 
     BaseOptions = mp.tasks.BaseOptions
     PoseLandmarker = mp.tasks.vision.PoseLandmarker
@@ -171,6 +208,7 @@ def main() -> None:
         with PoseLandmarker.create_from_options(options) as landmarker:
             for index, row in enumerate(pending, start=1):
                 cap = cv2.VideoCapture(str(row["video_path"]))
+                video_open_in_reducer = False
                 try:
                     if not cap.isOpened():
                         raise RuntimeError("OpenCV could not open video")
@@ -187,6 +225,7 @@ def main() -> None:
                         "type": "video_start",
                         **{key: row[key] for key in ["video_id", "participant_id", "exercise_id", "assessment_score", "camera_view", "recording_condition", "source_name"]},
                     })
+                    video_open_in_reducer = True
 
                     while True:
                         ok, bgr = cap.read()
@@ -219,6 +258,7 @@ def main() -> None:
                     if emitted == 0:
                         raise RuntimeError("No usable pose frames were detected")
                     write_event(reducer, {"type": "video_end", "video_id": row["video_id"]})
+                    video_open_in_reducer = False
                     if reducer.stdin is not None:
                         reducer.stdin.flush()
                     processed += 1
@@ -228,24 +268,20 @@ def main() -> None:
                     failure_csv.writerow({"video_id": row["video_id"], "video_path": row["video_path"], "error": str(exc)})
                     failure_handle.flush()
                     print(f"[{index}/{len(pending)}] FAILED {row['video_id']}: {exc}", file=sys.stderr)
-                    # A failed video can leave the streaming reducer in an open-video state.
-                    # Restart it so the next video begins from a clean accumulator.
-                    if reducer.stdin is not None:
-                        reducer.stdin.close()
-                    reducer.wait(timeout=10)
-                    reducer = subprocess.Popen(
-                        ["node", "ml/landmarks_to_features.mjs", "--output", str(args.output)],
-                        stdin=subprocess.PIPE,
-                        text=True,
-                        bufsize=1,
-                    )
+                    if video_open_in_reducer or reducer.poll() is not None:
+                        # An unfinished video contaminates the current accumulator. Close/restart
+                        # the reducer; completed rows were already flushed synchronously to CSV.
+                        try:
+                            stop_reducer(reducer, timeout=10)
+                        except Exception:
+                            reducer.kill()
+                            reducer.wait(timeout=5)
+                        reducer = start_reducer(args.output)
                 finally:
                     cap.release()
     finally:
         failure_handle.close()
-        if reducer.stdin is not None and not reducer.stdin.closed:
-            reducer.stdin.close()
-        exit_code = reducer.wait(timeout=30)
+        exit_code = stop_reducer(reducer)
 
     if exit_code != 0:
         raise SystemExit(f"Feature reducer exited with code {exit_code}")
