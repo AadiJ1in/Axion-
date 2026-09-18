@@ -177,6 +177,7 @@ def train_one_model(
     target_column: str,
     minimum_groups: int,
     minimum_test_rows: int,
+    maximum_missing_feature_fraction: float,
 ) -> dict | None:
     if not len(train_index) or not len(test_index):
         return None
@@ -242,7 +243,7 @@ def train_one_model(
         "scale": [float(value if abs(value) > 1e-12 else 1.0) for value in scaler.scale_],
         "coefficients": [float(value) for value in np.ravel(ridge.coef_)],
         "intercept": float(np.ravel(np.asarray(ridge.intercept_))[0]),
-        "maximumMissingFraction": 0.35,
+        "maximumMissingFraction": maximum_missing_feature_fraction,
         "training": {
             "trainRows": int(len(train_index)),
             "testRows": int(len(test_index)),
@@ -320,6 +321,7 @@ def main() -> None:
             target_column=args.target_column,
             minimum_groups=args.minimum_groups_per_model,
             minimum_test_rows=args.minimum_test_rows,
+            maximum_missing_feature_fraction=args.maximum_missing_feature_fraction,
         )
         if model is None or model.get("skipped"):
             raise SystemExit(f"Global model could not be trained: {model}")
@@ -369,7 +371,7 @@ def main() -> None:
             "modelVersion": args.model_version,
             "target": args.target_column,
             "featureOrder": FEATURES,
-            "maximumMissingFraction": 0.35,
+            "maximumMissingFraction": args.maximum_missing_feature_fraction,
             "models": models,
             "training": {
                 **common_training,
