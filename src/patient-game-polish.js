@@ -39,6 +39,24 @@ function restVisible(overlay) {
   return Boolean(overlay && !overlay.classList.contains('hidden'));
 }
 
+function writeText(node, value) {
+  if (node && node.textContent !== value) node.textContent = value;
+}
+
+function writeAttribute(node, name, value) {
+  if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
+}
+
+function syncSurfaceClasses() {
+  const adventure = Boolean(document.querySelector('.adventure-lab'));
+  const journey = Boolean(document.querySelector('.journey-page'));
+  document.body.classList.toggle('axion-adventure-lab-surface', adventure);
+  document.body.classList.toggle('axion-journey-surface', journey);
+  const shell = document.querySelector('.app-shell');
+  shell?.classList.toggle('axion-adventure-lab-surface', adventure);
+  shell?.classList.toggle('axion-journey-surface', journey);
+}
+
 function syncLateClinicPresentation() {
   // clinic-readiness can finish async after the main presentation pass. These
   // two helpers are tiny and idempotent: they only map the visible Today entry
@@ -48,6 +66,7 @@ function syncLateClinicPresentation() {
 }
 
 function syncPresentationHierarchy() {
+  syncSurfaceClasses();
   syncUiHierarchy();
   syncUiHierarchyP1();
   syncUiStability();
@@ -74,24 +93,30 @@ window.__axionSyncPresentation = schedulePresentationHierarchy;
 bindExerciseStartContinuity();
 
 function syncRestExperience() {
-  const overlay = document.querySelector('#set-rest-overlay');
-  const viewport = document.querySelector('.adventure-card .adventure-viewport');
+  const lab = document.querySelector('.adventure-lab');
+  if (!lab) {
+    if (document.body.classList.contains('axion-rest-active')) document.body.classList.remove('axion-rest-active');
+    return;
+  }
+  const overlay = lab.querySelector('#set-rest-overlay');
+  const viewport = lab.querySelector('.adventure-card .adventure-viewport');
   if (overlay && viewport && overlay.parentElement !== viewport) viewport.appendChild(overlay);
 
   const resting = restVisible(overlay);
-  document.body.classList.toggle('axion-rest-active', resting);
+  const hasRestClass = document.body.classList.contains('axion-rest-active');
+  if (hasRestClass !== resting) document.body.classList.toggle('axion-rest-active', resting);
   if (!resting) return;
 
   const secondsNode = overlay.querySelector('#set-rest-seconds');
   const seconds = Math.max(0, Number(secondsNode?.textContent) || 0);
   const clock = formatClock(seconds);
-  overlay.dataset.restClock = clock;
-  overlay.setAttribute('aria-label', `Recovery break. ${clock} remaining before the next set.`);
+  if (overlay.dataset.restClock !== clock) overlay.dataset.restClock = clock;
+  writeAttribute(overlay, 'aria-label', `Recovery break. ${clock} remaining before the next set.`);
 
-  const gamePause = document.querySelector('#game-pause');
-  if (gamePause) gamePause.textContent = `Resting · ${clock}`;
-  const sessionPause = document.querySelector('#session-pause');
-  if (sessionPause) sessionPause.textContent = `Resting · ${clock}`;
+  const gamePause = lab.querySelector('#game-pause');
+  writeText(gamePause, `Resting · ${clock}`);
+  const sessionPause = lab.querySelector('#session-pause');
+  writeText(sessionPause, `Resting · ${clock}`);
 }
 
 // A safety report stops the media stream in main.js. On an explicit Resume click
@@ -118,23 +143,57 @@ document.addEventListener('click', (event) => {
   }, 80);
 }, true);
 
-// Keep the established rest-only timer contract intact. A separate lightweight
-// async-clinic sync only touches two idempotent presentation details after the
-// clinic-ready enhancer finishes loading its data.
-const polishTimer = window.setInterval(syncRestExperience, 250);
-const lateClinicTimer = window.setInterval(syncLateClinicPresentation, 250);
-window.addEventListener('pagehide', () => {
-  window.clearInterval(polishTimer);
-  window.clearInterval(lateClinicTimer);
+// Keep the rest countdown live, but bound the generic late-clinic presentation
+// polling. Critical controls still schedule the proven post-click hierarchy sync,
+// so this timer only covers asynchronous clinic markup that arrives without input.
+const REST_SYNC_INTERVAL_MS = 250;
+let polishTimer = 0;
+function startPolishTimer() {
+  if (polishTimer) window.clearInterval(polishTimer);
+  syncRestExperience();
+  polishTimer = window.setInterval(() => {
+    if (!document.hidden) syncRestExperience();
+  }, REST_SYNC_INTERVAL_MS);
+}
+const LATE_CLINIC_SYNC_INTERVAL_MS = 500;
+const LATE_CLINIC_SYNC_WINDOW_MS = 12000;
+let lateClinicTimer = 0;
+function startLateClinicSyncWindow() {
+  if (lateClinicTimer) window.clearInterval(lateClinicTimer);
+  const startedAt = performance.now();
+  syncLateClinicPresentation();
+  lateClinicTimer = window.setInterval(() => {
+    syncLateClinicPresentation();
+    if (performance.now() - startedAt >= LATE_CLINIC_SYNC_WINDOW_MS) {
+      window.clearInterval(lateClinicTimer);
+      lateClinicTimer = 0;
+    }
+  }, LATE_CLINIC_SYNC_INTERVAL_MS);
+}
+function stopPresentationLifecycle() {
+  if (polishTimer) window.clearInterval(polishTimer);
+  polishTimer = 0;
+  if (lateClinicTimer) window.clearInterval(lateClinicTimer);
+  lateClinicTimer = 0;
   if (presentationFrame) window.cancelAnimationFrame(presentationFrame);
-}, { once:true });
-window.addEventListener('pageshow', schedulePresentationHierarchy);
+  presentationFrame = 0;
+}
+
+window.addEventListener('pagehide', stopPresentationLifecycle);
+window.addEventListener('pageshow', () => {
+  schedulePresentationHierarchy();
+  startPolishTimer();
+  startLateClinicSyncWindow();
+});
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     syncRestExperience();
     schedulePresentationHierarchy();
+    startLateClinicSyncWindow();
   }
 });
 document.addEventListener('click', () => window.setTimeout(schedulePresentationHierarchy, 0));
+
 syncPresentationHierarchy();
-syncRestExperience();
+startPolishTimer();
+startLateClinicSyncWindow();
