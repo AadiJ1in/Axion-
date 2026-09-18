@@ -1,35 +1,6 @@
 import { getMovementProfile, measureMovementSignal } from "./movement-profiles.js";
-import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
-import { chooseMediapipeDelegate, resolveMediapipeConfig } from "./mediapipe-config.js";
-
-const verifiedModelUrls = new Map();
-
-async function verifiedModelUrl(model) {
-  const cacheKey = `${model.url}#${model.sha256}`;
-  if (!verifiedModelUrls.has(cacheKey)) {
-    const promise = (async () => {
-      const response = await fetch(model.url, {
-        cache: "force-cache",
-        credentials: "omit",
-        referrerPolicy: "no-referrer",
-      });
-      if (!response.ok) throw new Error("The movement model could not be downloaded securely.");
-      const modelBytes = await response.arrayBuffer();
-      const actualHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", modelBytes)))
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
-      if (actualHash !== model.sha256) {
-        throw new Error("Movement model integrity verification failed.");
-      }
-      return URL.createObjectURL(new Blob([modelBytes], { type: "application/octet-stream" }));
-    })().catch((error) => {
-      verifiedModelUrls.delete(cacheKey);
-      throw error;
-    });
-    verifiedModelUrls.set(cacheKey, promise);
-  }
-  return verifiedModelUrls.get(cacheKey);
-}
+import { createRepBiomechanicsAccumulator, extractBiomechanicsFrame } from "./biomechanics.js";
+import { createLocalPoseRuntime } from "./pose-runtime.js";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const MIN_TRACKING_SCORE = 0.62;
@@ -147,8 +118,6 @@ export async function createMovementTracker(options) {
     onUpdate = () => {},
     onPose = () => {},
     onRep = () => {},
-    onRepStart = () => {},
-    onRepDiscard = () => {},
     onCalibration = () => {},
     onTrackingState = () => {},
     onTiming = () => {},
@@ -156,10 +125,7 @@ export async function createMovementTracker(options) {
     mediapipe = {},
   } = options || {};
   const profile = getMovementProfile(exerciseKey, trackingMode);
-  const mediapipeConfig = resolveMediapipeConfig(mediapipe);
-  let landmarker;
-  let preferCpu = false;
-  const trackerApi = {};
+  const poseRuntime = createLocalPoseRuntime({ mediapipe, onState: onTrackingState });
   let stream;
   let running = false;
   let cameraGeneration = 0;
@@ -193,42 +159,11 @@ export async function createMovementTracker(options) {
   let activeFrames = 0;
   let lastActiveMovementAt = 0;
   const repHistory = [];
+  const repBiomechanics = createRepBiomechanicsAccumulator();
+  let latestBiomechanicsFrame = null;
 
   async function initialize() {
-    onTrackingState({ code: "model_loading", label: "Loading movement model", quality: null });
-    trackerApi.DrawingUtils = DrawingUtils;
-    trackerApi.PoseLandmarker = PoseLandmarker;
-    const [vision, modelAssetPath] = await Promise.all([
-      FilesetResolver.forVisionTasks(mediapipeConfig.wasmRoot),
-      verifiedModelUrl(mediapipeConfig.model),
-    ]);
-    const options = {
-      baseOptions: {
-        modelAssetPath,
-        delegate: chooseMediapipeDelegate(mediapipeConfig.delegate, {
-          webgl: supportsWebGL(),
-          forceCpu: preferCpu,
-        }),
-      },
-      runningMode: "VIDEO",
-      numPoses: 2,
-      minPoseDetectionConfidence: 0.55,
-      minPosePresenceConfidence: 0.55,
-      minTrackingConfidence: 0.55,
-    };
-    let activeDelegate = options.baseOptions.delegate;
-    try {
-      landmarker = await PoseLandmarker.createFromOptions(vision, options);
-    } catch (gpuError) {
-      if (options.baseOptions.delegate !== "GPU") throw gpuError;
-      onTrackingState({ code: "model_fallback", label: "Starting compatibility mode", quality: null });
-      activeDelegate = "CPU";
-      landmarker = await PoseLandmarker.createFromOptions(vision, {
-        ...options,
-        baseOptions: { ...options.baseOptions, delegate: "CPU" },
-      });
-    }
-    onTrackingState({ code: "model_ready", label: `Movement model ready · ${activeDelegate}`, quality: null });
+    await poseRuntime.initialize();
   }
 
   function trackingQuality(landmarks) {
@@ -257,16 +192,7 @@ export async function createMovementTracker(options) {
   }
 
   function draw(result) {
-    const ctx = canvas.getContext("2d");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!result.landmarks?.length) return;
-    const drawing = new trackerApi.DrawingUtils(ctx);
-    drawing.drawConnectors(result.landmarks[0], trackerApi.PoseLandmarker.POSE_CONNECTIONS, {
-      color: "rgba(231,255,246,.72)", lineWidth: 3,
-    });
-    drawing.drawLandmarks(result.landmarks[0], { color: "#6ef0b1", radius: 2.5 });
+    poseRuntime.draw(canvas, video, result);
   }
 
   function calibrate(metrics, now) {
@@ -297,7 +223,6 @@ export async function createMovementTracker(options) {
 
   function pauseMeasurement(message) {
     repCycle.cancelPending();
-    onRepDiscard({ reason: "tracking_interrupted", exerciseKey: profile.exerciseKey });
     stage = calibrated ? "positioning" : "calibrating";
     repStart = null;
     peakAngle = null;
@@ -305,6 +230,7 @@ export async function createMovementTracker(options) {
     symmetrySamples = [];
     holdLastFrame = null;
     activeFrames = 0;
+    repBiomechanics.reset();
     onUpdate({
       reps,
       stage,
@@ -323,6 +249,7 @@ export async function createMovementTracker(options) {
     const symmetryDelta = symmetrySamples.length
       ? symmetrySamples.reduce((sum, value) => sum + value, 0) / symmetrySamples.length
       : null;
+    const biomechanics = repBiomechanics.finish(now);
     const rep = {
       index: reps,
       depthAngle: Math.round(peakAngle ?? baselineAngle ?? 180),
@@ -335,6 +262,7 @@ export async function createMovementTracker(options) {
       symmetryDelta: symmetryDelta === null ? null : Number(symmetryDelta.toFixed(1)),
       capturedAt: now,
       measurementSide: peakMeasurementSide || latestMeasurementSide,
+      biomechanics,
     };
     repHistory.push(rep);
     onRep(rep, [...repHistory]);
@@ -342,9 +270,10 @@ export async function createMovementTracker(options) {
     peakAngle = null;
     peakDelta = 0;
     symmetrySamples = [];
+    repBiomechanics.reset();
   }
 
-  function updateState(metrics, now) {
+  function updateState(metrics, now, biomechanicsFrame = null) {
     if (!calibrated) {
       calibrate(metrics, now);
       onUpdate({ reps, stage: "calibrating", angle: metrics.value, jointAngle: metrics.value === null ? null : Math.round(metrics.value), angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: metrics.symmetryDelta, message: `Hold still while Axion calibrates. ${profile.cameraHint}` });
@@ -393,6 +322,7 @@ export async function createMovementTracker(options) {
     }
 
     if (repStart) {
+      repBiomechanics.push(biomechanicsFrame);
       if (movementDelta >= peakDelta) {
         peakMeasurementSide = measurementSide;
         peakDelta = movementDelta;
@@ -404,9 +334,10 @@ export async function createMovementTracker(options) {
     const cycle = repCycle.update(movementDelta, now);
     stage = cycle.stage;
     if (cycle.started) {
-      onRepStart({ startedAt: now, exerciseKey: profile.exerciseKey });
       peakMeasurementSide = measurementSide;
       repStart = now;
+      repBiomechanics.start(now);
+      repBiomechanics.push(biomechanicsFrame);
       peakAngle = displayValue;
       peakDelta = movementDelta;
       symmetrySamples = metrics.symmetryDelta === null ? [] : [metrics.symmetryDelta];
@@ -415,11 +346,11 @@ export async function createMovementTracker(options) {
       reps += 1;
       finishRep(now);
     } else if (cycle.discarded) {
-      onRepDiscard({ discardedAt: now, exerciseKey: profile.exerciseKey });
       repStart = null;
       peakAngle = null;
       peakDelta = 0;
       symmetrySamples = [];
+      repBiomechanics.reset();
     }
 
     let message = "Ready for the next rep.";
@@ -443,35 +374,28 @@ export async function createMovementTracker(options) {
       let result;
       let poseAt = cameraFrameAt;
       try {
-        result = landmarker.detectForVideo(video, now);
+        result = poseRuntime.infer(video, now);
         poseAt = performance.now();
         draw(result);
       } catch (inferenceError) {
-        // A number of browsers/laptops can create the GPU landmarker successfully
-        // and then lose the WebGL context on the first real video inference. Recover
-        // once in-place on CPU so a presentation/session does not die after camera
-        // permission has already been granted. Completed reps and calibration state
-        // remain untouched.
-        if (!preferCpu && running) {
+        // Some laptops can initialize GPU inference successfully and then lose
+        // the graphics context on a real camera frame. The runtime owns that
+        // backend-specific recovery so movement state remains backend-agnostic.
+        if (poseRuntime.canFallbackToCpu() && running) {
           const recoveryGeneration = cameraGeneration;
-          preferCpu = true;
-          try { landmarker?.close?.(); } catch { /* The failed GPU model may already be disposed. */ }
-          landmarker = null;
-          onTrackingState({ code: "model_fallback", label: "Switching to compatibility tracking", quality: null });
           try {
-            await initialize();
+            await poseRuntime.switchToCpu();
             if (!running || recoveryGeneration !== cameraGeneration) return;
             lastVideoTime = -1;
             rafId = requestAnimationFrame(frame);
             return;
           } catch {
-            // If CPU initialization also fails, continue into the normal recoverable
+            // If compatibility mode also fails, use the normal recoverable
             // camera error state below.
           }
         }
         stop();
-        try { landmarker?.close?.(); } catch { /* The failed model may already be disposed. */ }
-        landmarker = null;
+        poseRuntime.close();
         pauseMeasurement("Tracking stopped. Your completed reps are preserved.");
         onTrackingState({ code: "camera_error", label: "Movement tracking needs a restart", quality: null });
         onError("The movement model stopped responding. Restart the camera scan to continue; your completed reps are preserved.");
@@ -498,11 +422,17 @@ export async function createMovementTracker(options) {
         pauseMeasurement(landmarks ? `Reposition for a clearer ${profile.label.toLowerCase()} view. Rep counting is paused.` : `Return to frame. ${profile.cameraHint}`);
         rafId = requestAnimationFrame(frame); return;
       }
-      const measurementLandmarks = result.worldLandmarks?.[0] || landmarks;
+      const worldLandmarks = result.worldLandmarks?.[0] || null;
+      const measurementLandmarks = worldLandmarks || landmarks;
       const metrics = measurementLandmarks ? measureMovementSignal(measurementLandmarks, profile) : { value: null, left: null, right: null, symmetryDelta: null };
+      latestBiomechanicsFrame = extractBiomechanicsFrame({
+        imageLandmarks: landmarks,
+        worldLandmarks,
+        timestampMs: now,
+      });
       const movementAt = performance.now();
       onTiming({ id: ++timingSequence, cameraFrameAt, poseAt, movementAt });
-      updateState(metrics, now);
+      updateState(metrics, now, latestBiomechanicsFrame);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -513,7 +443,7 @@ export async function createMovementTracker(options) {
     repCycle.cancelPending();
     try {
       if (!navigator.mediaDevices?.getUserMedia) { onTrackingState({ code: "no_camera", label: "No compatible camera found", quality: null }); throw new Error("This browser does not expose a compatible camera."); }
-      if (!landmarker) await initialize();
+      if (!poseRuntime.getState().initialized) await initialize();
       if (generation !== cameraGeneration) return;
       onTrackingState({ code: "camera_starting", label: "Starting camera", quality: null });
       const openedStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
@@ -533,7 +463,7 @@ export async function createMovementTracker(options) {
   }
 
   function reset() {
-    calibrated = false; calibrationStart = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; baselineAngle = null; baselineLeft = null; baselineRight = null; lastVideoTime = -1; sessionStart = performance.now(); onCalibration({ progress: 0, status: "Learning a fresh session baseline" }); reps = 0; stage = "up"; repCycle.reset(); repStart = null; peakAngle = null; peakDelta = 0; symmetrySamples = []; noPoseFrames = 0; latestAngle = null; latestSymmetryDelta = null; latestMovementRange = null; latestMeasurementSide = null; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; repHistory.length = 0;
+    calibrated = false; calibrationStart = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; baselineAngle = null; baselineLeft = null; baselineRight = null; lastVideoTime = -1; sessionStart = performance.now(); onCalibration({ progress: 0, status: "Learning a fresh session baseline" }); reps = 0; stage = "up"; repCycle.reset(); repStart = null; peakAngle = null; peakDelta = 0; symmetrySamples = []; noPoseFrames = 0; latestAngle = null; latestSymmetryDelta = null; latestMovementRange = null; latestMeasurementSide = null; latestBiomechanicsFrame = null; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; repHistory.length = 0; repBiomechanics.reset();
     onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: "Session reset." });
   }
   function stop() {
@@ -549,14 +479,13 @@ export async function createMovementTracker(options) {
   }
   function destroy() {
     stop();
-    try { landmarker?.close?.(); } catch { /* A failed model may already be disposed. */ }
-    landmarker = null;
+    poseRuntime.close();
     repCycle.cancelPending();
   }
   function pause() { if (!running) return; running = false; if (rafId !== null) cancelAnimationFrame(rafId); rafId = null; repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
   function resume() { if (running || !stream?.active) return; running = true; lastVideoTime = -1; frame(); }
 
-  return { start, stop, destroy, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint }) };
+  return { start, stop, destroy, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint, biomechanicsFrame: latestBiomechanicsFrame ? { ...latestBiomechanicsFrame, features: { ...latestBiomechanicsFrame.features }, quality: { ...latestBiomechanicsFrame.quality } } : null }) };
 }
 
 export const createSquatTracker = createMovementTracker;
