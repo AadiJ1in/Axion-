@@ -89,4 +89,12 @@ assert.equal(renderPublishes,1,'continuous movement should not rerender the DOM 
 efficient.consume({type:MOVEMENT_EVENT.REP_COMPLETE,rep:{valid:true}});
 assert.equal(renderPublishes,2,'a validated clinical event still publishes immediately');
 
+const idle = createMovementGameController({ exerciseKey:'chin_tuck', targetReps:3 });
+const idleSnapshot = idle.getState();
+assert.strictEqual(idle.getState(), idleSnapshot, 'unchanged idle game state should reuse its immutable snapshot');
+const activeSnapshot = idle.setMode('game');
+assert.strictEqual(idle.tick(16), activeSnapshot, 'an idle animation frame should not allocate a new game snapshot');
+const movedSnapshot = idle.consume({ type:MOVEMENT_EVENT.MOVEMENT_PROGRESS, progress:.45, stage:'down' });
+assert.notStrictEqual(movedSnapshot, activeSnapshot, 'movement input must invalidate the cached visual state immediately');
+
 console.log("Movement/game boundary and render-efficiency tests passed.");
