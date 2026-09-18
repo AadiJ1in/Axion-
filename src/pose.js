@@ -397,7 +397,7 @@ export async function createMovementTracker(options) {
         stop();
         poseRuntime.close();
         pauseMeasurement("Tracking stopped. Your completed reps are preserved.");
-        onTrackingState({ code: "camera_error", label: "Movement tracking needs a restart", quality: null });
+        onTrackingState({ code: "model_error", label: "Movement tracking model needs a restart", quality: null });
         onError("The movement model stopped responding. Restart the camera scan to continue; your completed reps are preserved.");
         return;
       }
@@ -448,7 +448,15 @@ export async function createMovementTracker(options) {
         error.name = "SecurityError";
         throw error;
       }
-      if (!poseRuntime.getState().initialized) await initialize();
+      if (!poseRuntime.getState().initialized) {
+        try {
+          await initialize();
+        } catch {
+          onTrackingState({ code: "model_error", label: "Movement model could not start", quality: null });
+          onError("The movement model could not start. Retry the movement scan; if the problem continues, refresh Axion.");
+          return;
+        }
+      }
       if (generation !== cameraGeneration) return;
       onTrackingState({ code: "camera_starting", label: "Starting camera", quality: null });
       const openedStream = await openCameraStream(
