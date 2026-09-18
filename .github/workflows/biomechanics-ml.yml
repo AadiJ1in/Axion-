@@ -1,0 +1,60 @@
+name: Biomechanics ML checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/biomechanics.js"
+      - "src/movement-quality-model.js"
+      - "ml/**"
+      - "scripts/biomechanics-test.mjs"
+      - "scripts/movement-quality-model-test.mjs"
+      - "scripts/dataset-feature-pipeline-test.mjs"
+      - ".github/workflows/biomechanics-ml.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/biomechanics.js"
+      - "src/movement-quality-model.js"
+      - "ml/**"
+      - "scripts/biomechanics-test.mjs"
+      - "scripts/movement-quality-model-test.mjs"
+      - "scripts/dataset-feature-pipeline-test.mjs"
+      - ".github/workflows/biomechanics-ml.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked Node dependencies
+        run: npm ci --ignore-scripts
+      - name: Check Python pipeline syntax
+        run: python3 -m py_compile ml/extract_dataset_features.py ml/train_movement_quality.py ml/integration_smoke_test.py
+      - name: Check biomechanics JavaScript syntax
+        run: node --check src/biomechanics.js && node --check src/movement-quality-model.js && node --check ml/landmarks_to_features.mjs
+      - name: Run biomechanics contracts
+        run: node scripts/biomechanics-test.mjs && node scripts/movement-quality-model-test.mjs && node scripts/dataset-feature-pipeline-test.mjs
+
+  python-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Create isolated Python environment
+        run: python3 -m venv ml/.ci-venv
+      - name: Install pinned ML/video dependencies
+        run: ml/.ci-venv/bin/python -m pip install --disable-pip-version-check -r ml/requirements.txt
+      - name: Verify MediaPipe, OpenCV, trainer and extractor APIs
+        run: ml/.ci-venv/bin/python ml/integration_smoke_test.py
