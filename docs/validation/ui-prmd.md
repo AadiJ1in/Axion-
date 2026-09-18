@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This benchmark tests whether Axion's `whole-body-world-v2` kinematic feature extraction behaves consistently on an external rehabilitation-movement dataset.
+This benchmark tests whether Axion's canonical `biomechanics_v1` feature extraction behaves consistently on an external rehabilitation-movement dataset.
 
 It is **not** clinical validation of Compensation Migration and it does not validate injury diagnosis, injury-risk prediction, patient outcomes, joint loading, tissue loading, or treatment decisions.
 
@@ -34,9 +34,9 @@ Implementation:
 - `scripts/validation/ui-prmd-adapter-test.mjs`
 - `scripts/validation/ui-prmd-benchmark.mjs`
 
-The adapter maps the UI-PRMD Kinect skeleton into only the MediaPipe-style landmarks required by Axion's current whole-body feature extractor.
+The adapter maps the UI-PRMD Kinect skeleton into the MediaPipe-style landmark subset required by Axion's production `src/biomechanics.js` extractor. The benchmark deliberately uses that same extractor rather than a second validation-only biomechanics implementation.
 
-The mapping is a **skeletal-topology proxy**, not an assertion that the two skeleton definitions are anatomically identical. The benchmark result therefore must be interpreted as external kinematic robustness evidence.
+The mapping is a **skeletal-topology proxy**, not an assertion that the Kinect and MediaPipe skeleton definitions are anatomically identical. Results therefore represent external engineering evidence about feature extraction and repeatability, not clinical validity.
 
 No UI-PRMD files are committed to Axion and the benchmark does not download the dataset.
 
@@ -60,26 +60,26 @@ The saved JSON contains only derived benchmark summaries and relative source fil
 
 ## Current benchmark outputs
 
-For each episode, Axion reconstructs the Kinect skeleton, maps it into the subset of landmarks used by `extractWholeBodyBiomechanics`, and summarizes:
+For each usable frame, Axion runs the canonical `extractBiomechanicsFrame` implementation and benchmarks the same camera-safer features currently eligible for longitudinal Compensation Migration review:
 
-- left/right knee flexion
-- 3D knee-flexion asymmetry
-- 3D trunk–pelvis lateral deviation
-- 3D shoulder–pelvis axis mismatch
-- 3D hip-flexion asymmetry
-- 3D mediolateral knee-offset proxies
-- 3D pelvis-over-stance offset proxy
+- knee-flexion asymmetry (`knee_flexion_asymmetry_deg`)
+- 3D trunk tilt (`trunk_3d_tilt_deg`)
+- hip-flexion asymmetry (`hip_flexion_asymmetry_deg`)
+- ankle-angle asymmetry (`ankle_angle_asymmetry_deg`)
+- pelvis-depth asymmetry (`pelvis_depth_asymmetry_pct`)
 
-Each metric is summarized using frame coverage, p10, median, p90, robust excursion (`p90 - p10`), minimum, and maximum.
+Each feature is summarized using frame coverage, p10, median, p90, robust excursion (`p90 - p10`), minimum, and maximum. Repeated episodes from the same subject can also produce within-subject median absolute deviation references.
+
+These variability references are engineering repeatability references only. They are not abnormality thresholds and are not automatically used as clinical cutoffs.
 
 ## Claims this benchmark can support
 
-With enough UI-PRMD episodes, this benchmark can support engineering statements such as:
+With enough compatible UI-PRMD episodes, this benchmark can support engineering statements such as:
 
 - Axion can parse and reconstruct an independent rehabilitation-motion dataset.
-- Axion's world-v2 features can be computed across external squat, sit-to-stand, and lunge recordings.
-- Feature coverage, scale, and repetition-to-repetition variability can be measured outside Axion's own capture pipeline.
-- Coordinate-invariant features can be stress-tested against external motion-capture trajectories.
+- Axion's production biomechanics-v1 features can be computed on external squat and sit-to-stand recordings.
+- Feature coverage, scale, and repeated-episode variability can be quantified outside Axion's own webcam capture flow.
+- The same feature implementation used by Axion sessions can be stress-tested on external motion trajectories.
 
 ## Claims this benchmark cannot support
 
@@ -89,14 +89,16 @@ Do not use UI-PRMD results alone to claim:
 - Axion predicts injuries or reinjury.
 - A movement-drift threshold is clinically abnormal.
 - A detected compensation causes symptoms or future injury.
-- Webcam-derived proxies equal force-plate, inverse-dynamics, joint-moment, or tissue-load measurements.
+- Webcam-derived kinematics equal force-plate, inverse-dynamics, joint-moment, or tissue-load measurements.
+- UI-PRMD Kinect-to-MediaPipe landmark adaptation proves measurement equivalence between hardware systems.
 
-UI-PRMD primarily contains healthy-subject movement data. Its value to Axion at this stage is external **kinematic benchmark validation**, not outcome validation.
+UI-PRMD primarily contains healthy-subject movement data. Its value to Axion at this stage is external **kinematic benchmarking and repeatability characterization**, not outcome validation.
 
 ## Next validation layers
 
-1. Run the full UI-PRMD Kinect benchmark and quantify subject/repetition variability for m01 and m05.
-2. Add Vicon-side comparison for features that can be mapped reproducibly between the Vicon marker model and Kinect skeleton.
-3. Use a supervised rehabilitation dataset with correctness/clinician labels only under compatible licensing.
-4. Collect clinician-reviewed Axion longitudinal sessions and explicit supported/not-supported/uncertain compensation labels.
-5. Only after prospective outcome data exist, evaluate whether any longitudinal signal predicts clinically meaningful outcomes.
+1. Run the full UI-PRMD Kinect benchmark and quantify subject/repeated-episode variability for compatible bilateral movements.
+2. Add Vicon-side comparison only for features that can be mapped reproducibly between the Vicon marker model and Axion's canonical features.
+3. Use a supervised rehabilitation dataset with correctness or clinician labels only under compatible licensing and clearly defined label semantics.
+4. Collect clinician-reviewed Axion longitudinal sessions with explicit supported / not-supported / uncertain compensation labels.
+5. Compare webcam-derived kinematic features against laboratory reference measurements for measurement agreement before making stronger biomechanical claims.
+6. Only after prospective outcome data exist, evaluate whether any longitudinal signal predicts clinically meaningful outcomes.
