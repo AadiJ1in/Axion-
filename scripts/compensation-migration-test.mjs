@@ -6,6 +6,7 @@ import {
 
 function session(index, {
   exerciseKey = "bodyweight_squat",
+  patientId = "patient-1",
   knee = 10,
   hip = 8,
   ankle = 6,
@@ -16,12 +17,14 @@ function session(index, {
   depth = 6,
   coverage = 0.95,
   visibility = 0.92,
+  completedAt = `2026-09-${String(index + 1).padStart(2, "0")}T12:00:00Z`,
 } = {}) {
   const feature = (mean) => ({ reps: 8, mean, min: mean - 1, max: mean + 1 });
   return {
     id: `S${index}`,
+    patient_id: patientId,
     exercise_key: exerciseKey,
-    completed_at: `2026-09-${String(index + 1).padStart(2, "0")}T12:00:00Z`,
+    completed_at: completedAt,
     movement_summary: {
       biomechanics_v1: {
         schemaVersion: 1,
@@ -46,6 +49,7 @@ function session(index, {
 const stable = Array.from({ length: 6 }, (_, index) => session(index));
 const stableResult = analyzeExerciseCompensationMigration(stable);
 assert.equal(stableResult.status, "available");
+assert.equal(stableResult.patientId, "patient-1");
 assert.equal(stableResult.redistributionCandidates.length, 0);
 assert.match(stableResult.interpretation, /No persistent cross-family redistribution/);
 
@@ -82,12 +86,33 @@ const tooFew = analyzeExerciseCompensationMigration(stable.slice(0, 5));
 assert.equal(tooFew.status, "unavailable");
 assert.equal(tooFew.reason, "insufficient_sessions");
 
-const mixed = analyzeExerciseCompensationMigration([
+const mixedExercises = analyzeExerciseCompensationMigration([
   ...stable.slice(0, 3),
   ...stable.slice(3).map((item) => ({ ...item, exercise_key: "lunge" })),
 ]);
-assert.equal(mixed.status, "unavailable");
-assert.equal(mixed.reason, "mixed_exercises");
+assert.equal(mixedExercises.status, "unavailable");
+assert.equal(mixedExercises.reason, "mixed_exercises");
+
+const mixedPatients = analyzeExerciseCompensationMigration([
+  ...stable.slice(0, 3),
+  ...stable.slice(3).map((item) => ({ ...item, patient_id: "patient-2" })),
+]);
+assert.equal(mixedPatients.status, "unavailable");
+assert.equal(mixedPatients.reason, "mixed_patients");
+
+const duplicate = analyzeExerciseCompensationMigration([...stable.slice(0, 5), stable[4]]);
+assert.equal(duplicate.status, "unavailable");
+assert.equal(duplicate.reason, "duplicate_sessions");
+
+const invalidDate = [...stable.slice(0, 5), session(8, { completedAt: "not-a-date" })];
+const invalidDateResult = analyzeExerciseCompensationMigration(invalidDate);
+assert.equal(invalidDateResult.status, "unavailable");
+assert.equal(invalidDateResult.reason, "insufficient_sessions");
+assert.equal(invalidDateResult.excludedSessions, 1);
+
+const invalidWindow = analyzeExerciseCompensationMigration(stable, { baselineWindow: 0 });
+assert.equal(invalidWindow.status, "unavailable");
+assert.equal(invalidWindow.reason, "invalid_window_configuration");
 
 const lowQuality = stable.map((item) => ({
   ...item,
@@ -112,4 +137,11 @@ assert(history.every((item) => item.status === "available"));
 assert(history.some((item) => item.exerciseKey === "bodyweight_squat"));
 assert(history.some((item) => item.exerciseKey === "lunge"));
 
-console.log("Compensation migration: same-exercise windows, persistence, quality gating and cross-family redistribution passed.");
+const mixedPatientHistory = analyzeCompensationMigrationHistory([
+  ...stable,
+  session(20, { exerciseKey: "lunge", patientId: "patient-2" }),
+]);
+assert.equal(mixedPatientHistory.length, 1);
+assert.equal(mixedPatientHistory[0].reason, "mixed_patients");
+
+console.log("Compensation migration: same-exercise windows, persistence, identity, timestamp, quality and redistribution guards passed.");
