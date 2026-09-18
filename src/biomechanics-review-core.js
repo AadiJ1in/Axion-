@@ -4,7 +4,9 @@ const METRIC_LABELS = Object.freeze({
   trunk_lateral_lean_deg: "Trunk lateral lean",
   trunk_lateral_lean_relative_deg: "Trunk lean relative to pelvis",
   trunk_pelvis_lateral_deviation_3d_deg: "3D trunk–pelvis lateral deviation",
+  trunk_3d_tilt_deg: "3D trunk tilt",
   pelvic_obliquity_deg: "Pelvic obliquity",
+  pelvis_depth_asymmetry_pct: "Pelvis depth asymmetry",
   shoulder_obliquity_deg: "Shoulder obliquity",
   shoulder_pelvis_obliquity_delta_deg: "Shoulder–pelvis tilt difference",
   shoulder_pelvis_axis_mismatch_3d_deg: "3D shoulder–pelvis axis mismatch",
@@ -12,6 +14,8 @@ const METRIC_LABELS = Object.freeze({
   knee_flexion_asymmetry_deg: "Knee flexion asymmetry",
   hip_flexion_proxy_deg: "Hip flexion proxy",
   hip_flexion_asymmetry_3d_deg: "3D hip-flexion asymmetry",
+  hip_flexion_asymmetry_deg: "Hip-flexion asymmetry",
+  ankle_angle_asymmetry_deg: "Ankle-angle asymmetry",
   knee_frontal_offset_proxy: "Frontal knee-offset proxy",
   knee_mediolateral_offset_3d_proxy: "3D mediolateral knee-offset proxy",
   lateral_weight_shift_proxy: "Lateral weight-shift proxy",
@@ -34,6 +38,7 @@ function formatValue(value, unit) {
   const rounded = Math.abs(number) >= 10 ? number.toFixed(1) : number.toFixed(2);
   if (unit === "deg") return `${rounded}°`;
   if (unit === "ratio") return rounded;
+  if (unit === "%") return `${rounded}%`;
   return unit ? `${rounded} ${unit}` : rounded;
 }
 
@@ -78,11 +83,13 @@ export function biomechanicsReviewPresentation(row = {}) {
   })) : [];
 
   const definitionVersion = String(row?.features?.definitionVersion || "unknown");
-  const acquisition = definitionVersion.includes("screen-proxy")
-    ? "2D camera-derived movement proxy"
-    : definitionVersion.includes("world")
-      ? "MediaPipe world-coordinate kinematic features"
-      : "Pose-derived movement features";
+  const acquisition = definitionVersion === "main-biomechanics-v1"
+    ? "Axion session biomechanics derived from MediaPipe pose"
+    : definitionVersion.includes("screen-proxy")
+      ? "2D camera-derived movement proxy"
+      : definitionVersion.includes("world")
+        ? "MediaPipe world-coordinate kinematic features"
+        : "Pose-derived movement features";
   const primaryMetric = analysis?.primary?.metric || null;
   const primarySummary = analysis?.primary?.summary || null;
   const guard = analysis?.primary?.recoveryGuard || null;
