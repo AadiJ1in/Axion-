@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.12.0";
+export const COMPENSATION_ENGINE_VERSION = "0.13.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -305,7 +305,10 @@ export function detectCompensationMigration({
   }
 
   const normalized = observations.map(normalizeMovementObservation).filter(Boolean);
-  const primaryRaw = normalized.filter((item) => matchesMetric(item, primaryMetric));
+  const primaryMinAcceptedFrames = Math.max(0, Number(primaryMetric.minAcceptedFrames || 0));
+  const primaryRaw = normalized.filter((item) =>
+    matchesMetric(item, primaryMetric)
+    && (!primaryMinAcceptedFrames || Number(item.acceptedFrames ?? 0) >= primaryMinAcceptedFrames));
   const primaryPoints = collapseBySession(primaryRaw, config.minQuality);
   const primarySummary = summarizeMetric(primaryPoints, config);
   if (!primarySummary) {
