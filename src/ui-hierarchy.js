@@ -25,7 +25,7 @@ function setPatientNavActive(view) {
   const nav = document.querySelector(".topbar .nav");
   if (!nav?.querySelector('[data-nav="patient"]')) return;
   nav.querySelectorAll("button[data-nav]").forEach((button) => {
-    const active = button.dataset.nav === view;
+    const active = Boolean(view) && button.dataset.nav === view && !button.hidden;
     button.classList.toggle("active", active);
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
@@ -41,27 +41,31 @@ function simplifyPatientNavigation() {
   const journey = nav.querySelector('[data-nav="lab"]');
   const progress = nav.querySelector('[data-nav="report"]');
   const profile = nav.querySelector('[data-nav="patient-profile"]');
-  const report = nav.querySelector('[data-nav="patient-report"]');
+  const concern = nav.querySelector('[data-nav="patient-report"]');
 
   buttonLabel(today, "Today");
   buttonLabel(journey, "Journey");
   buttonLabel(progress, "Progress");
-  buttonLabel(report, "Report");
   buttonLabel(profile, "Profile");
   if (journey) journey.dataset.uiPatientJourney = "true";
-  if (report) {
-    report.hidden = false;
-    report.removeAttribute("aria-hidden");
-    report.tabIndex = 0;
+
+  // Concern reporting remains available as a contextual action. It is not a
+  // fifth primary navigation destination.
+  if (concern) {
+    buttonLabel(concern, "Report a concern");
+    concern.hidden = true;
+    concern.setAttribute("aria-hidden", "true");
+    concern.tabIndex = -1;
+    concern.classList.remove("active");
+    concern.removeAttribute("aria-current");
   }
 
   if (today) today.style.order = "1";
   if (journey) journey.style.order = "2";
   if (progress) progress.style.order = "3";
-  if (report) report.style.order = "4";
-  if (profile) profile.style.order = "5";
+  if (profile) profile.style.order = "4";
 
-  const activeView = document.querySelector(".patient-report-page") ? "patient-report"
+  const activeView = document.querySelector(".patient-report-page") ? null
     : document.querySelector(".patient-profile-page") ? "patient-profile"
       : document.querySelector(".report-page") ? "report"
         : document.querySelector(".patient-portal") && document.documentElement.dataset.axionPatientSection === "journey" ? "lab"
@@ -92,17 +96,19 @@ function simplifyTherapistNavigation() {
     patients: "Patients",
     roadmaps: "Plans",
     library: "Exercise Library",
-    alerts: "Alerts",
   };
   shell.querySelectorAll("[data-therapist-section]").forEach((button) => {
     const section = button.dataset.therapistSection;
-    if (section === "checkins") {
+    if (!labels[section]) {
       button.hidden = true;
       button.setAttribute("aria-hidden", "true");
       button.tabIndex = -1;
       return;
     }
-    if (labels[section]) buttonLabel(button, labels[section]);
+    button.hidden = false;
+    button.removeAttribute("aria-hidden");
+    button.tabIndex = 0;
+    buttonLabel(button, labels[section]);
   });
   const signOut = shell.querySelector(":scope > button[data-portal-signout]");
   if (signOut) signOut.textContent = "Sign out";
@@ -177,11 +183,11 @@ function simplifyPatientToday() {
     welcome.dataset.uiSimplified = "true";
     const raw = welcome.querySelector(".section-kicker")?.textContent || "YOUR RECOVERY";
     const first = raw.replace(/’S RECOVERY/i, "").trim();
-    const pretty = first ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : "there";
+    const pretty = first ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : "";
     const kicker = welcome.querySelector(".section-kicker");
     const title = welcome.querySelector("h1");
     if (kicker) kicker.textContent = "TODAY";
-    if (title) title.textContent = `Good afternoon, ${pretty}`;
+    if (title) title.textContent = pretty ? `Hi, ${pretty}` : "Hi";
   }
 
   if (today.dataset.uiSimplified !== "true") {
@@ -205,7 +211,6 @@ function simplifyPatientToday() {
 
   const support = page.querySelector(".roadmap-support-grid");
   const atlas = page.querySelector(".journey-atlas");
-  const phases = page.querySelector("[data-clinic-phases]");
   if (support && support.dataset.uiMoved !== "true") {
     support.dataset.uiMoved = "true";
     const reward = support.querySelector(".reward-card");
@@ -432,7 +437,9 @@ export function syncUiHierarchy() {
 syncUiHierarchy();
 
 window.__axionUiHierarchy = Object.freeze({
-  version: 1,
+  version: 2,
   strategy: "progressive-disclosure",
   observerFree: true,
+  patientPrimaryNavigationCount: 4,
+  therapistPrimaryNavigationCount: 4,
 });

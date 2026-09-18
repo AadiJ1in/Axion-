@@ -39,7 +39,7 @@ body:not([data-axion-ui-screen]) .topbar .nav button{min-height:44px;padding:.65
 .topbar .nav[data-ui-patient-nav="true"]>button{min-width:0;min-height:44px;white-space:nowrap}
 .topbar .nav[data-ui-patient-nav="true"]>button[aria-current="page"]{box-shadow:inset 0 -2px var(--mint)}
 .ui-today-secondary-actions,.ui-profile-secondary-actions{display:flex;align-items:center;justify-content:flex-start;gap:.6rem;margin:.75rem 0 1.2rem}
-.ui-report-concern{min-height:44px!important;padding:.65rem .85rem!important;border:1px solid rgba(165,101,79,.23)!important;border-radius:10px!important;background:rgba(165,101,79,.055)!important;color:#805645!important;box-shadow:none!important}
+.ui-report-concern{min-height:44px!important;padding:.65rem .85rem!important;border:1px solid rgba(165,101,79,.23)!important;border-radius:10px!important;background:rgba(165,101,79,.055)!important;color:#e8b58a!important;box-shadow:none!important}
 .ui-report-concern:hover{border-color:rgba(165,101,79,.42)!important;background:rgba(165,101,79,.09)!important}
 
 /* Today and Journey are separate jobs even though they share the current renderer. */
