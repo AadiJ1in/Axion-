@@ -22,17 +22,28 @@ function normalizeDelegate(value) {
   return ["auto", "cpu", "gpu"].includes(normalized) ? normalized : "auto";
 }
 
+function boundedNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+}
+
+function positiveInteger(value, fallback, min, max) {
+  return Math.round(boundedNumber(value, fallback, min, max));
+}
+
 /**
- * Resolve MediaPipe assets without coupling the tracker to one host or deploy path.
+ * Resolve MediaPipe assets and inference tuning without coupling the tracker to
+ * one host, model, delegate, or confidence profile.
  *
  * Build-time overrides:
  *   VITE_MEDIAPIPE_WASM_URL
  *   VITE_MEDIAPIPE_MODEL_URL
  *   VITE_MEDIAPIPE_MODEL_SHA256
  *   VITE_MEDIAPIPE_DELEGATE=auto|gpu|cpu
- *
- * The defaults remain pinned and integrity-checked. A custom model must provide
- * its own SHA-256 so changing the model cannot silently weaken verification.
+ *   VITE_MEDIAPIPE_MIN_DETECTION_CONFIDENCE
+ *   VITE_MEDIAPIPE_MIN_PRESENCE_CONFIDENCE
+ *   VITE_MEDIAPIPE_MIN_TRACKING_CONFIDENCE
+ *   VITE_MEDIAPIPE_NUM_POSES
  */
 export function resolveMediapipeConfig(overrides = {}, env = import.meta.env || {}) {
   const baseUrl = overrides.baseUrl ?? env.BASE_URL ?? "/";
@@ -49,6 +60,28 @@ export function resolveMediapipeConfig(overrides = {}, env = import.meta.env || 
     throw new Error("A custom MediaPipe model requires a valid VITE_MEDIAPIPE_MODEL_SHA256 value.");
   }
 
+  const vision = Object.freeze({
+    numPoses: positiveInteger(overrides.numPoses ?? env.VITE_MEDIAPIPE_NUM_POSES, 2, 1, 4),
+    minPoseDetectionConfidence: boundedNumber(
+      overrides.minPoseDetectionConfidence ?? env.VITE_MEDIAPIPE_MIN_DETECTION_CONFIDENCE,
+      0.55,
+      0.1,
+      0.99,
+    ),
+    minPosePresenceConfidence: boundedNumber(
+      overrides.minPosePresenceConfidence ?? env.VITE_MEDIAPIPE_MIN_PRESENCE_CONFIDENCE,
+      0.55,
+      0.1,
+      0.99,
+    ),
+    minTrackingConfidence: boundedNumber(
+      overrides.minTrackingConfidence ?? env.VITE_MEDIAPIPE_MIN_TRACKING_CONFIDENCE,
+      0.55,
+      0.1,
+      0.99,
+    ),
+  });
+
   return Object.freeze({
     wasmRoot,
     model: Object.freeze({
@@ -57,6 +90,7 @@ export function resolveMediapipeConfig(overrides = {}, env = import.meta.env || 
       sha256: modelSha256.toLowerCase(),
     }),
     delegate: normalizeDelegate(overrides.delegate ?? env.VITE_MEDIAPIPE_DELEGATE),
+    vision,
   });
 }
 
