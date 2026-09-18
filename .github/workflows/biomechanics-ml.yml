@@ -7,9 +7,11 @@ on:
     paths:
       - "src/biomechanics.js"
       - "src/movement-quality-model.js"
+      - "src/compensation-migration.js"
       - "ml/**"
       - "scripts/biomechanics-test.mjs"
       - "scripts/movement-quality-model-test.mjs"
+      - "scripts/compensation-migration-test.mjs"
       - "scripts/dataset-feature-pipeline-test.mjs"
       - ".github/workflows/biomechanics-ml.yml"
   push:
@@ -18,9 +20,11 @@ on:
     paths:
       - "src/biomechanics.js"
       - "src/movement-quality-model.js"
+      - "src/compensation-migration.js"
       - "ml/**"
       - "scripts/biomechanics-test.mjs"
       - "scripts/movement-quality-model-test.mjs"
+      - "scripts/compensation-migration-test.mjs"
       - "scripts/dataset-feature-pipeline-test.mjs"
       - ".github/workflows/biomechanics-ml.yml"
   workflow_dispatch:
@@ -43,9 +47,9 @@ jobs:
       - name: Check Python pipeline syntax
         run: python3 -m py_compile ml/extract_dataset_features.py ml/train_movement_quality.py ml/integration_smoke_test.py
       - name: Check biomechanics JavaScript syntax
-        run: node --check src/biomechanics.js && node --check src/movement-quality-model.js && node --check ml/landmarks_to_features.mjs
+        run: node --check src/biomechanics.js && node --check src/movement-quality-model.js && node --check src/compensation-migration.js && node --check ml/landmarks_to_features.mjs
       - name: Run biomechanics contracts
-        run: node scripts/biomechanics-test.mjs && node scripts/movement-quality-model-test.mjs && node scripts/dataset-feature-pipeline-test.mjs
+        run: node scripts/biomechanics-test.mjs && node scripts/movement-quality-model-test.mjs && node scripts/compensation-migration-test.mjs && node scripts/dataset-feature-pipeline-test.mjs
 
   python-integration:
     runs-on: ubuntu-latest
