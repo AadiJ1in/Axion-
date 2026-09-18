@@ -40,12 +40,10 @@ async function verifiedModelUrl(model) {
 }
 
 /**
- * MediaPipe-specific pose inference is isolated behind this runtime boundary.
- * Movement profiles, rep counting and biomechanics consume only the returned
- * landmarks. This lets Axion change the pose backend later without rewriting
- * clinical movement logic.
+ * Proven main-thread MediaPipe runtime. Kept as the compatibility backend so
+ * Axion can always fall back without changing movement/rep logic.
  */
-export function createLocalPoseRuntime({
+export function createDirectPoseRuntime({
   mediapipe = {},
   onState = () => {},
   webglAvailable = supportsWebGL,
@@ -158,10 +156,10 @@ export function createLocalPoseRuntime({
 }
 
 /**
- * Worker-first runtime. In modern browsers, MediaPipe inference receives an
- * ImageBitmap in a dedicated worker so synchronous detectForVideo() does not
- * monopolize Axion's UI/game thread. If worker startup or inference fails, Axion
- * transparently returns to the proven local runtime for the same session.
+ * Worker-first runtime with a synchronous buffered facade. pose.js can keep its
+ * deterministic one-frame-at-a-time movement pipeline while the expensive
+ * MediaPipe detectForVideo call happens in a dedicated worker. At most one
+ * worker inference is in flight, preventing backlog during slow frames.
  */
 export function createPoseRuntime({
   mediapipe = {},
@@ -171,13 +169,18 @@ export function createPoseRuntime({
   const workerPreference = mediapipe.worker ?? "auto";
   const workerAllowed = workerPreference !== false && workerPreference !== "off";
   const canUseWorker = workerAllowed && supportsPoseWorker();
-  const localRuntime = createLocalPoseRuntime({ mediapipe, onState });
+  const localRuntime = createDirectPoseRuntime({ mediapipe, onState });
   let workerRuntime = canUseWorker ? createWorkerPoseRuntime({ mediapipe, onState, ...worker }) : null;
   let activeRuntime = workerRuntime || localRuntime;
   let initialized = false;
   let initializationPromise = null;
+  let workerInferencePending = false;
+  let latestWorkerResult = { landmarks: [], worldLandmarks: [] };
+  let workerGeneration = 0;
 
   async function activateLocal(reason) {
+    const generation = ++workerGeneration;
+    workerInferencePending = false;
     if (activeRuntime !== localRuntime) {
       try { activeRuntime?.close?.(); } catch { /* worker may already have failed */ }
       activeRuntime = localRuntime;
@@ -185,6 +188,7 @@ export function createPoseRuntime({
       onState({ code: "model_fallback", label: reason || "Using compatibility tracking", quality: null });
     }
     await localRuntime.initialize();
+    if (generation !== workerGeneration) return localRuntime.getState();
     initialized = true;
     return localRuntime.getState();
   }
@@ -213,21 +217,40 @@ export function createPoseRuntime({
     }
   }
 
+  function queueWorkerInference(source, timestampMs) {
+    if (!workerRuntime || workerInferencePending) return;
+    workerInferencePending = true;
+    const generation = workerGeneration;
+    workerRuntime.infer(source, timestampMs)
+      .then((result) => {
+        if (generation === workerGeneration && activeRuntime === workerRuntime) {
+          latestWorkerResult = result || { landmarks: [], worldLandmarks: [] };
+        }
+      })
+      .catch(async () => {
+        if (generation !== workerGeneration || activeRuntime !== workerRuntime) return;
+        try {
+          await activateLocal("Background tracking interrupted · continuing locally");
+        } catch {
+          onState({ code: "model_error", label: "Movement tracking model needs a restart", quality: null });
+        }
+      })
+      .finally(() => {
+        if (generation === workerGeneration) workerInferencePending = false;
+      });
+  }
+
   return Object.freeze({
     kind: "adaptive-pose-runtime",
     config: localRuntime.config,
     initialize,
-    async infer(source, timestampMs) {
-      await initialize();
-      try {
-        return await activeRuntime.infer(source, timestampMs);
-      } catch (error) {
-        if (activeRuntime === workerRuntime && workerRuntime) {
-          await activateLocal("Background tracking interrupted · continuing locally");
-          return localRuntime.infer(source, timestampMs);
-        }
-        throw error;
+    infer(source, timestampMs) {
+      if (!initialized) throw new Error("Movement model is not initialized.");
+      if (activeRuntime === workerRuntime && workerRuntime) {
+        queueWorkerInference(source, timestampMs);
+        return latestWorkerResult;
       }
+      return localRuntime.infer(source, timestampMs);
     },
     async switchToCpu() {
       await initialize();
@@ -242,6 +265,9 @@ export function createPoseRuntime({
     close() {
       initialized = false;
       initializationPromise = null;
+      workerInferencePending = false;
+      latestWorkerResult = { landmarks: [], worldLandmarks: [] };
+      workerGeneration += 1;
       try { workerRuntime?.close?.(); } catch { /* worker cleanup */ }
       try { localRuntime.close(); } catch { /* local cleanup */ }
       workerRuntime = null;
@@ -252,7 +278,15 @@ export function createPoseRuntime({
         ...activeRuntime.getState(),
         kind: activeRuntime.kind,
         adaptive: true,
+        inferencePending: workerInferencePending,
       });
     },
   });
+}
+
+// Backward-compatible name used by the movement tracker. It now selects the
+// worker-backed runtime automatically when the browser supports transferable
+// ImageBitmap frames, while preserving the local runtime fallback contract.
+export function createLocalPoseRuntime(options) {
+  return createPoseRuntime(options);
 }
