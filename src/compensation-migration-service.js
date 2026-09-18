@@ -257,6 +257,7 @@ function primarySymmetryMetric(exerciseKey) {
     region: "knee",
     side: "bilateral",
     unit: "deg",
+    minAcceptedFrames: 8,
     improvementDirection: "decrease",
     exerciseKey,
     recoveryGuard: {
