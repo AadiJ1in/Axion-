@@ -7,7 +7,7 @@
   padding:.34rem 1rem;
   background:#bdfddc;
   color:#183c30;
-  font-size:.65rem;
+  font-size:.72rem;
   letter-spacing:.06em;
 }
 .prototype-strip__secondary{opacity:.68}
@@ -200,17 +200,17 @@ body[data-axion-ui-screen] :is(.patient-portal,.patient-profile-page,.patient-re
 }
 
 @media(max-width:390px){
-  html[data-axion-patient-surface="true"] .topbar .nav[data-ui-patient-nav="true"]>button{font-size:.72rem!important}
+  html[data-axion-patient-surface="true"] .topbar .nav[data-ui-patient-nav="true"]>button{font-size:.75rem!important}
   .ui-report-concern{width:100%;justify-content:center}
 }
 
 @media(max-width:360px){
-  html[data-axion-patient-surface="true"] .topbar .nav[data-ui-patient-nav="true"]>button{font-size:.68rem!important;padding-inline:0!important}
+  html[data-axion-patient-surface="true"] .topbar .nav[data-ui-patient-nav="true"]>button{font-size:.75rem!important;padding-inline:0!important}
   .patient-portal[data-ui-patient-today="true"] .journey-welcome h1{font-size:1.95rem!important}
 }
 
 @media(max-width:320px){
-  html[data-axion-patient-surface="true"] .topbar .nav[data-ui-patient-nav="true"]>button{font-size:.64rem!important}
+  html[data-axion-patient-surface="true"] .topbar .nav[data-ui-patient-nav="true"]>button{font-size:.75rem!important}
   html[data-axion-patient-surface="true"] .topbar .nav[data-ui-patient-nav="true"]>button svg{width:15px;height:15px}
   .container-wide{width:calc(100% - 18px)!important}
 }
