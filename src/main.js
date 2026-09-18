@@ -2367,7 +2367,9 @@ function handleTrackingState({ code, label, quality, confidence }) {
   };
   if (guidance[code]) setText("#coach-message", guidance[code]);
 
-  if (["permission_denied", "no_camera", "camera_busy", "camera_timeout", "insecure_context", "camera_disconnected", "camera_error"].includes(code)) {
+  if (code === "model_error") {
+    showCameraRecovery("Movement tracker unavailable", label);
+  } else if (["permission_denied", "no_camera", "camera_busy", "camera_timeout", "insecure_context", "camera_disconnected", "camera_error"].includes(code)) {
     showCameraRecovery("Camera unavailable", label);
   } else if (code === "body_detected") {
     hideCameraRecovery();
