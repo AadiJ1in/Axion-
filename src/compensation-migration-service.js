@@ -22,6 +22,14 @@ function clamp01(value) {
   return numeric === null ? null : Math.min(1, Math.max(0, numeric));
 }
 
+function biomechanicsEvidenceQuality(biomechanics = {}) {
+  const visibility = clamp01(biomechanics.averageVisibility);
+  const coverage = clamp01(biomechanics.averageCoverage);
+  if (visibility === null) return coverage ?? 0;
+  if (coverage === null) return visibility;
+  return Math.min(visibility, coverage);
+}
+
 function metricPayload(metric) {
   return {
     metricKey: metric.metricKey,
@@ -111,7 +119,8 @@ function sessionBiomechanicsMetrics(session, prescribedSide = "either") {
   const biomechanics = summary.biomechanics_v1 || null;
   if (!biomechanics || biomechanics.schemaVersion !== 1 || biomechanics.clinicalStatus !== "descriptive_unvalidated") return [];
 
-  const quality = clamp01(biomechanics.averageVisibility) ?? 0;
+  const quality = biomechanicsEvidenceQuality(biomechanics);
+  const visibility = clamp01(biomechanics.averageVisibility);
   const coverage = clamp01(biomechanics.averageCoverage);
   const defaultSupport = Math.max(0, Math.round(Number(biomechanics.repsWithBiomechanics || 0)));
   const metrics = [];
@@ -134,6 +143,7 @@ function sessionBiomechanicsMetrics(session, prescribedSide = "either") {
         supportCount,
         acceptedFrames: supportCount,
         averageCoverage: coverage,
+        averageVisibility: visibility,
         biomechanicsSchemaVersion: biomechanics.schemaVersion,
       },
     });
@@ -153,6 +163,8 @@ function sessionBiomechanicsMetrics(session, prescribedSide = "either") {
         source: "verified_session_summary",
         aggregation: "session_mean",
         supportCount: Math.max(defaultSupport, Number(session.repetitions || 0)),
+        averageCoverage: coverage,
+        averageVisibility: visibility,
       },
     });
   }
@@ -183,7 +195,9 @@ export async function persistSessionBiomechanics({
   if (!metrics.length) return { saved: false, reason: "no_reliable_biomechanics", metrics: [], analysis: null };
 
   const biomechanics = session.movement_summary?.biomechanics_v1 || {};
-  const trackingQuality = clamp01(biomechanics.averageVisibility);
+  const trackingQuality = biomechanicsEvidenceQuality(biomechanics);
+  const averageVisibility = clamp01(biomechanics.averageVisibility);
+  const averageCoverage = clamp01(biomechanics.averageCoverage);
   const repCount = Math.max(0, Number(session.repetitions || 0));
   const sampleCount = Math.max(0, Number(biomechanics.repsWithBiomechanics || repCount));
   const occurredAt = session.completed_at || session.created_at || session.started_at || new Date().toISOString();
@@ -220,8 +234,9 @@ export async function persistSessionBiomechanics({
     aggregation: "exercise_session_biomechanics_v1",
     sessionCompletedAt: occurredAt,
     repsWithBiomechanics: Math.max(0, Number(biomechanics.repsWithBiomechanics || 0)),
-    averageCoverage: clamp01(biomechanics.averageCoverage),
-    averageVisibility: trackingQuality,
+    averageCoverage,
+    averageVisibility,
+    evidenceQuality: trackingQuality,
     metrics,
   };
 
