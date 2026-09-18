@@ -24,11 +24,16 @@ const scheduler = createVideoFrameScheduler(video, {
 });
 
 let fired = 0;
-scheduler.schedule(() => { fired += 1; });
+scheduler.schedule(async () => {
+  await Promise.resolve();
+  fired += 1;
+});
 assert.equal(scheduler.getState().mode, "video", "real video callbacks are preferred over animation frames");
 assert.equal(fallbackRequested, 0);
 const firstId = nextVideo;
-videoCallbacks.get(firstId)(10, { mediaTime: 0.1 });
+const frameCompletion = videoCallbacks.get(firstId)(10, { mediaTime: 0.1 });
+assert.equal(typeof frameCompletion?.then, "function", "scheduler preserves async frame callback completion");
+await frameCompletion;
 assert.equal(fired, 1);
 assert.equal(scheduler.getState().scheduled, false);
 
