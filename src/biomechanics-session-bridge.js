@@ -3,19 +3,12 @@ import { loadPatientWorkspace } from "./portal.js";
 import {
   LOWER_BODY_COMPENSATION_GRAPH,
   persistSessionBiomechanics,
+  SESSION_BIOMECHANICS_DEFINITION,
 } from "./compensation-migration-service.js";
-import {
-  appendBiomechanicsFrame,
-  WORLD_BIOMECHANICS_DEFINITION,
-} from "./biomechanics-live-core.js";
 
-const FRAME_SAMPLE_INTERVAL_MS = 250;
-const BRIDGE_SYNC_INTERVAL_MS = 250;
+const BRIDGE_SYNC_INTERVAL_MS = 300;
 const SESSION_LOOKUP_ATTEMPTS = 20;
 const SESSION_LOOKUP_DELAY_MS = 450;
-// Only bilateral tasks currently have a defensible session-level primary
-// recovery anchor. Unilateral lower-body tasks still persist whole-body
-// features and can contribute secondary cross-exercise replication evidence.
 const LOWER_BODY_ANALYSIS_EXERCISES = new Set([
   "bodyweight_squat",
   "half_squat",
@@ -25,17 +18,12 @@ const LOWER_BODY_ANALYSIS_EXERCISES = new Set([
 const state = {
   root: null,
   captureKey: null,
-  session: null,
   workspace: null,
   assignment: null,
   patientId: null,
   assignmentId: null,
   planId: null,
   clientSessionId: null,
-  frames: [],
-  acceptedSampleCount: 0,
-  featureDefinitionVersion: null,
-  lastFrameAt: -Infinity,
   resolving: null,
   persisting: null,
   persistedCaptureKey: null,
@@ -57,17 +45,12 @@ function resetForLab(root) {
   const clientSessionId = String(root?.dataset.sessionClientId || "").trim() || null;
   state.root = root;
   state.captureKey = labCaptureKey(root);
-  state.session = null;
   state.workspace = null;
   state.assignment = null;
   state.patientId = null;
   state.assignmentId = assignmentId;
   state.planId = planId;
   state.clientSessionId = clientSessionId;
-  state.frames = [];
-  state.acceptedSampleCount = 0;
-  state.featureDefinitionVersion = null;
-  state.lastFrameAt = -Infinity;
   state.resolving = null;
   state.persisting = null;
   state.persistedCaptureKey = null;
@@ -92,8 +75,7 @@ async function resolveLabContext() {
     const captureKey = state.captureKey;
     const { data, error } = await supabase.auth.getSession();
     if (error || !data?.session?.user || captureKey !== state.captureKey) return null;
-    const session = data.session;
-    const patientId = session.user.id;
+    const patientId = data.session.user.id;
     const workspace = await loadPatientWorkspace(supabase, patientId);
     if (captureKey !== state.captureKey || !workspace?.plan || workspace.plan.id !== state.planId) return null;
     const assignment = (workspace.assignments || []).find((item) =>
@@ -101,7 +83,6 @@ async function resolveLabContext() {
       && item.plan_id === state.planId
       && item.status === "active") || null;
     if (!assignment) return null;
-    state.session = session;
     state.workspace = workspace;
     state.assignment = assignment;
     state.patientId = patientId;
@@ -113,38 +94,6 @@ async function resolveLabContext() {
     state.resolving = null;
   });
   return state.resolving;
-}
-
-function acceptDerivedFrame(event) {
-  syncLabIdentity();
-  if (!state.captureKey || !state.root) return;
-  const frame = event?.detail;
-  if (!frame
-      || frame.definitionVersion !== WORLD_BIOMECHANICS_DEFINITION
-      || !Array.isArray(frame.metrics)
-      || !frame.metrics.length) return;
-
-  const capturedAt = Number(frame.capturedAt);
-  const sampleAt = Number.isFinite(capturedAt) ? capturedAt : performance.now();
-  if (sampleAt - state.lastFrameAt < FRAME_SAMPLE_INTERVAL_MS) return;
-  if (state.featureDefinitionVersion && state.featureDefinitionVersion !== frame.definitionVersion) return;
-  if (state.assignment?.exercise_key && frame.exerciseKey && frame.exerciseKey !== state.assignment.exercise_key) return;
-
-  // The tracker event contains only derived scalar metrics. Landmark arrays and
-  // coordinates never cross this boundary and are never persisted by the bridge.
-  const safeMetrics = frame.metrics.filter((metric) =>
-    metric?.metricKey
-    && Number.isFinite(Number(metric.value))
-    && Number.isFinite(Number(metric.quality))
-    && !("landmarks" in metric)
-    && !("coordinates" in metric));
-  if (!safeMetrics.length) return;
-
-  state.featureDefinitionVersion = frame.definitionVersion;
-  state.lastFrameAt = sampleAt;
-  state.acceptedSampleCount += 1;
-  state.frames = appendBiomechanicsFrame(state.frames, safeMetrics);
-  if (!state.assignment) void resolveLabContext();
 }
 
 async function newestSavedSession() {
@@ -182,11 +131,11 @@ function showPersistenceReceipt(result) {
   const title = document.createElement("b");
   const detail = document.createElement("span");
   if (result?.saved) {
-    title.textContent = "Longitudinal movement features saved";
-    detail.textContent = `${result.metrics.length} derived whole-body metrics · MediaPipe world-landmark features · raw pose coordinates were not stored · clinician review only`;
+    title.textContent = "Longitudinal movement evidence saved";
+    detail.textContent = `${result.metrics.length} privacy-minimized session metrics · raw video and pose coordinates were not stored · clinician review only`;
   } else {
     title.textContent = "Movement session preserved";
-    detail.textContent = `Longitudinal biomechanics were not added for this session (${String(result?.reason || "insufficient reliable movement").replaceAll("_", " ")}).`;
+    detail.textContent = `Longitudinal evidence was not added for this session (${String(result?.reason || "insufficient reliable movement").replaceAll("_", " ")}).`;
   }
   receipt.append(title, detail);
   (report.querySelector(".report-header") || report).after(receipt);
@@ -196,8 +145,6 @@ async function persistPendingCapture() {
   if (!isConfigured
       || !supabase
       || !state.captureKey
-      || !state.frames.length
-      || !state.featureDefinitionVersion
       || state.persistedCaptureKey === state.captureKey) return null;
   if (state.persisting) return state.persisting;
 
@@ -218,12 +165,10 @@ async function persistPendingCapture() {
         supabase,
         patientId: state.patientId,
         session: savedSession,
-        frames: state.frames,
-        acceptedSampleCount: state.acceptedSampleCount,
         prescribedSide: state.assignment.prescribed_side || "either",
         primaryMetric: graph?.primaryMetric || null,
         relatedMetrics: graph?.relatedMetrics || [],
-        featureDefinitionVersion: state.featureDefinitionVersion,
+        featureDefinitionVersion: SESSION_BIOMECHANICS_DEFINITION,
       });
     } catch (error) {
       console.warn("AXION_BIOMECHANICS_EVENT", { event: "persistence_failed", errorCode: String(error?.code || "BIOMECHANICS_SAVE_FAILED") });
@@ -235,7 +180,7 @@ async function persistPendingCapture() {
     showPersistenceReceipt(result);
     console.info("AXION_BIOMECHANICS_EVENT", {
       event: "persistence_complete",
-      acquisition: state.featureDefinitionVersion,
+      acquisition: SESSION_BIOMECHANICS_DEFINITION,
       saved: Boolean(result?.saved),
       analysisStatus: result?.analysis?.status || "none",
       derivedMetricCount: result?.metrics?.length || 0,
@@ -250,13 +195,11 @@ async function persistPendingCapture() {
 function syncBridge() {
   syncLabIdentity();
   if (document.querySelector(".report-page")
-      && state.frames.length
+      && state.captureKey
       && state.persistedCaptureKey !== state.captureKey) {
     void persistPendingCapture();
   }
 }
-
-window.addEventListener("axion:biomechanics-frame", acceptDerivedFrame);
 
 let authSubscription = null;
 if (isConfigured && supabase) {
@@ -273,13 +216,12 @@ syncBridge();
 
 window.addEventListener("pagehide", () => {
   window.clearInterval(timer);
-  window.removeEventListener("axion:biomechanics-frame", acceptDerivedFrame);
   authSubscription?.unsubscribe?.();
 }, { once: true });
 
 window.__axionBiomechanicsBridge = Object.freeze({
-  version: 2,
-  acquisition: WORLD_BIOMECHANICS_DEFINITION,
+  version: 3,
+  acquisition: SESSION_BIOMECHANICS_DEFINITION,
   storesRawPoseCoordinates: false,
   candidateRequiresClinicianReview: true,
 });
