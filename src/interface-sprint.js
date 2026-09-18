@@ -37,11 +37,15 @@ function publicShell() {
     && !document.querySelector('.topbar .nav [data-nav="therapist"].active');
 }
 
+function preferredScrollBehavior() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
 function scrollToSection(selector) {
   const target = document.querySelector(selector);
   if (!target) return false;
   target.scrollIntoView({
-    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    behavior: preferredScrollBehavior(),
     block: "start",
   });
   return true;
@@ -59,7 +63,7 @@ function goHomeThen(selector) {
 function focusDemoPicker() {
   const picker = document.querySelector(".role-demo-grid");
   if (picker) {
-    picker.scrollIntoView({ behavior: "smooth", block: "center" });
+    picker.scrollIntoView({ behavior: preferredScrollBehavior(), block: "center" });
     picker.querySelector("button")?.focus({ preventScroll: true });
     return;
   }
@@ -68,7 +72,7 @@ function focusDemoPicker() {
   const locate = () => {
     const next = document.querySelector(".role-demo-grid");
     if (next) {
-      next.scrollIntoView({ behavior: "smooth", block: "center" });
+      next.scrollIntoView({ behavior: preferredScrollBehavior(), block: "center" });
       next.querySelector("button")?.focus({ preventScroll: true });
       return;
     }
@@ -108,7 +112,7 @@ function bindInterfaceActions() {
       event.stopImmediatePropagation();
       const target = publicButton.dataset.uiPublicTarget;
       if (target === "product") {
-        if (document.querySelector(".hero")) window.scrollTo({ top: 0, behavior: "smooth" });
+        if (document.querySelector(".hero")) window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
         else document.querySelector('.brand[data-nav="home"]')?.click();
       } else if (target === "therapists") goHomeThen("#for-therapists");
       else if (target === "patients") goHomeThen("#for-patients");
