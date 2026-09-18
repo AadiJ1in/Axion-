@@ -229,9 +229,9 @@ export async function persistSessionBiomechanics({
   return { saved: true, reason: "saved", metrics, analysis };
 }
 
-// Candidate scoring deliberately uses body-relative features where possible.
-// This reduces false drift from a camera that is slightly rolled between home
-// sessions. Raw camera-horizontal angles are still stored for research display,
+// Candidate scoring deliberately uses 3D body-internal geometry.
+// This reduces false drift from rigid camera-coordinate rotation between home
+// sessions. Camera-plane metrics are still stored for research display,
 // but they do not drive candidate status.
 // Prototype sensitivity thresholds are expressed in each metric's native
 // scale. They are engineering gates for longitudinal review signals, not
@@ -243,12 +243,12 @@ const BILATERAL_RECOVERY_EXERCISES = Object.freeze([
 ]);
 
 const sharedLowerBodyRelatedMetrics = Object.freeze([
-  { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5 , exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "shoulder_pelvis_axis_mismatch_3d_deg", region: "trunk", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3 , exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "hip_flexion_asymmetry_3d_deg", region: "hip", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3 , exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "left", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 , exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
-  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "right", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 },
-  { metricKey: "pelvis_over_stance_offset_3d_proxy", region: "lower_limb", side: "bilateral", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03 , exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "trunk_pelvis_lateral_deviation_3d_deg", region: "trunk", side: "midline", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 2.5, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "shoulder_pelvis_axis_mismatch_3d_deg", region: "trunk", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "hip_flexion_asymmetry_3d_deg", region: "hip", side: "bilateral", unit: "deg", worseningDirection: "increase", minRelativeDrift: 0.12, minAbsoluteDrift: 3, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "left", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "knee_mediolateral_offset_3d_proxy", region: "knee", side: "right", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
+  { metricKey: "pelvis_over_stance_offset_3d_proxy", region: "lower_limb", side: "bilateral", unit: "ratio", worseningDirection: "increase", minRelativeDrift: 0.08, minAbsoluteDrift: 0.03, exerciseKeys: BILATERAL_RECOVERY_EXERCISES },
 ]);
 
 function primarySymmetryMetric(exerciseKey, unit) {
