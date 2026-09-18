@@ -42,6 +42,21 @@ const related = [
 
 {
   const observations = [];
+  const knee = [24, 21, 18, 14, 10, 7, 5];
+  for (let i = 0; i < knee.length; i += 1) {
+    observations.push(observation(i + 1, "squat", "right_knee_asymmetry", "knee", "right", knee[i], 0.95, 3));
+  }
+  const result = detectCompensationMigration({
+    observations,
+    primaryMetric: { ...primary, minAcceptedFrames: 8 },
+    relatedMetrics: [],
+  });
+  assert.equal(result.status, "insufficient_data");
+  assert.equal(result.reason, "not_enough_primary_sessions");
+}
+
+{
+  const observations = [];
   const knee = [24, 21, 18, 14, 10];
   const trunk = [4, 6, 8, 11, 14];
   for (let i = 0; i < knee.length; i += 1) {
