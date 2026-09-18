@@ -42,6 +42,7 @@ export function createMovementGameController({
   let runner = runnerMode && exerciseKey === 'bodyweight_squat' ? createRuinsRunner() : null;
   const camera = !runner && liveCamera && exerciseKey === 'bodyweight_squat' ? createSquatCameraControl() : null;
   let state;
+  let snapshotCache = null;
 
   const initial = () => ({
     exerciseKey,mapping,mode:'standard',gameDifficulty:'standard',clinicalTarget,holdTargetSeconds,
@@ -51,14 +52,25 @@ export function createMovementGameController({
   });
   state = initial();
 
-  const snapshot = () => Object.freeze({
-    ...state,
-    runner: runner?.snapshot(now()) || null,
-    camera: camera?.snapshot(now()) || null,
-    progress: clinicalTarget ? state.completed / clinicalTarget : 0,
-    story: movementGameStory(state.completed, clinicalTarget, mapping),
-  });
-  const publish = () => { const s = snapshot(); onState(s); return s; };
+  const invalidateSnapshot = () => { snapshotCache = null; };
+  const snapshot = () => {
+    // Camera and runner snapshots intentionally remain time-sensitive: both use
+    // freshness/animation timestamps internally, so reusing them could keep a
+    // stale pose or gate state alive. Static game families can safely reuse the
+    // last immutable snapshot until an explicit event invalidates it.
+    const dynamicSnapshot = Boolean(runner || camera);
+    if (!dynamicSnapshot && snapshotCache) return snapshotCache;
+    const next = Object.freeze({
+      ...state,
+      runner: runner?.snapshot(now()) || null,
+      camera: camera?.snapshot(now()) || null,
+      progress: clinicalTarget ? state.completed / clinicalTarget : 0,
+      story: movementGameStory(state.completed, clinicalTarget, mapping),
+    });
+    if (!dynamicSnapshot) snapshotCache = next;
+    return next;
+  };
+  const publish = () => { invalidateSnapshot(); const s = snapshot(); onState(s); return s; };
 
   // Entertainment-only smoothing. Clinical validation consumes the original
   // tracker event elsewhere; this only prevents landmark noise from making the
@@ -76,9 +88,11 @@ export function createMovementGameController({
 
   const api = {
     getState:snapshot,
-    updateCameraPose(points){ if(!state.paused) camera?.pose(points,now()); },
-    setCameraReady(ready){ camera?.setReady(ready); runner?.ready(ready); },
-    resetCamera(){ camera?.reset(); if(runner) runner=createRuinsRunner(); },
+    updateCameraPose(points){
+      if(!state.paused && camera){ camera.pose(points,now()); invalidateSnapshot(); }
+    },
+    setCameraReady(ready){ camera?.setReady(ready); runner?.ready(ready); invalidateSnapshot(); },
+    resetCamera(){ camera?.reset(); if(runner) runner=createRuinsRunner(); invalidateSnapshot(); },
     setMode(mode){ state.mode=mode==='game' && mapping?'game':'standard'; return publish(); },
     setGameDifficulty(level){ if(['gentle','standard','lively'].includes(level)) state.gameDifficulty=level; return publish(); },
     acknowledgeSafety(){
@@ -86,12 +100,14 @@ export function createMovementGameController({
       // controller stays paused until the existing Resume action resumes both
       // the clinical tracker and the game together.
       state.safetyFlagged=false;
+      invalidateSnapshot();
       return snapshot();
     },
     tick(deltaMs){
       if(state.mode!=='game'||state.paused||state.completed>=clinicalTarget) return snapshot();
       if(runner){
         const outcome=runner.tick(deltaMs,now());
+        invalidateSnapshot();
         if(outcome==='collision'){state.attemptCollided=true;state.collisions++;state.combo=0;state.score=Math.max(0,state.score-25);state.lastOutcome='collision';return publish();}
         if(outcome==='clear'){state.score+=25;state.lastOutcome='clear';return publish();}
         return snapshot();
@@ -101,6 +117,7 @@ export function createMovementGameController({
       const dt=Math.min(80,Math.max(0,Number(deltaMs)||0));
       state.elapsed+=dt;
       state.obstacleX-=({gentle:6,standard:9,lively:11}[state.gameDifficulty])*dt/1000;
+      invalidateSnapshot();
       if(!state.obstacleResolved && state.obstacleX<=28){
         state.obstacleResolved=true;
         const center=gameTarget(mapping,state.obstaclePattern);
@@ -122,6 +139,7 @@ export function createMovementGameController({
       if(state.paused||state.completed>=clinicalTarget) return snapshot();
 
       if(event.type===MOVEMENT_EVENT.MOVEMENT_PROGRESS){
+        invalidateSnapshot();
         if(event.debugTiming) state.latestDebugTiming=Object.freeze({...event.debugTiming,gameStateAt:now()});
         runner?.motion(event,now());
         const rawMovement = runner?.snapshot(now()).movement ?? clamp01(event.progress);
@@ -143,6 +161,7 @@ export function createMovementGameController({
       }
       if(event.type===MOVEMENT_EVENT.REP_COMPLETE){
         if(event.rep?.valid===false) return snapshot();
+        invalidateSnapshot();
         camera?.validRep(event.rep);runner?.rep(event.rep);
         state.completed=Math.min(clinicalTarget,state.completed+1);
         state.remaining=clinicalTarget-state.completed;
@@ -153,6 +172,7 @@ export function createMovementGameController({
         return publish();
       }
       if(event.type===MOVEMENT_EVENT.HOLD_PROGRESS){
+        invalidateSnapshot();
         const rawMovement=clamp01(event.progress ?? (event.seconds && holdTargetSeconds ? event.seconds/holdTargetSeconds : 0));
         state.rawMovement=rawMovement;
         state.movement=smoothVisualMovement(rawMovement);
@@ -160,6 +180,7 @@ export function createMovementGameController({
         return snapshot();
       }
       if(event.type===MOVEMENT_EVENT.HOLD_COMPLETE){
+        invalidateSnapshot();
         state.completed=Math.min(clinicalTarget,state.completed+1);
         state.remaining=clinicalTarget-state.completed;
         state.lastOutcome=state.remaining===0?'complete':'counted';
