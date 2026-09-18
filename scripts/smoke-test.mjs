@@ -102,6 +102,7 @@ const requirements = [
   [files.main, "filters never remove draft choices", "selected exercise draft preservation"],
   [files.movementGame, "attemptCollided", "collision entertainment state"],
   [files.journey, "PHASE ${String(index+1)", "three-phase treatment roadmap"],
+  [files.main, "warmingTracker.prepare", "pose-model prewarm without camera permission"],
   [files.main, "await tracker.start()", "automatic camera tracking start"],
   [files.exerciseCatalog, "heel_to_toe_walk", "expanded exercise library"],
   [files.exerciseCatalog, "sit_to_stand", "functional sit-to-stand exercise"],
