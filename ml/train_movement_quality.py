@@ -49,6 +49,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--group-column", default="participant_id")
     parser.add_argument("--exercise-column", default="exercise_id")
     parser.add_argument("--source-video-column", default="source_video")
+    parser.add_argument("--camera-view-column", default="camera_view")
+    parser.add_argument("--source-column", default="source")
     parser.add_argument("--model-version", default="mobiphysio-exercise-ridge-v1")
     parser.add_argument("--mode", choices=("per-exercise", "global"), default="per-exercise")
     parser.add_argument("--test-size", type=float, default=0.20)
@@ -67,6 +69,34 @@ def metric_block(y_true: pd.Series, prediction: np.ndarray) -> dict:
         "rmse": round(float(mean_squared_error(y_true, prediction) ** 0.5), 4),
     }
     output["r2"] = round(float(r2_score(y_true, prediction)), 4) if len(y_true) >= 2 else None
+    return output
+
+
+def subgroup_metrics(
+    frame: pd.DataFrame,
+    test_index: np.ndarray,
+    y_test: pd.Series,
+    prediction: np.ndarray,
+    subgroup_columns: list[str],
+) -> dict[str, dict]:
+    output: dict[str, dict] = {}
+    test_frame = frame.iloc[test_index]
+    for column in subgroup_columns:
+        if column not in frame.columns:
+            continue
+        values = test_frame[column].fillna("").astype(str).str.strip()
+        groups: dict[str, dict] = {}
+        for value in sorted(item for item in values.unique() if item):
+            mask = values.to_numpy() == value
+            if int(mask.sum()) < 2:
+                continue
+            positions = np.flatnonzero(mask)
+            groups[value] = {
+                "n": int(mask.sum()),
+                **metric_block(y_test.iloc[positions], prediction[mask]),
+            }
+        if groups:
+            output[column] = groups
     return output
 
 
@@ -178,6 +208,7 @@ def train_one_model(
     minimum_groups: int,
     minimum_test_rows: int,
     maximum_missing_feature_fraction: float,
+    subgroup_columns: list[str],
 ) -> dict | None:
     if not len(train_index) or not len(test_index):
         return None
@@ -224,6 +255,13 @@ def train_one_model(
     baseline_prediction = np.full(len(y_test), baseline_value, dtype=float)
     metrics = metric_block(y_test, prediction)
     baseline_metrics = metric_block(y_test, baseline_prediction)
+    heldout_subgroups = subgroup_metrics(
+        frame,
+        test_index,
+        y_test,
+        prediction,
+        subgroup_columns,
+    )
 
     imputer: SimpleImputer = model.named_steps["imputer"]
     scaler: StandardScaler = model.named_steps["scaler"]
@@ -256,6 +294,7 @@ def train_one_model(
                 "metrics": baseline_metrics,
             },
             "modelBeatsMeanBaseline": metrics["mae"] < baseline_metrics["mae"],
+            "heldoutSubgroups": heldout_subgroups,
             "featureMissingRateTrain": missing_rates,
         },
     }
@@ -275,13 +314,6 @@ def participant_split(frame: pd.DataFrame, args: argparse.Namespace) -> tuple[np
     if overlap:
         raise RuntimeError("Participant leakage detected in top-level split.")
     return np.asarray(train_index), np.asarray(test_index)
-
-
-def subset_indices(frame: pd.DataFrame, indices: np.ndarray, mask: pd.Series) -> np.ndarray:
-    selected_labels = set(frame.index[indices])
-    subset_labels = [label for label in frame.index[mask] if label in selected_labels]
-    positions = frame.index.get_indexer(subset_labels)
-    return positions[positions >= 0]
 
 
 def main() -> None:
@@ -322,6 +354,7 @@ def main() -> None:
             minimum_groups=args.minimum_groups_per_model,
             minimum_test_rows=args.minimum_test_rows,
             maximum_missing_feature_fraction=args.maximum_missing_feature_fraction,
+            subgroup_columns=[args.camera_view_column, args.source_column],
         )
         if model is None or model.get("skipped"):
             raise SystemExit(f"Global model could not be trained: {model}")
@@ -350,6 +383,7 @@ def main() -> None:
                 minimum_groups=args.minimum_groups_per_model,
                 minimum_test_rows=args.minimum_test_rows,
                 maximum_missing_feature_fraction=args.maximum_missing_feature_fraction,
+                subgroup_columns=[args.camera_view_column, args.source_column],
             )
             if model is None:
                 skipped[exercise] = {
