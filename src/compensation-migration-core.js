@@ -1,7 +1,7 @@
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const COMPENSATION_ENGINE_VERSION = "0.14.0";
+export const COMPENSATION_ENGINE_VERSION = "0.15.0";
 
 export const DEFAULT_COMPENSATION_CONFIG = Object.freeze({
   minSessions: 5,
@@ -286,6 +286,31 @@ function scoreSignal({ persistence, magnitude, coupling, exerciseConsistency }) 
   return Math.round(clamp((0.28 * persistence) + (0.30 * magnitude) + (0.27 * coupling) + (0.15 * exerciseConsistency), 0, 1) * 100);
 }
 
+function primaryEvidence(primaryMetric, primarySummary, primaryPoints, {
+  improvementFraction = null,
+  absoluteImprovement = null,
+  recoveryGuard = null,
+} = {}) {
+  return {
+    metric: {
+      metricKey: primaryMetric.metricKey,
+      region: primaryMetric.region || "unknown",
+      side: primaryMetric.side || "unspecified",
+      unit: primaryMetric.unit || primaryPoints[0]?.unit || null,
+      exerciseKey: primaryMetric.exerciseKey || null,
+      analysisFloors: {
+        minAcceptedFrames: Math.max(0, Number(primaryMetric.minAcceptedFrames || 0)),
+        minBaselineMagnitude: Math.max(0, Number(primaryMetric.minBaselineMagnitude || 0)),
+        minAbsoluteImprovement: Math.max(0, Number(primaryMetric.minAbsoluteImprovement || 0)),
+      },
+    },
+    summary: primarySummary,
+    improvementFraction,
+    absoluteImprovement,
+    recoveryGuard,
+  };
+}
+
 function signalExplanation(primary, secondary, primarySummary, secondarySummary, score, crossExerciseSatisfied) {
   const exercise = primary.exerciseKey ? `${primary.exerciseKey} ` : "";
   const primaryLabel = `${exercise}${primary.side || ""} ${primary.region || ""} ${primary.metricKey}`.replace(/\s+/g, " ").trim();
@@ -325,7 +350,7 @@ export function detectCompensationMigration({
       status: "insufficient_data",
       score: 0,
       reason: "observation_window_too_short",
-      primary: primarySummary,
+      primary: primaryEvidence(primaryMetric, primarySummary, primaryPoints),
       signals: [],
       engineVersion: COMPENSATION_ENGINE_VERSION,
       config: configSnapshot,
@@ -336,25 +361,31 @@ export function detectCompensationMigration({
   const primaryDirection = primaryMetric.improvementDirection || "decrease";
   const minPrimaryBaselineMagnitude = Math.max(0, Number(primaryMetric.minBaselineMagnitude || 0));
   const minPrimaryAbsoluteImprovement = Math.max(0, Number(primaryMetric.minAbsoluteImprovement || 0));
+  const primaryImprovement = improvementFraction(primarySummary, primaryDirection);
+  const primaryAbsoluteImprovement = absoluteImprovement(primarySummary, primaryDirection);
   if (Math.abs(primarySummary.baseline) < minPrimaryBaselineMagnitude) {
     return {
       status: "stable",
       score: 0,
       reason: "primary_baseline_below_analysis_floor",
-      primary: primarySummary,
+      primary: primaryEvidence(primaryMetric, primarySummary, primaryPoints, {
+        improvementFraction: primaryImprovement,
+        absoluteImprovement: primaryAbsoluteImprovement,
+      }),
       signals: [],
       engineVersion: COMPENSATION_ENGINE_VERSION,
       config: configSnapshot,
     };
   }
-  const primaryImprovement = improvementFraction(primarySummary, primaryDirection);
-  const primaryAbsoluteImprovement = absoluteImprovement(primarySummary, primaryDirection);
   if (primaryAbsoluteImprovement < minPrimaryAbsoluteImprovement) {
     return {
       status: "stable",
       score: 0,
       reason: "primary_absolute_improvement_below_floor",
-      primary: primarySummary,
+      primary: primaryEvidence(primaryMetric, primarySummary, primaryPoints, {
+        improvementFraction: primaryImprovement,
+        absoluteImprovement: primaryAbsoluteImprovement,
+      }),
       signals: [],
       engineVersion: COMPENSATION_ENGINE_VERSION,
       config: configSnapshot,
@@ -365,7 +396,10 @@ export function detectCompensationMigration({
       status: "stable",
       score: 0,
       reason: "primary_metric_not_improving_enough",
-      primary: primarySummary,
+      primary: primaryEvidence(primaryMetric, primarySummary, primaryPoints, {
+        improvementFraction: primaryImprovement,
+        absoluteImprovement: primaryAbsoluteImprovement,
+      }),
       signals: [],
       engineVersion: COMPENSATION_ENGINE_VERSION,
       config: configSnapshot,
@@ -384,23 +418,16 @@ export function detectCompensationMigration({
         status: "insufficient_data",
         score: 0,
         reason: "primary_recovery_guard_insufficient",
-        primary: {
-          metric: {
-            metricKey: primaryMetric.metricKey,
-            region: primaryMetric.region || "unknown",
-            side: primaryMetric.side || "unspecified",
-            unit: primaryMetric.unit || primaryPoints[0]?.unit || null,
-            exerciseKey: primaryMetric.exerciseKey || null,
-          },
-          summary: primarySummary,
+        primary: primaryEvidence(primaryMetric, primarySummary, primaryPoints, {
           improvementFraction: primaryImprovement,
+          absoluteImprovement: primaryAbsoluteImprovement,
           recoveryGuard: {
             metric: guardSpec,
             summary: guardSummary,
             satisfied: false,
             maxRelativeDecrease,
           },
-        },
+        }),
         signals: [],
         engineVersion: COMPENSATION_ENGINE_VERSION,
         config: configSnapshot,
@@ -420,18 +447,11 @@ export function detectCompensationMigration({
         status: "monitoring",
         score: 0,
         reason: "primary_recovery_confounded_by_range_loss",
-        primary: {
-          metric: {
-            metricKey: primaryMetric.metricKey,
-            region: primaryMetric.region || "unknown",
-            side: primaryMetric.side || "unspecified",
-            unit: primaryMetric.unit || primaryPoints[0]?.unit || null,
-            exerciseKey: primaryMetric.exerciseKey || null,
-          },
-          summary: primarySummary,
+        primary: primaryEvidence(primaryMetric, primarySummary, primaryPoints, {
           improvementFraction: primaryImprovement,
+          absoluteImprovement: primaryAbsoluteImprovement,
           recoveryGuard,
-        },
+        }),
         signals: [],
         engineVersion: COMPENSATION_ENGINE_VERSION,
         config: configSnapshot,
@@ -544,19 +564,11 @@ export function detectCompensationMigration({
           : signals.length
             ? "secondary_drift_requires_replication"
             : "no_secondary_drift",
-    primary: {
-      metric: {
-        metricKey: primaryMetric.metricKey,
-        region: primaryMetric.region || "unknown",
-        side: primaryMetric.side || "unspecified",
-        unit: primaryMetric.unit || primaryPoints[0]?.unit || null,
-        exerciseKey: primaryMetric.exerciseKey || null,
-      },
-      summary: primarySummary,
+    primary: primaryEvidence(primaryMetric, primarySummary, primaryPoints, {
       improvementFraction: primaryImprovement,
       absoluteImprovement: primaryAbsoluteImprovement,
       recoveryGuard,
-    },
+    }),
     signals: reportedSignals,
     candidateMetric: candidateSignal?.metric || null,
     engineVersion: COMPENSATION_ENGINE_VERSION,
