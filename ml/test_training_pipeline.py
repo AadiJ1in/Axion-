@@ -88,6 +88,15 @@ with tempfile.TemporaryDirectory(prefix="axion-ml-test-") as temp:
         check=True,
     )
 
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "ml" / "validate_research_artifact.py"),
+            str(model_path),
+        ],
+        check=True,
+    )
+
     artifact = json.loads(model_path.read_text(encoding="utf-8"))
     assert artifact["modelType"] == "exercise_ridge_bundle"
     assert set(artifact["models"]) == {"E01", "E02"}
