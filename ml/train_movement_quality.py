@@ -349,6 +349,7 @@ def main() -> None:
                 target_column=args.target_column,
                 minimum_groups=args.minimum_groups_per_model,
                 minimum_test_rows=args.minimum_test_rows,
+                maximum_missing_feature_fraction=args.maximum_missing_feature_fraction,
             )
             if model is None:
                 skipped[exercise] = {
