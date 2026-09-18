@@ -33,6 +33,7 @@ assert.ok(!js.includes('Good afternoon,'), 'patient greeting must not hardcode a
 
 assert.ok(css.includes('grid-template-columns:repeat(4,minmax(0,1fr))'), 'mobile patient nav must use four equal columns');
 assert.ok(css.includes('env(safe-area-inset-bottom)'), 'mobile patient nav must respect safe areas');
+assert.ok(css.includes('backdrop-filter:none!important'), 'mobile patient nav must avoid continuous backdrop-filter compositing');
 for (const width of [430, 390, 360, 320]) assert.ok(css.includes(`@media(max-width:${width}px)`), `responsive contract must explicitly cover ${width}px`);
 assert.ok(css.includes('.lab-page[data-ui-phase="active"] .journey-panel'), 'active Movement Lab must hide the journey panel');
 assert.ok(css.includes('.live-metrics>div:nth-child(n+3)'), 'active Movement Lab must hide secondary live metrics');
