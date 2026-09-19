@@ -144,7 +144,7 @@ export function analyzeGaitStepTiming(reps = [], {
     sourceTrials: ["NCT05454007"],
     evidenceRelation: "study_design_precedent",
     clinicalInterpretation: false,
-    note: "Describes timing differences between detected alternating steps. It does not classify gait as normal or abnormal.",
+    note: "Describes timing differences between detected alternating steps without assigning clinical meaning or treatment guidance.",
   };
 }
 
