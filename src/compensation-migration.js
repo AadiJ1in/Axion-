@@ -1,20 +1,20 @@
-// Axion Compensation Migration signals v1
+// Axion Compensation Migration signals v2
 //
 // This module compares repeated sessions of the SAME exercise for the SAME person.
 // It reports descriptive within-person mechanical shifts only. It does not infer
 // injury, tissue load, diagnosis, causation, or treatment recommendations.
 
-export const COMPENSATION_MIGRATION_SCHEMA_VERSION = 1;
+export const COMPENSATION_MIGRATION_SCHEMA_VERSION = 2;
 
 const FEATURE_DEFINITIONS = Object.freeze({
   knee_flexion_asymmetry_deg: { family: "knee", label: "Knee flexion asymmetry", unit: "°", floor: 2.5, magnitude: true },
   hip_flexion_asymmetry_deg: { family: "hip", label: "Hip flexion asymmetry", unit: "°", floor: 2.5, magnitude: true },
   ankle_angle_asymmetry_deg: { family: "ankle", label: "Ankle-angle asymmetry", unit: "°", floor: 2.5, magnitude: true },
-  pelvis_line_tilt_deg: { family: "pelvis", label: "Pelvis line tilt", unit: "°", floor: 2.0, magnitude: true },
-  trunk_image_tilt_deg: { family: "trunk", label: "Image-plane trunk tilt", unit: "°", floor: 2.0, magnitude: true },
+  pelvis_line_tilt_deg: { family: "pelvis", label: "Pelvis line tilt", unit: "°", floor: 2.0, magnitude: true, requiresCameraView: true },
+  trunk_image_tilt_deg: { family: "trunk", label: "Image-plane trunk tilt", unit: "°", floor: 2.0, magnitude: true, requiresCameraView: true },
   trunk_3d_tilt_deg: { family: "trunk", label: "3D trunk tilt", unit: "°", floor: 2.0, magnitude: true },
-  left_knee_path_offset_pct: { family: "knee_path", label: "Left knee path offset", unit: "% torso", floor: 4.0, magnitude: true },
-  right_knee_path_offset_pct: { family: "knee_path", label: "Right knee path offset", unit: "% torso", floor: 4.0, magnitude: true },
+  left_knee_path_offset_pct: { family: "knee_path", label: "Left knee path offset", unit: "% torso", floor: 4.0, magnitude: true, requiresCameraView: true },
+  right_knee_path_offset_pct: { family: "knee_path", label: "Right knee path offset", unit: "% torso", floor: 4.0, magnitude: true, requiresCameraView: true },
   pelvis_depth_asymmetry_pct: { family: "pelvis", label: "Pelvis depth asymmetry", unit: "% torso", floor: 4.0, magnitude: true },
 });
 
@@ -51,8 +51,17 @@ const safeDateMs = (session) => {
   return Number.isFinite(time) ? time : null;
 };
 
-function biomechanicsSummary(session) {
+function rawBiomechanicsSummary(session) {
   return session?.movement_summary?.biomechanics_v1 || null;
+}
+
+function biomechanicsSummary(session) {
+  const summary = rawBiomechanicsSummary(session);
+  if (!summary) return null;
+  if (Number(summary.schemaVersion) !== 1) return null;
+  if (summary.source !== "mediapipe_pose_derived_features") return null;
+  if (summary.clinicalStatus !== "descriptive_unvalidated") return null;
+  return summary;
 }
 
 function featureValue(session, featureName) {
@@ -69,15 +78,18 @@ function normalizedFeatureValue(session, featureName) {
 
 function sessionQuality(session) {
   const summary = biomechanicsSummary(session);
-  if (!summary) return { usable: false, coverage: null, visibility: null };
+  if (!summary) return { usable: false, coverage: null, visibility: null, evidenceQuality: null };
   const coverage = finite(summary.averageCoverage);
   const visibility = finite(summary.averageVisibility);
+  const evidenceQuality = Number.isFinite(coverage) && Number.isFinite(visibility)
+    ? Math.min(coverage, visibility)
+    : null;
   return {
     // Longitudinal inference fails closed when capture-quality metadata is absent.
-    usable: Number.isFinite(coverage) && coverage >= 0.55
-      && Number.isFinite(visibility) && visibility >= 0.55,
+    usable: Number.isFinite(evidenceQuality) && evidenceQuality >= 0.55,
     coverage,
     visibility,
+    evidenceQuality,
   };
 }
 
@@ -212,12 +224,15 @@ function qualitySummary(sessions) {
   const usable = quality.filter((item) => item.usable).length;
   const coverages = quality.map((item) => item.coverage).filter(Number.isFinite);
   const visibilities = quality.map((item) => item.visibility).filter(Number.isFinite);
+  const evidence = quality.map((item) => item.evidenceQuality).filter(Number.isFinite);
   return {
     sessions: sessions.length,
     usableSessions: usable,
     usableFraction: sessions.length ? round(usable / sessions.length) : null,
     averageCoverage: coverages.length ? round(coverages.reduce((sum, value) => sum + value, 0) / coverages.length) : null,
     averageVisibility: visibilities.length ? round(visibilities.reduce((sum, value) => sum + value, 0) / visibilities.length) : null,
+    averageEvidenceQuality: evidence.length ? round(evidence.reduce((sum, value) => sum + value, 0) / evidence.length) : null,
+    minimumEvidenceQuality: evidence.length ? round(Math.min(...evidence)) : null,
   };
 }
 
@@ -265,6 +280,14 @@ function comparisonContext(sessions) {
   };
 }
 
+function observationSpanDays(sessions) {
+  if (sessions.length < 2) return 0;
+  const start = safeDateMs(sessions[0]);
+  const end = safeDateMs(sessions.at(-1));
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return Math.max(0, (end - start) / 86400000);
+}
+
 /**
  * Compare one repeated exercise across one person's chronological sessions.
  * A single anomalous recording cannot produce a persistent redistribution candidate.
@@ -274,11 +297,14 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
   recentWindow = 3,
   minimumSessions = 6,
   minimumFeatureSupportFraction = 2 / 3,
+  minimumObservationSpanDays = 7,
 } = {}) {
   if (![baselineWindow, recentWindow, minimumSessions].every(positiveInteger)
     || !Number.isFinite(minimumFeatureSupportFraction)
     || minimumFeatureSupportFraction <= 0
-    || minimumFeatureSupportFraction > 1) {
+    || minimumFeatureSupportFraction > 1
+    || !Number.isFinite(minimumObservationSpanDays)
+    || minimumObservationSpanDays < 0) {
     return unavailable("invalid_window_configuration");
   }
   const requiredSessions = Math.max(minimumSessions, baselineWindow + recentWindow);
@@ -287,38 +313,38 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     Math.ceil(Math.min(baselineWindow, recentWindow) * minimumFeatureSupportFraction),
   );
 
-  const candidateSessions = sessions.filter((session) => biomechanicsSummary(session));
-  if (!candidateSessions.length) return unavailable("no_biomechanics_sessions");
-  if (candidateSessions.some((session) => !session?.patient_id)) {
+  const rawCandidateSessions = sessions.filter((session) => rawBiomechanicsSummary(session));
+  if (!rawCandidateSessions.length) return unavailable("no_biomechanics_sessions");
+  if (rawCandidateSessions.some((session) => !session?.patient_id)) {
     return unavailable("missing_patient_identity", {
       message: "Patient identity is required for within-person longitudinal analysis.",
     });
   }
-  const patientIds = [...new Set(candidateSessions.map((session) => session.patient_id))];
+  const patientIds = [...new Set(rawCandidateSessions.map((session) => session.patient_id))];
   if (patientIds.length > 1) {
     return unavailable("mixed_patients", {
       message: "Compensation Migration only compares sessions belonging to one patient.",
     });
   }
-  if (candidateSessions.some((session) => !session?.exercise_key)) {
+  if (rawCandidateSessions.some((session) => !session?.exercise_key)) {
     return unavailable("missing_exercise_identity", {
       message: "Exercise identity is required before longitudinal sessions can be compared.",
     });
   }
-  const exerciseKeys = [...new Set(candidateSessions.map((session) => session.exercise_key))];
+  const exerciseKeys = [...new Set(rawCandidateSessions.map((session) => session.exercise_key))];
   if (exerciseKeys.length > 1) {
     return unavailable("mixed_exercises", {
       message: "Compensation Migration compares repeated sessions of the same exercise only.",
     });
   }
-  if (candidateSessions.some((session) => !session?.id)) {
+  if (rawCandidateSessions.some((session) => !session?.id)) {
     return unavailable("missing_session_identity", {
       message: "Unique session identity is required before longitudinal analysis.",
     });
   }
 
   const seenIds = new Set();
-  for (const session of candidateSessions) {
+  for (const session of rawCandidateSessions) {
     if (seenIds.has(session.id)) {
       return unavailable("duplicate_sessions", {
         message: "Duplicate session records must be removed before longitudinal analysis.",
@@ -329,9 +355,15 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
 
   const exclusions = {
     invalidTimestamp: 0,
+    invalidBiomechanicsProvenance: 0,
     lowOrMissingQuality: 0,
   };
-  const ordered = candidateSessions
+  const ordered = rawCandidateSessions
+    .filter((session) => {
+      const canonical = Boolean(biomechanicsSummary(session));
+      if (!canonical) exclusions.invalidBiomechanicsProvenance += 1;
+      return canonical;
+    })
     .filter((session) => {
       const hasTimestamp = safeDateMs(session) !== null;
       if (!hasTimestamp) exclusions.invalidTimestamp += 1;
@@ -348,7 +380,18 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     return unavailable("insufficient_sessions", {
       requiredSessions,
       availableSessions: ordered.length,
-      excludedSessions: candidateSessions.length - ordered.length,
+      excludedSessions: rawCandidateSessions.length - ordered.length,
+      exclusions,
+    });
+  }
+
+  const spanDays = observationSpanDays(ordered);
+  if (spanDays < minimumObservationSpanDays) {
+    return unavailable("observation_window_too_short", {
+      requiredObservationSpanDays: minimumObservationSpanDays,
+      observationSpanDays: round(spanDays),
+      availableSessions: ordered.length,
+      excludedSessions: rawCandidateSessions.length - ordered.length,
       exclusions,
     });
   }
@@ -367,7 +410,13 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
 
   const baselineSessions = ordered.slice(0, baselineWindow);
   const recentSessions = ordered.slice(-recentWindow);
-  const shifts = Object.keys(FEATURE_DEFINITIONS)
+  const eligibleFeatureNames = Object.entries(FEATURE_DEFINITIONS)
+    .filter(([, definition]) => context.cameraView || !definition.requiresCameraView)
+    .map(([featureName]) => featureName);
+  const omittedFeatureNames = Object.entries(FEATURE_DEFINITIONS)
+    .filter(([, definition]) => !context.cameraView && definition.requiresCameraView)
+    .map(([featureName]) => featureName);
+  const shifts = eligibleFeatureNames
     .map((featureName) => featureShift({
       featureName,
       baselineSessions,
@@ -386,7 +435,7 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
 
   const limitations = [];
   if (!context.cameraView) {
-    limitations.push("Camera-view metadata was not recorded. Consistent capture position should be verified before interpreting longitudinal changes.");
+    limitations.push("Camera-view metadata was not recorded. Image-plane and view-dependent features were omitted from Compensation Migration candidacy.");
   }
   if (!context.prescribedSide) {
     limitations.push("Prescribed-side metadata was not recorded for this comparison.");
@@ -400,10 +449,16 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     patientId: patientIds[0],
     exerciseKey: exerciseKeys[0],
     sessionCount: ordered.length,
-    excludedSessions: candidateSessions.length - ordered.length,
+    excludedSessions: rawCandidateSessions.length - ordered.length,
     exclusions,
     minimumFeatureSamples,
+    minimumObservationSpanDays,
+    observationSpanDays: round(spanDays),
     comparisonContext: context,
+    featureEligibility: {
+      eligible: eligibleFeatureNames,
+      omittedForMissingCameraView: omittedFeatureNames,
+    },
     limitations,
     baselineWindow: {
       label: "early_session_reference",
@@ -430,7 +485,7 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
 
 /** Analyze a single patient's history without mixing exercise types. */
 export function analyzeCompensationMigrationHistory(sessions = [], options = {}) {
-  const sessionsWithBiomechanics = sessions.filter((session) => biomechanicsSummary(session));
+  const sessionsWithBiomechanics = sessions.filter((session) => rawBiomechanicsSummary(session));
   if (sessionsWithBiomechanics.some((session) => !session?.patient_id)) {
     return [{
       exerciseKey: null,
