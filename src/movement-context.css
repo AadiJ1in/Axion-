@@ -1,0 +1,33 @@
+.movement-context-control{
+  display:grid;
+  gap:.28rem;
+  min-width:150px;
+  padding:.55rem .65rem;
+  border:1px solid rgba(110,240,177,.16);
+  border-radius:10px;
+  background:rgba(8,20,17,.55);
+}
+.movement-context-control>span{
+  color:#b9cec5;
+  font:600 .54rem "DM Mono",monospace;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.movement-context-control select{
+  width:100%;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:7px;
+  padding:.44rem .5rem;
+  color:inherit;
+  background:#0b1714;
+  font:600 .62rem Manrope,sans-serif;
+}
+.movement-context-control small{
+  max-width:190px;
+  color:#70847b;
+  font:500 .46rem/1.4 "DM Mono",monospace;
+}
+@media (max-width:640px){
+  .movement-context-control{width:100%}
+  .movement-context-control small{max-width:none}
+}
