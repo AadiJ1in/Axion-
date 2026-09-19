@@ -25,6 +25,24 @@ import {
 // Deliberately observer-free so it cannot reintroduce the recursive DOM loops
 // that were removed by the core-safe build.
 
+let compensationReviewModulePromise = null;
+
+function syncCompensationReviewModule() {
+  if (window.__axionCompensationMigrationReview || compensationReviewModulePromise) return;
+  const therapistSurface = document.querySelector(
+    '[data-therapist-section], .therapist-portal, .checkin-row[data-clinic-session-id]',
+  );
+  if (!therapistSurface) return;
+  compensationReviewModulePromise = import("./compensation-migration-review.js")
+    .catch((error) => {
+      compensationReviewModulePromise = null;
+      console.warn("AXION_COMPENSATION_REVIEW_EVENT", {
+        event: "module_load_failed",
+        errorCode: String(error?.code || "MODULE_LOAD_FAILED"),
+      });
+    });
+}
+
 function gameController() {
   return typeof window !== 'undefined' ? window.__axionMovementGameController : null;
 }
@@ -41,10 +59,11 @@ function restVisible(overlay) {
 
 function syncLateClinicPresentation() {
   // clinic-readiness can finish async after the main presentation pass. These
-  // two helpers are tiny and idempotent: they only map the visible Today entry
-  // and normalize one therapist heading after those elements arrive.
+  // helpers are tiny and idempotent: they only map visible therapist/patient
+  // presentation and lazy-load clinician-only review intelligence.
   syncTodayRoadmapEntry();
   syncTherapistReviewCopy();
+  syncCompensationReviewModule();
 }
 
 function syncPresentationHierarchy() {
@@ -119,7 +138,7 @@ document.addEventListener('click', (event) => {
 }, true);
 
 // Keep the established rest-only timer contract intact. A separate lightweight
-// async-clinic sync only touches two idempotent presentation details after the
+// async-clinic sync only touches idempotent presentation details after the
 // clinic-ready enhancer finishes loading its data.
 const polishTimer = window.setInterval(syncRestExperience, 250);
 const lateClinicTimer = window.setInterval(syncLateClinicPresentation, 250);
