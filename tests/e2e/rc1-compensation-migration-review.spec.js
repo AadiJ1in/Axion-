@@ -91,6 +91,7 @@ async function signInTherapist(page) {
   await page.locator("#therapist-mfa-code").fill("123456");
   await page.locator("#therapist-mfa-form").evaluate((form) => form.requestSubmit());
   await expect(page.locator('[data-therapist-section="overview"]')).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => Boolean(window.__axionCompensationMigrationReview))).toBe(true);
 }
 
 async function openSyntheticSessionReviewShell(page, sessionId) {
