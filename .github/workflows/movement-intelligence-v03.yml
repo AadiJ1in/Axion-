@@ -3,6 +3,7 @@ name: Movement Intelligence v0.3
 on:
   pull_request:
     paths:
+      - "src/biomechanics*.js"
       - "src/movement-intelligence*.js"
       - "src/gait-intelligence.js"
       - "src/cross-task-intelligence.js"
@@ -10,6 +11,7 @@ on:
       - "src/evidence-informed-movement.js"
       - "src/clinical-evidence-registry.js"
       - "src/compensation-migration.js"
+      - "scripts/biomechanics-intelligence-extension-test.mjs"
       - "scripts/*movement-intelligence*.mjs"
       - "scripts/gait-intelligence-test.mjs"
       - "scripts/cross-task-intelligence-test.mjs"
@@ -21,6 +23,7 @@ on:
     branches:
       - main
     paths:
+      - "src/biomechanics*.js"
       - "src/movement-intelligence*.js"
       - "src/gait-intelligence.js"
       - "src/cross-task-intelligence.js"
@@ -28,6 +31,7 @@ on:
       - "src/evidence-informed-movement.js"
       - "src/clinical-evidence-registry.js"
       - "src/compensation-migration.js"
+      - "scripts/biomechanics-intelligence-extension-test.mjs"
       - "scripts/*movement-intelligence*.mjs"
       - "scripts/gait-intelligence-test.mjs"
       - "scripts/cross-task-intelligence-test.mjs"
@@ -49,6 +53,8 @@ jobs:
           node-version: 22
       - name: Syntax check Movement Intelligence modules
         run: |
+          node --check src/biomechanics.js
+          node --check src/biomechanics-core.js
           node --check src/movement-intelligence.js
           node --check src/movement-intelligence-session.js
           node --check src/movement-intelligence-history.js
@@ -59,6 +65,10 @@ jobs:
           node --check src/movement-context.js
           node --check src/evidence-informed-movement.js
           node --check src/clinical-evidence-registry.js
+      - name: Run canonical biomechanics regression
+        run: node scripts/biomechanics-test.mjs
+      - name: Run live biomechanics intelligence extension regression
+        run: node scripts/biomechanics-intelligence-extension-test.mjs
       - name: Run Movement Signature regression
         run: node scripts/movement-intelligence-test.mjs
       - name: Run unified session contract regression
