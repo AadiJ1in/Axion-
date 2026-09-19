@@ -77,6 +77,7 @@ assert.equal(extracted.some((metric) => "landmarks" in metric || "coordinates" i
 assert.equal(extracted.find((metric) => metric.metricKey === "knee_flexion_asymmetry_deg").context.supportCount, 10);
 assert.equal(extracted.find((metric) => metric.metricKey === "hip_flexion_asymmetry_deg").context.supportCount, 9);
 assert.equal(extracted.find((metric) => metric.metricKey === "primary_movement_range").unit, "deg");
+assert.equal(extracted.find((metric) => metric.metricKey === "knee_flexion_asymmetry_deg").quality, 0.91);
 
 const result = await persistSessionBiomechanics({
   supabase,
@@ -106,11 +107,44 @@ assert.equal(insertedRow.features.definitionVersion, SESSION_BIOMECHANICS_DEFINI
 assert.equal(insertedRow.features.sourceSchemaVersion, 1);
 assert.equal(insertedRow.features.sourceClinicalStatus, "descriptive_unvalidated");
 assert.equal(insertedRow.features.repsWithBiomechanics, 10);
+assert.equal(insertedRow.features.evidenceQuality, 0.91);
 assert.equal(insertedRow.features.averageCoverage, 0.92);
+assert.equal(insertedRow.features.averageVisibility, 0.91);
 assert.equal(insertedRow.features.sessionCompletedAt, session.completed_at);
 assert.equal(insertedRow.compensation_analysis.status, "insufficient_data");
 assert.equal(insertedRow.compensation_analysis.reason, "not_enough_primary_sessions");
 assert.equal(insertedRow.features.metrics.some((metric) => "landmarks" in metric || "coordinates" in metric), false);
+
+const lowCoverageSession = {
+  ...session,
+  id: "66666666-6666-4666-8666-666666666666",
+  assignment_id: "77777777-7777-4777-8777-777777777777",
+  completed_at: "2026-09-18T18:00:00Z",
+  movement_summary: {
+    ...session.movement_summary,
+    biomechanics_v1: {
+      ...biomechanicsV1,
+      averageCoverage: 0.31,
+      averageVisibility: 0.95,
+    },
+  },
+};
+const lowCoverageMetrics = extractSessionCompensationMetrics(lowCoverageSession);
+assert.ok(lowCoverageMetrics.length > 0);
+assert.equal(lowCoverageMetrics.every((metric) => metric.quality === 0.31), true);
+const lowCoverageResult = await persistSessionBiomechanics({
+  supabase,
+  patientId: lowCoverageSession.patient_id,
+  session: lowCoverageSession,
+  primaryMetric: LOWER_BODY_COMPENSATION_GRAPH.byExercise.bodyweight_squat.primaryMetric,
+  relatedMetrics: LOWER_BODY_COMPENSATION_GRAPH.byExercise.bodyweight_squat.relatedMetrics,
+});
+assert.equal(lowCoverageResult.saved, true);
+assert.equal(insertedRow.session_id, lowCoverageSession.id);
+assert.equal(insertedRow.tracking_quality, 0.31);
+assert.equal(insertedRow.features.evidenceQuality, 0.31);
+assert.equal(insertedRow.features.averageCoverage, 0.31);
+assert.equal(insertedRow.features.averageVisibility, 0.95);
 
 for (const exerciseKey of ["bodyweight_squat", "half_squat", "sit_to_stand"]) {
   const graph = LOWER_BODY_COMPENSATION_GRAPH.byExercise[exerciseKey];
