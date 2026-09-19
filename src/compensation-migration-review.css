@@ -1,0 +1,105 @@
+.compensation-review-panel {
+  margin: 16px 0;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, currentColor 3%, transparent);
+  display: grid;
+  gap: 14px;
+}
+
+.compensation-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.compensation-review-head span,
+.compensation-review-evidence span {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.68;
+}
+
+.compensation-review-head h3 {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+}
+
+.compensation-review-badge {
+  font-style: normal;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 999px;
+}
+
+.compensation-review-message,
+.compensation-review-disclaimer,
+.compensation-review-limitations {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.compensation-review-evidence {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.compensation-review-evidence article,
+.compensation-review-candidate {
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 2%, transparent);
+}
+
+.compensation-review-evidence b {
+  display: block;
+  margin-top: 4px;
+}
+
+.compensation-review-candidates {
+  display: grid;
+  gap: 9px;
+}
+
+.compensation-review-candidate span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.68;
+}
+
+.compensation-review-candidate p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.compensation-review-limitations {
+  padding-left: 18px;
+  font-size: 0.82rem;
+  opacity: 0.8;
+}
+
+.compensation-review-disclaimer {
+  font-size: 0.78rem;
+  opacity: 0.72;
+}
+
+@media (max-width: 700px) {
+  .compensation-review-head {
+    display: grid;
+  }
+
+  .compensation-review-evidence {
+    grid-template-columns: 1fr;
+  }
+}
