@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { summarizeSessionBiomechanics } from "../src/biomechanics.js";
 import { summarizeSessionBiomechanics as summarizeCore } from "../src/biomechanics-core.js";
+import { containsRawMovementData } from "../src/movement-intelligence-persistence.js";
 
 function repBiomechanics(seed = 0) {
   const feature = (mean) => ({ samples: 10, min: mean - 2, max: mean + 2, mean, range: 4, start: mean - 1, end: mean + 1, delta: 2 });
@@ -53,8 +54,7 @@ assert.equal(gait.intelligence.derivedOnly, true);
 assert.equal(gait.intelligence.gaitTiming.status, "available");
 assert.ok(Number.isFinite(gait.intelligence.gaitTiming.cadenceStepsPerMinute));
 assert.deepEqual(gait.intelligence.evidenceSources, ["NCT05454007"]);
-assert.equal(JSON.stringify(gait).includes("landmarks"), false);
-assert.equal(JSON.stringify(gait).includes("video"), false);
+assert.equal(containsRawMovementData(gait), false, "derived gait summary must not contain raw pose/video data keys");
 
 const ordinaryReps = [
   { angleLabel: "Knee bend", capturedAt: 1000, measurementSide: "left", biomechanics: repBiomechanics() },
