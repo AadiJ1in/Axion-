@@ -1,10 +1,10 @@
-// Axion Gait Timing Intelligence v0.1
+// Axion Gait Timing Intelligence v0.2
 //
 // Descriptive timing analysis for alternating-step exercises. The measurements are
 // derived from already-counted repetitions; this module does not diagnose gait
 // pathology, define a clinical threshold, or recommend treatment.
 
-export const GAIT_INTELLIGENCE_VERSION = 1;
+export const GAIT_INTELLIGENCE_VERSION = 2;
 export const GAIT_TIMING_EXERCISES = new Set(["heel_to_toe_walk"]);
 
 const finite = (value) => value === null || value === undefined || value === ""
@@ -43,6 +43,7 @@ export function analyzeGaitStepTiming(reps = [], {
   minimumSteps = 6,
   minimumIntervalMs = 150,
   maximumIntervalMs = 5000,
+  minimumIntervalsPerSide = 2,
 } = {}) {
   const steps = reps
     .map((rep) => ({
@@ -66,10 +67,12 @@ export function analyzeGaitStepTiming(reps = [], {
   for (let index = 1; index < steps.length; index += 1) {
     const durationMs = steps[index].capturedAt - steps[index - 1].capturedAt;
     if (!Number.isFinite(durationMs) || durationMs < minimumIntervalMs || durationMs > maximumIntervalMs) continue;
+    const sideComparable = Boolean(steps[index].side && steps[index - 1].side);
     intervals.push({
       durationMs,
       arrivingSide: steps[index].side,
-      alternated: Boolean(steps[index].side && steps[index - 1].side && steps[index].side !== steps[index - 1].side),
+      sideComparable,
+      alternated: sideComparable && steps[index].side !== steps[index - 1].side,
     });
   }
 
@@ -92,22 +95,32 @@ export function analyzeGaitStepTiming(reps = [], {
   const rightMedian = median(rightIntervals);
   const mad = medianAbsoluteDeviation(allIntervals, overallMedian);
   const cadenceStepsPerMinute = Number.isFinite(overallMedian) && overallMedian > 0 ? 60000 / overallMedian : null;
-  const timingSymmetryDifferencePct = Number.isFinite(leftMedian) && Number.isFinite(rightMedian)
+  const sideSymmetryReady = leftIntervals.length >= minimumIntervalsPerSide && rightIntervals.length >= minimumIntervalsPerSide;
+  const timingSymmetryDifferencePct = sideSymmetryReady && Number.isFinite(leftMedian) && Number.isFinite(rightMedian)
     ? Math.abs(leftMedian - rightMedian) / Math.max(1, (leftMedian + rightMedian) / 2) * 100
     : null;
   const timingVariabilityPct = Number.isFinite(mad) && Number.isFinite(overallMedian) && overallMedian > 0
     ? mad / overallMedian * 100
     : null;
   const sideLabeledIntervals = intervals.filter((item) => item.arrivingSide).length;
-  const alternatingIntervals = intervals.filter((item) => item.alternated).length;
-  const alternationPct = sideLabeledIntervals > 1
-    ? alternatingIntervals / Math.max(1, sideLabeledIntervals - 1) * 100
+  const comparableTransitions = intervals.filter((item) => item.sideComparable);
+  const alternatingTransitions = comparableTransitions.filter((item) => item.alternated).length;
+  const alternationPct = comparableTransitions.length
+    ? alternatingTransitions / comparableTransitions.length * 100
     : null;
 
   const countScore = clamp((steps.length - minimumSteps + 1) / 6, 0, 1);
   const sideCoverage = sideLabeledIntervals / intervals.length;
+  const comparableCoverage = comparableTransitions.length / intervals.length;
   const alternationScore = Number.isFinite(alternationPct) ? clamp(alternationPct / 100, 0, 1) : 0;
-  const confidence = Math.round(100 * clamp(0.45 * countScore + 0.35 * sideCoverage + 0.20 * alternationScore, 0, 1));
+  const confidence = Math.round(100 * clamp(
+    0.40 * countScore
+      + 0.25 * sideCoverage
+      + 0.20 * comparableCoverage
+      + 0.15 * alternationScore,
+    0,
+    1,
+  ));
 
   return {
     status: "available",
@@ -118,6 +131,7 @@ export function analyzeGaitStepTiming(reps = [], {
     validIntervalCount: intervals.length,
     leftLabeledIntervalCount: leftIntervals.length,
     rightLabeledIntervalCount: rightIntervals.length,
+    comparableTransitionCount: comparableTransitions.length,
     medianStepIntervalMs: round(overallMedian, 1),
     leftMedianStepIntervalMs: round(leftMedian, 1),
     rightMedianStepIntervalMs: round(rightMedian, 1),
@@ -125,6 +139,7 @@ export function analyzeGaitStepTiming(reps = [], {
     timingSymmetryDifferencePct: round(timingSymmetryDifferencePct, 1),
     timingVariabilityPct: round(timingVariabilityPct, 1),
     alternationPct: round(alternationPct, 1),
+    sideSymmetryStatus: sideSymmetryReady ? "available" : "insufficient_side_labels",
     confidence,
     sourceTrials: ["NCT05454007"],
     evidenceRelation: "study_design_precedent",
