@@ -58,4 +58,15 @@ const insufficient = compensationMigrationReviewModel({
 assert.match(insufficient.message, /4 reliable same-exercise sessions/i);
 assert.match(insufficient.message, /6 are required/i);
 
+const dataUnavailable = compensationMigrationReviewModel({
+  status: "unavailable",
+  reason: "data_unavailable",
+});
+assert.equal(dataUnavailable.status, "unavailable");
+assert.equal(dataUnavailable.badge, "Review unavailable");
+assert.match(dataUnavailable.title, /review unavailable/i);
+assert.match(dataUnavailable.message, /could not be loaded/i);
+assert.match(dataUnavailable.message, /No movement conclusion/i);
+assert.equal(dataUnavailable.candidates.length, 0);
+
 console.log("Compensation migration clinician review presentation contract passed.");
