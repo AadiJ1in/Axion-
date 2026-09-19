@@ -23,10 +23,11 @@ function isHeelToToeTimingSession(reps = []) {
 
 export function summarizeSessionBiomechanics(reps = []) {
   const summary = summarizeCoreSessionBiomechanics(reps);
-  if (!summary || !isHeelToToeTimingSession(reps)) return summary;
+  if (!summary) return summary;
 
-  const gaitTiming = analyzeGaitStepTiming(reps);
   const context = readMovementContextPreference();
+  const gaitSession = isHeelToToeTimingSession(reps);
+  const gaitTiming = gaitSession ? analyzeGaitStepTiming(reps) : null;
   return {
     ...summary,
     intelligence: {
@@ -37,8 +38,10 @@ export function summarizeSessionBiomechanics(reps = []) {
       derivedOnly: true,
       context,
       gaitTiming,
-      evidenceSources: ["NCT05454007"],
-      note: "Derived timing summary stored with biomechanics; no raw pose landmarks or video are retained here.",
+      evidenceSources: gaitSession ? ["NCT05454007"] : [],
+      note: gaitSession
+        ? "Derived context and timing summary stored with biomechanics; raw pose/video data are not retained here."
+        : "Explicit session context stored with derived biomechanics; raw pose/video data are not retained here.",
     },
   };
 }
