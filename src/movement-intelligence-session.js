@@ -29,6 +29,7 @@ function movementContextFromSession(session) {
 function gaitSummaryFromSession(session) {
   return session?.movement_summary?.movement_intelligence?.gaitTiming
     || session?.movement_summary?.gait_intelligence
+    || session?.movement_summary?.biomechanics_v1?.intelligence?.gaitTiming
     || null;
 }
 
