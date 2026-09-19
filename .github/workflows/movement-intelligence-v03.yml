@@ -52,6 +52,7 @@ jobs:
           node --check src/movement-intelligence.js
           node --check src/movement-intelligence-session.js
           node --check src/movement-intelligence-history.js
+          node --check src/movement-intelligence-capabilities.js
           node --check src/gait-intelligence.js
           node --check src/cross-task-intelligence.js
           node --check src/movement-context.js
@@ -69,6 +70,8 @@ jobs:
         run: node scripts/movement-context-test.mjs
       - name: Run history composition regression
         run: node scripts/movement-intelligence-history-test.mjs
+      - name: Run capability ledger regression
+        run: node scripts/movement-intelligence-capabilities-test.mjs
       - name: Run ClinicalTrials evidence regressions
         run: |
           node scripts/clinicaltrials-evidence-test.mjs
