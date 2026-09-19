@@ -11,6 +11,8 @@ function familyLabel(analysis, familyName) {
 
 function pendingMessage(analysis = {}) {
   switch (analysis.reason) {
+    case "data_unavailable":
+      return "Longitudinal movement data could not be loaded for this review. No movement conclusion is shown from incomplete data.";
     case "insufficient_sessions": {
       const available = finite(analysis.availableSessions);
       const required = finite(analysis.requiredSessions);
@@ -43,10 +45,11 @@ function pendingMessage(analysis = {}) {
 export function compensationMigrationReviewModel(analysis = {}) {
   const disclaimer = "Descriptive movement-pattern review only. This does not diagnose injury, estimate tissue load, establish causation, predict injury risk, or recommend treatment changes.";
   if (analysis?.status !== "available") {
+    const dataUnavailable = analysis?.reason === "data_unavailable";
     return {
-      status: "pending",
-      badge: "Evidence pending",
-      title: "Longitudinal movement review is still building",
+      status: dataUnavailable ? "unavailable" : "pending",
+      badge: dataUnavailable ? "Review unavailable" : "Evidence pending",
+      title: dataUnavailable ? "Longitudinal movement review unavailable" : "Longitudinal movement review is still building",
       message: pendingMessage(analysis),
       sessionCount: finite(analysis.availableSessions),
       observationSpanDays: finite(analysis.observationSpanDays),
