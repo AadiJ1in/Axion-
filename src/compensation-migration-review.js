@@ -103,7 +103,7 @@ async function sameExerciseHistory(session) {
     .eq("patient_id", session.patient_id)
     .eq("exercise_key", session.exercise_key)
     .order("completed_at", { ascending: true });
-  if (error) return [];
+  if (error) return null;
   const cutoff = sessionTime(session);
   return (data || [])
     .map(withVerifiedSessionContext)
@@ -132,7 +132,9 @@ async function enhanceSessionReview(sessionId) {
   if (!modal.isConnected || modal.querySelector("[data-compensation-migration-review]")) return;
   if (!(await sameAuthenticatedUser(expectedUserId))) return;
 
-  const analysis = analyzeExerciseCompensationMigration(history);
+  const analysis = history === null
+    ? { status: "unavailable", reason: "data_unavailable" }
+    : analyzeExerciseCompensationMigration(history);
   const model = compensationMigrationReviewModel(analysis);
   const panel = buildPanel(model);
   const persistedContext = modal.querySelector("[data-persisted-session-context]");
