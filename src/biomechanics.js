@@ -9,6 +9,7 @@ export * from "./biomechanics-core.js";
 
 import { summarizeSessionBiomechanics as summarizeCoreSessionBiomechanics } from "./biomechanics-core.js";
 import { analyzeGaitStepTiming } from "./gait-intelligence.js";
+import { readMovementContextPreference } from "./movement-context-store.js";
 
 export const BIOMECHANICS_INTELLIGENCE_EXTENSION_VERSION = 1;
 
@@ -25,6 +26,7 @@ export function summarizeSessionBiomechanics(reps = []) {
   if (!summary || !isHeelToToeTimingSession(reps)) return summary;
 
   const gaitTiming = analyzeGaitStepTiming(reps);
+  const context = readMovementContextPreference();
   return {
     ...summary,
     intelligence: {
@@ -33,6 +35,7 @@ export function summarizeSessionBiomechanics(reps = []) {
       diagnostic: false,
       treatmentChanging: false,
       derivedOnly: true,
+      context,
       gaitTiming,
       evidenceSources: ["NCT05454007"],
       note: "Derived timing summary stored with biomechanics; no raw pose landmarks or video are retained here.",
