@@ -72,42 +72,65 @@ function sessionTime(session) {
   return Number.isFinite(time) ? time : null;
 }
 
+function withVerifiedSessionContext(session) {
+  if (!session) return session;
+  const prescribedSide = session?.session_identity_context?.prescribed_side;
+  return prescribedSide ? { ...session, prescribed_side: prescribedSide } : session;
+}
+
+async function currentUserId() {
+  const { data, error } = await supabase.auth.getSession();
+  return error ? null : (data?.session?.user?.id || null);
+}
+
+async function sameAuthenticatedUser(expectedUserId) {
+  if (!expectedUserId) return false;
+  return (await currentUserId()) === expectedUserId;
+}
+
 async function selectedSession(sessionId) {
   const { data, error } = await supabase.from("exercise_sessions")
-    .select("id, patient_id, exercise_key, completed_at, created_at, started_at, movement_summary")
+    .select("id, patient_id, exercise_key, completed_at, created_at, started_at, movement_summary, session_identity_context")
     .eq("id", sessionId)
     .maybeSingle();
-  return error ? null : data;
+  return error ? null : withVerifiedSessionContext(data);
 }
 
 async function sameExerciseHistory(session) {
   if (!session?.patient_id || !session?.exercise_key) return [];
   const { data, error } = await supabase.from("exercise_sessions")
-    .select("id, patient_id, exercise_key, completed_at, created_at, started_at, movement_summary")
+    .select("id, patient_id, exercise_key, completed_at, created_at, started_at, movement_summary, session_identity_context")
     .eq("patient_id", session.patient_id)
     .eq("exercise_key", session.exercise_key)
     .order("completed_at", { ascending: true });
   if (error) return [];
   const cutoff = sessionTime(session);
-  return (data || []).filter((item) => {
-    const time = sessionTime(item);
-    return cutoff === null || (time !== null && time <= cutoff);
-  });
+  return (data || [])
+    .map(withVerifiedSessionContext)
+    .filter((item) => {
+      const time = sessionTime(item);
+      return cutoff === null || (time !== null && time <= cutoff);
+    });
 }
 
 async function enhanceSessionReview(sessionId) {
   if (!isConfigured || !supabase || !sessionId) return;
+  const expectedUserId = await currentUserId();
+  if (!expectedUserId) return;
+
   let modal = null;
   for (let attempt = 0; attempt < 12 && !modal; attempt += 1) {
     await sleep(100);
     modal = document.querySelector(".clinic-session-modal");
   }
   if (!modal || !modal.isConnected || modal.querySelector("[data-compensation-migration-review]")) return;
+  if (!(await sameAuthenticatedUser(expectedUserId))) return;
 
   const selected = await selectedSession(sessionId);
-  if (!selected || !modal.isConnected) return;
+  if (!selected || !modal.isConnected || !(await sameAuthenticatedUser(expectedUserId))) return;
   const history = await sameExerciseHistory(selected);
   if (!modal.isConnected || modal.querySelector("[data-compensation-migration-review]")) return;
+  if (!(await sameAuthenticatedUser(expectedUserId))) return;
 
   const analysis = analyzeExerciseCompensationMigration(history);
   const model = compensationMigrationReviewModel(analysis);
@@ -128,6 +151,7 @@ window.__axionCompensationMigrationReview = Object.freeze({
   version: 1,
   sameExerciseOnly: true,
   usesFutureSessionsInHistoricalReview: false,
+  usesVerifiedPrescribedSide: true,
   clinicianReviewOnly: true,
   autoDiagnoses: false,
   autoTreatmentChanges: false,
