@@ -63,7 +63,7 @@
         const poseFailure = Boolean(window.__AXION_E2E_CONTROL__?.poseModelFailure);
         if (poseFailure || failureMode === "pose_model") {
           state.running = false;
-          state.onTrackingState({ code: "camera_error", label: "Movement tracking needs a restart", quality: null });
+          state.onTrackingState({ code: "model_error", label: "The movement model stopped responding. Restart the camera scan to continue; your completed reps are preserved.", quality: null });
           state.onError("The movement model stopped responding. Restart the camera scan to continue; your completed reps are preserved.");
           return;
         }
