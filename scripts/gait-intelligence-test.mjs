@@ -27,6 +27,8 @@ assert.ok(balanced.cadenceStepsPerMinute > 70 && balanced.cadenceStepsPerMinute 
 assert.ok(balanced.timingSymmetryDifferencePct < 5);
 assert.ok(balanced.timingVariabilityPct < 5);
 assert.equal(balanced.alternationPct, 100);
+assert.equal(balanced.sideSymmetryStatus, "available");
+assert.equal(balanced.comparableTransitionCount, 8);
 assert.equal(balanced.clinicalInterpretation, false);
 assert.deepEqual(balanced.sourceTrials, ["NCT05454007"]);
 assert.doesNotMatch(balanced.note, /normal|abnormal|diagnos|injury/i);
@@ -34,6 +36,17 @@ assert.doesNotMatch(balanced.note, /normal|abnormal|diagnos|injury/i);
 const asymmetric = analyzeGaitStepTiming(makeSteps([650, 1000, 640, 980, 660, 1020, 650, 1000]));
 assert.equal(asymmetric.status, "available");
 assert.ok(asymmetric.timingSymmetryDifferencePct > balanced.timingSymmetryDifferencePct);
+
+const unlabeled = makeSteps([800, 810, 805, 815, 800, 810, 805, 815]).map((rep, index) => ({
+  ...rep,
+  measurementSide: index < 3 ? rep.measurementSide : null,
+}));
+const unlabeledResult = analyzeGaitStepTiming(unlabeled);
+assert.equal(unlabeledResult.status, "available");
+assert.equal(unlabeledResult.sideSymmetryStatus, "insufficient_side_labels");
+assert.equal(unlabeledResult.timingSymmetryDifferencePct, null);
+assert.ok(Number.isFinite(unlabeledResult.cadenceStepsPerMinute));
+assert.ok(unlabeledResult.confidence < balanced.confidence);
 
 const insufficient = analyzeGaitStepTiming(makeSteps([800, 810, 805]));
 assert.equal(insufficient.status, "unavailable");
@@ -46,4 +59,4 @@ assert.ok(Number.isFinite(comparison.cadenceChangeStepsPerMinute));
 assert.ok(Number.isFinite(comparison.timingSymmetryDifferenceChangePct));
 assert.equal(comparison.clinicalInterpretation, false);
 
-console.log("Gait intelligence: alternating timing, symmetry, cadence, variability and longitudinal comparison passed.");
+console.log("Gait intelligence: timing, side-label sufficiency, cadence, variability and longitudinal comparison passed.");
