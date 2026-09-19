@@ -23,6 +23,7 @@ function completedAt(session) {
 function movementContextFromSession(session) {
   return session?.movement_summary?.movement_intelligence?.context
     || session?.movement_summary?.movement_context
+    || session?.movement_summary?.biomechanics_v1?.intelligence?.context
     || createMovementContext();
 }
 
