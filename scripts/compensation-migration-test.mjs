@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import {
+  COMPENSATION_MIGRATION_SCHEMA_VERSION,
   analyzeCompensationMigrationHistory,
   analyzeExerciseCompensationMigration,
 } from "../src/compensation-migration.js";
+
+const TEST_START = Date.parse("2026-09-01T12:00:00Z");
+const DAY_MS = 86400000;
+const testTimestamp = (index, spacingDays = 2) => new Date(TEST_START + (index * spacingDays * DAY_MS)).toISOString();
 
 function session(index, {
   exerciseKey = "bodyweight_squat",
@@ -21,7 +26,10 @@ function session(index, {
   visibility = 0.92,
   cameraView = "front",
   prescribedSide = "either",
-  completedAt = `2026-09-${String(index + 1).padStart(2, "0")}T12:00:00Z`,
+  source = "mediapipe_pose_derived_features",
+  clinicalStatus = "descriptive_unvalidated",
+  schemaVersion = 1,
+  completedAt = testTimestamp(index),
 } = {}) {
   const feature = (mean) => Number.isFinite(mean)
     ? ({ reps: 8, mean, min: mean - 1, max: mean + 1 })
@@ -35,7 +43,10 @@ function session(index, {
     completed_at: completedAt,
     movement_summary: {
       biomechanics_v1: {
-        schemaVersion: 1,
+        schemaVersion,
+        source,
+        clinicalStatus,
+        repsWithBiomechanics: 8,
         averageCoverage: coverage,
         averageVisibility: visibility,
         features: {
@@ -54,12 +65,18 @@ function session(index, {
   };
 }
 
+assert.equal(COMPENSATION_MIGRATION_SCHEMA_VERSION, 2);
+
 const stable = Array.from({ length: 6 }, (_, index) => session(index));
 const stableResult = analyzeExerciseCompensationMigration(stable);
 assert.equal(stableResult.status, "available");
 assert.equal(stableResult.patientId, "patient-1");
 assert.equal(stableResult.referenceType, "early_session_within_person");
 assert.equal(stableResult.comparisonContext.verification, "verified_from_metadata");
+assert.equal(stableResult.observationSpanDays, 10);
+assert.equal(stableResult.minimumObservationSpanDays, 7);
+assert.equal(stableResult.quality.averageEvidenceQuality, 0.92);
+assert.equal(stableResult.quality.minimumEvidenceQuality, 0.92);
 assert.equal(stableResult.redistributionCandidates.length, 0);
 assert.match(stableResult.interpretation, /No persistent, directionally consistent/);
 
@@ -131,6 +148,15 @@ const tooFew = analyzeExerciseCompensationMigration(stable.slice(0, 5));
 assert.equal(tooFew.status, "unavailable");
 assert.equal(tooFew.reason, "insufficient_sessions");
 
+const shortWindow = Array.from({ length: 6 }, (_, index) => session(index, {
+  completedAt: testTimestamp(index, 1),
+}));
+const shortWindowResult = analyzeExerciseCompensationMigration(shortWindow);
+assert.equal(shortWindowResult.status, "unavailable");
+assert.equal(shortWindowResult.reason, "observation_window_too_short");
+assert.equal(shortWindowResult.observationSpanDays, 5);
+assert.equal(shortWindowResult.requiredObservationSpanDays, 7);
+
 const mixedExercises = analyzeExerciseCompensationMigration([
   ...stable.slice(0, 3),
   ...stable.slice(3).map((item) => ({ ...item, exercise_key: "lunge" })),
@@ -166,21 +192,25 @@ assert.equal(invalidDateResult.exclusions.invalidTimestamp, 1);
 const invalidWindow = analyzeExerciseCompensationMigration(stable, { baselineWindow: 0 });
 assert.equal(invalidWindow.status, "unavailable");
 assert.equal(invalidWindow.reason, "invalid_window_configuration");
+const invalidSpanConfig = analyzeExerciseCompensationMigration(stable, { minimumObservationSpanDays: -1 });
+assert.equal(invalidSpanConfig.status, "unavailable");
+assert.equal(invalidSpanConfig.reason, "invalid_window_configuration");
 
-const lowQuality = stable.map((item) => ({
+const lowCoverageHighVisibility = stable.map((item) => ({
   ...item,
   movement_summary: {
     ...item.movement_summary,
     biomechanics_v1: {
       ...item.movement_summary.biomechanics_v1,
-      averageCoverage: 0.2,
+      averageCoverage: 0.31,
+      averageVisibility: 0.95,
     },
   },
 }));
-const lowQualityResult = analyzeExerciseCompensationMigration(lowQuality);
-assert.equal(lowQualityResult.status, "unavailable");
-assert.equal(lowQualityResult.reason, "insufficient_sessions");
-assert.equal(lowQualityResult.exclusions.lowOrMissingQuality, 6);
+const lowCoverageResult = analyzeExerciseCompensationMigration(lowCoverageHighVisibility);
+assert.equal(lowCoverageResult.status, "unavailable");
+assert.equal(lowCoverageResult.reason, "insufficient_sessions");
+assert.equal(lowCoverageResult.exclusions.lowOrMissingQuality, 6);
 
 const missingQuality = stable.map((item) => ({
   ...item,
@@ -197,6 +227,35 @@ assert.equal(missingQualityResult.status, "unavailable");
 assert.equal(missingQualityResult.reason, "insufficient_sessions");
 assert.equal(missingQualityResult.exclusions.lowOrMissingQuality, 6);
 
+const invalidProvenance = stable.map((item) => ({
+  ...item,
+  movement_summary: {
+    ...item.movement_summary,
+    biomechanics_v1: {
+      ...item.movement_summary.biomechanics_v1,
+      source: "unverified_external_features",
+    },
+  },
+}));
+const invalidProvenanceResult = analyzeExerciseCompensationMigration(invalidProvenance);
+assert.equal(invalidProvenanceResult.status, "unavailable");
+assert.equal(invalidProvenanceResult.reason, "insufficient_sessions");
+assert.equal(invalidProvenanceResult.exclusions.invalidBiomechanicsProvenance, 6);
+
+const invalidClinicalStatus = stable.map((item) => ({
+  ...item,
+  movement_summary: {
+    ...item.movement_summary,
+    biomechanics_v1: {
+      ...item.movement_summary.biomechanics_v1,
+      clinicalStatus: "validated_diagnostic",
+    },
+  },
+}));
+const invalidClinicalStatusResult = analyzeExerciseCompensationMigration(invalidClinicalStatus);
+assert.equal(invalidClinicalStatusResult.status, "unavailable");
+assert.equal(invalidClinicalStatusResult.exclusions.invalidBiomechanicsProvenance, 6);
+
 const mixedCamera = stable.map((item, index) => ({ ...item, camera_view: index < 3 ? "front" : "side" }));
 const mixedCameraResult = analyzeExerciseCompensationMigration(mixedCamera);
 assert.equal(mixedCameraResult.status, "unavailable");
@@ -212,6 +271,32 @@ const unknownContextResult = analyzeExerciseCompensationMigration(unknownContext
 assert.equal(unknownContextResult.status, "available");
 assert.equal(unknownContextResult.comparisonContext.verification, "not_recorded");
 assert.equal(unknownContextResult.limitations.length, 2);
+assert(unknownContextResult.featureEligibility.omittedForMissingCameraView.includes("trunk_image_tilt_deg"));
+assert(unknownContextResult.featureEligibility.omittedForMissingCameraView.includes("left_knee_path_offset_pct"));
+
+const imagePlaneOnlyMigration = [
+  session(0, { knee: 15, leftPath: 4, rightPath: 4, trunk3d: 5 }),
+  session(1, { knee: 14, leftPath: 5, rightPath: 5, trunk3d: 5 }),
+  session(2, { knee: 16, leftPath: 4.5, rightPath: 4.5, trunk3d: 5 }),
+  session(3, { knee: 8, leftPath: 12, rightPath: 12, trunk3d: 5 }),
+  session(4, { knee: 7, leftPath: 13, rightPath: 13, trunk3d: 5 }),
+  session(5, { knee: 6, leftPath: 14, rightPath: 14, trunk3d: 5 }),
+];
+const imagePlaneWithViewResult = analyzeExerciseCompensationMigration(imagePlaneOnlyMigration);
+assert.equal(
+  imagePlaneWithViewResult.redistributionCandidates.some((item) => item.increasingFamily === "knee_path"),
+  true,
+  "verified consistent camera view may support image-plane research signals",
+);
+const imagePlaneWithoutView = imagePlaneOnlyMigration.map(({ camera_view, ...item }) => item);
+const imagePlaneWithoutViewResult = analyzeExerciseCompensationMigration(imagePlaneWithoutView);
+assert.equal(imagePlaneWithoutViewResult.status, "available");
+assert.equal(
+  imagePlaneWithoutViewResult.redistributionCandidates.some((item) => item.increasingFamily === "knee_path"),
+  false,
+  "image-plane metrics must not drive candidacy when camera-view metadata is unavailable",
+);
+assert.equal(imagePlaneWithoutViewResult.featureShifts.some((item) => item.family === "knee_path"), false);
 
 const history = analyzeCompensationMigrationHistory([
   ...stable,
@@ -229,4 +314,4 @@ const mixedPatientHistory = analyzeCompensationMigrationHistory([
 assert.equal(mixedPatientHistory.length, 1);
 assert.equal(mixedPatientHistory[0].reason, "mixed_patients");
 
-console.log("Compensation migration: same-exercise windows, persistence, identity, context, feature support, quality and redistribution guards passed.");
+console.log("Compensation migration: same-exercise windows, longitudinal span, canonical provenance, persistence, identity, camera context, feature support, evidence quality and redistribution guards passed.");
