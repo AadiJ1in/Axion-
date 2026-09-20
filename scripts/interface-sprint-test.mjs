@@ -10,28 +10,39 @@ const gamePolish = readFileSync('src/patient-game-polish.js', 'utf8');
 const indexHtml = readFileSync('index.html', 'utf8');
 
 const patientBlock = js.match(/PATIENT_PRIMARY_NAV = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] || '';
+const finalPatientBlock = patientReportsNav.match(/PATIENT_NAV_CONTRACT = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] || '';
 const therapistBlock = js.match(/THERAPIST_PRIMARY_NAV = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] || '';
 const publicBlock = js.match(/PUBLIC_PRIMARY_NAV = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] || '';
 
-// Interface Sprint still performs its compact four-destination intermediate pass.
-// patient-reports-nav runs immediately after it and restores Report as the fifth
-// destination without replacing the already-bound main.js navigation button.
+// Interface Sprint still performs a compact four-destination intermediate pass,
+// but patient-reports-nav owns the canonical final signed-in navigation contract.
 assert.equal((patientBlock.match(/\["/g) || []).length, 4, 'interface-sprint intermediate navigation must remain deterministic');
 for (const label of ['Today', 'Journey', 'Progress', 'Profile']) assert.ok(patientBlock.includes(`"${label}"`), `intermediate patient navigation must include ${label}`);
 assert.ok(patientBlock.includes('["report", "Progress"]'), 'quantitative report view must remain wired as Progress');
-assert.ok(!patientBlock.includes('patient-report'), 'interface-sprint must leave final Report restoration to patient-reports-nav');
-assert.ok(patientReportsNav.includes('"Progress"'), 'quantitative destination must remain labeled Progress');
-assert.ok(patientReportsNav.includes('[data-nav="report"]'), 'Progress label must target the quantitative report destination');
-assert.ok(patientReportsNav.includes('[data-nav="patient-report"]'), 'final navigation pass must recover the patient Report destination');
-assert.ok(patientReportsNav.includes('setButtonLabel(reportButton, "Report")'), 'patient Report destination must be visibly labeled Report');
-assert.ok(patientReportsNav.includes('insertBefore(reportButton, profileButton)'), 'Report must remain before Profile in navigation order');
-assert.ok(patientReportsNav.includes('uiPrimaryCount = "5"'), 'final patient navigation must declare five primary destinations');
-assert.ok(patientReportsNav.includes('repeat(5,minmax(0,1fr))'), 'mobile patient navigation must reserve five equal columns');
+
+assert.equal((finalPatientBlock.match(/\["/g) || []).length, 5, 'final patient navigation must contain exactly five destinations');
+const finalPatientDestinations = [
+  ['patient', 'Today'],
+  ['lab', 'Journey'],
+  ['report', 'Progress'],
+  ['patient-report', 'Report'],
+  ['patient-profile', 'Profile'],
+];
+for (const [view, label] of finalPatientDestinations) {
+  assert.ok(finalPatientBlock.includes(`["${view}", "${label}"]`), `final patient navigation must map ${view} to ${label}`);
+}
+assert.ok(patientReportsNav.includes('orderedButtons.forEach((button) => nav.appendChild(button))'), 'final navigation must align DOM order with the canonical contract');
+assert.ok(patientReportsNav.includes('activePatientDestination()'), 'final navigation must own active-destination reconciliation');
+assert.ok(patientReportsNav.includes('button.hidden = false'), 'final navigation must make every primary destination visible');
+assert.ok(patientReportsNav.includes('button.removeAttribute("aria-hidden")'), 'final navigation must expose every primary destination to assistive technology');
+assert.ok(patientReportsNav.includes('button.tabIndex = 0'), 'final navigation destinations must remain keyboard reachable');
+assert.ok(patientReportsNav.includes('delete button.dataset.uiPublicTarget'), 'signed-in patient buttons must not retain public-site routing metadata');
+assert.ok(patientReportsNav.includes('PATIENT_NAV_CONTRACT.length'), 'five-column layout and primary count must derive from the canonical contract');
 assert.ok(!patientReportsNav.includes('textContent = "Reports"'), 'legacy Reports relabeling must not override Progress');
 assert.ok(patientReportsNav.includes('"SESSION SCORE"'), 'patient progress must avoid presenting Recovery Pulse as a recovery prognosis');
 assert.ok(patientReportsNav.includes('It is not a medical prognosis.'), 'patient progress score must state its descriptive boundary');
 assert.ok(!stability.includes('report.hidden = false'), 'stability layer must not independently mutate the Report destination');
-assert.ok(gamePolish.includes('syncInterfaceSprint();\n  syncPatientReportsNavigation();'), 'final Report restoration must run after interface sprint');
+assert.ok(gamePolish.includes('syncInterfaceSprint();\n  syncPatientReportsNavigation();'), 'canonical patient navigation must run after the intermediate interface pass');
 
 assert.equal((therapistBlock.match(/\["/g) || []).length, 4, 'therapist primary navigation must contain exactly four destinations');
 for (const label of ['Overview', 'Patients', 'Plans', 'Exercise Library']) assert.ok(therapistBlock.includes(`"${label}"`), `therapist navigation must include ${label}`);
@@ -45,16 +56,16 @@ assert.ok(indexHtml.includes('property="og:title"') && indexHtml.includes('name=
 assert.ok(js.includes('Every movement tells a story.'), 'brand statement remains in the public story');
 assert.ok(js.includes('SYNTHETIC DEMO SESSION'), 'homepage example metrics must be clearly labeled synthetic');
 assert.ok(js.includes('Experience as Patient') && js.includes('Experience as Therapist'), 'demo entry must explain both roles');
-assert.ok(js.includes('Report a concern'), 'intermediate contextual reporting affordance remains available during presentation sync');
+assert.ok(js.includes('Report a concern'), 'intermediate contextual reporting affordance can remain during presentation sync');
 assert.ok(js.includes('reportButton.hidden = false'), 'intermediate concern action must be explicitly restored before final nav placement');
-assert.ok(js.includes('reportButton.removeAttribute("aria-hidden")'), 'reporting action must be exposed to assistive technology');
-assert.ok(js.includes('reportButton.tabIndex = 0'), 'reporting action must remain keyboard reachable');
+assert.ok(js.includes('reportButton.removeAttribute("aria-hidden")'), 'intermediate reporting action must remain available before final reconciliation');
+assert.ok(js.includes('reportButton.tabIndex = 0'), 'intermediate reporting action must remain keyboard reachable');
 assert.ok(js.includes('function preferredScrollBehavior()'), 'public navigation motion must share one reduced-motion-aware behavior');
 assert.ok(js.includes('behavior: preferredScrollBehavior()'), 'public section/demo scrolling must respect reduced motion');
 assert.ok(!js.includes('Good afternoon,'), 'final patient greeting must not hardcode a daypart');
 
-assert.ok(css.includes('grid-template-columns:repeat(4,minmax(0,1fr))'), 'interface-sprint intermediate mobile grid remains deterministic');
-assert.ok(patientReportsNav.includes('repeat(5,minmax(0,1fr))'), 'final patient navigation must override the compact grid to five columns');
+assert.ok(css.includes('grid-template-columns:repeat(4,minmax(0,1fr))'), 'legacy intermediate grid remains detectable until the presentation layer is retired');
+assert.ok(patientReportsNav.includes('grid-template-columns'), 'final patient navigation must explicitly own its grid');
 assert.ok(css.includes('env(safe-area-inset-bottom)'), 'mobile patient nav must respect safe areas');
 for (const width of [430, 390, 360, 320]) assert.ok(css.includes(`@media(max-width:${width}px)`), `responsive contract must explicitly cover ${width}px`);
 assert.ok(css.includes('.lab-page[data-ui-phase="active"] .journey-panel'), 'active Movement Lab must hide the journey panel');
@@ -68,4 +79,4 @@ assert.ok(!css.includes('font-size:.64rem!important') && !css.includes('font-siz
 assert.ok(patientPolish.includes('MAX_JOURNEY_MISSIONS_PER_REGION = 8'), 'journey regions must cap presentation chunks at eight missions');
 assert.ok(patientPolish.includes('MIN_JOURNEY_MISSIONS_PER_REGION = 3'), 'journey regions should prefer at least three missions per chapter');
 
-console.log('Interface navigation, restored Report tab, progress semantics, responsive, accessibility, active-session, and journey-density contracts passed.');
+console.log('Canonical five-tab patient navigation, progress semantics, responsive, accessibility, active-session, and journey-density contracts passed.');

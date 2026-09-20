@@ -1,3 +1,5 @@
+@import "./movement-lab-display.css";
+
 /* Final patient Progress surface overrides. Loaded after ui-restoration.css. */
 .report-page[data-ui-patient-progress="true"] .safety-review-card,
 .report-page[data-ui-patient-progress="true"] .safety-review-card article,
