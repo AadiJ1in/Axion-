@@ -41,6 +41,7 @@
       active.onTrackingState({ code: "out_of_frame", label: "Full body is not visible", quality: "Low", confidence: 30, ...payload });
     },
     get activeReps() { return active ? [...active.reps] : []; },
+    get running() { return Boolean(active?.running); },
     get destroyCount() { return destroyCount; },
   };
 
