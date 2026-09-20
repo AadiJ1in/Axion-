@@ -44,6 +44,12 @@ function patientButton(nav, view) {
   return null;
 }
 
+function navigationOrderMatches(nav, orderedButtons) {
+  const current = [...nav.querySelectorAll(":scope > button[data-nav]")];
+  return current.length === orderedButtons.length
+    && current.every((button, index) => button === orderedButtons[index]);
+}
+
 function enforcePatientNavigation(nav) {
   const orderedButtons = [];
 
@@ -63,9 +69,12 @@ function enforcePatientNavigation(nav) {
     orderedButtons.push(button);
   });
 
-  // appendChild moves existing nodes without replacing their event listeners.
-  // Do this in canonical order so DOM order, keyboard order, and visual order agree.
-  orderedButtons.forEach((button) => nav.appendChild(button));
+  // Reparent only when the intermediate presentation layer actually changed
+  // the navigation. Repeated presentation syncs otherwise leave live buttons
+  // untouched, preventing pointer/click races while preserving their listeners.
+  if (!navigationOrderMatches(nav, orderedButtons)) {
+    orderedButtons.forEach((button) => nav.appendChild(button));
+  }
 
   nav.dataset.uiPatientNav = "true";
   nav.dataset.uiPrimaryCount = String(PATIENT_NAV_CONTRACT.length);
