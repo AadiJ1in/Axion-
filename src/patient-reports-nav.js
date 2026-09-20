@@ -34,9 +34,11 @@ function restoreReportTab(nav) {
 
   if (profileButton) profileButton.style.order = "5";
 
-  // The signed-in patient nav becomes a five-column bottom bar on compact
-  // screens. This declaration is inert while the desktop nav is flex.
-  nav.style.gridTemplateColumns = "repeat(5,minmax(0,1fr))";
+  // interface-sprint.css still contains a compact four-column declaration from
+  // the previous navigation contract. Use an inline important declaration here
+  // so the final five-destination patient contract always wins until that legacy
+  // presentation layer is removed.
+  nav.style.setProperty("grid-template-columns", "repeat(5,minmax(0,1fr))", "important");
   nav.dataset.uiPrimaryCount = "5";
 
   const onReportPage = Boolean(document.querySelector(".patient-report-page"));
