@@ -1,0 +1,75 @@
+/* Movement Lab optical correction.
+   The live camera and Movement Buddy need a dark, high-contrast stage even when
+   the surrounding patient UI uses the warm/light restoration theme. */
+
+.lab-page .motion-stage{
+  border-color:#31463e!important;
+  background:#07100f!important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.018),0 10px 28px rgba(27,38,33,.14)!important;
+}
+
+.lab-page .camera-pane,
+.lab-page .twin-pane{
+  background:#08120f!important;
+}
+
+/* Keep the real camera image visible. The pose canvas sits above the video, so
+   it must stay transparent; an opaque canvas background hides the patient. */
+.lab-page .camera-pane video{
+  background:#050a08!important;
+  opacity:1!important;
+  filter:brightness(.96) contrast(1.08) saturate(.94)!important;
+  mix-blend-mode:normal!important;
+}
+.lab-page .camera-pane canvas{
+  background:transparent!important;
+  opacity:1!important;
+  filter:none!important;
+  mix-blend-mode:normal!important;
+  pointer-events:none!important;
+}
+.lab-page .camera-pane.camera-on video{opacity:1!important}
+
+.lab-page .camera-placeholder{
+  color:#9eb3aa!important;
+  background:
+    radial-gradient(circle at 50% 45%,rgba(110,240,177,.08),transparent 38%),
+    linear-gradient(180deg,#0c1814,#07100f)!important;
+}
+.lab-page .camera-placeholder b{color:#d7e7df!important}
+
+/* Restore the Movement Buddy's original contrast instead of placing mint bones
+   on a pale gray field. */
+.lab-page .twin-pane{
+  background:
+    linear-gradient(rgba(110,240,177,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(110,240,177,.045) 1px,transparent 1px),
+    radial-gradient(circle at 50% 52%,rgba(110,240,177,.12),transparent 36%),
+    linear-gradient(180deg,#0c1915,#07100f)!important;
+  background-size:28px 28px,28px 28px,auto,auto!important;
+}
+.lab-page .twin-pane .movement-twin{
+  opacity:1!important;
+  filter:none!important;
+}
+.lab-page .twin-pane .twin-bone{
+  stroke-width:8!important;
+  filter:drop-shadow(0 0 8px rgba(110,240,177,.48))!important;
+}
+.lab-page .twin-pane .twin-joint{
+  filter:drop-shadow(0 0 9px rgba(110,240,177,.82))!important;
+}
+
+.lab-page .pane-label{
+  border-color:rgba(183,216,199,.18)!important;
+  background:rgba(5,13,10,.82)!important;
+  color:#d8eee3!important;
+  backdrop-filter:blur(8px)!important;
+}
+.lab-page .target-label{color:#9bb0a6!important}
+.lab-page .target-label i{border-color:#a797ff!important}
+
+@media(max-width:700px){
+  .lab-page .camera-pane,
+  .lab-page .twin-pane{min-height:300px!important}
+}
