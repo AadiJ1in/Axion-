@@ -21,8 +21,9 @@ function removePatientDemoChrome() {
     || document.body.dataset.axionUiScreen === "patient"
     || Boolean(document.querySelector(".patient-portal,.patient-profile-page,.report-page,.lab-page"));
   if (!patientSurface) return;
+  // Keep the compact environment boundary in the DOM because release checks and
+  // accessibility tooling use it. Only remove the footer copy the patient asked to hide.
   document.querySelector(".footer")?.remove();
-  document.querySelector(".prototype-strip")?.remove();
 }
 
 function restoreProgressNavigation() {
