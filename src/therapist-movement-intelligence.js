@@ -11,6 +11,7 @@ const state = {
   loading: false,
   loadedAt: 0,
   patientKey: "",
+  authGeneration: 0,
 };
 
 function patientIdForCard(card) {
@@ -74,6 +75,17 @@ function renderReview(card, review) {
   panel.innerHTML = `<div class="mi-review-head"><div><span>MOVEMENT INTELLIGENCE</span><b>Research review</b></div><em>Descriptive only</em></div><p class="mi-review-boundary">Does not affect this patient's attention score, alerts, exercise prescription, diagnosis, or treatment.</p><div class="mi-review-list">${review.cards.map(cardMarkup).filter(Boolean).join("")}</div>`;
 }
 
+export function resetTherapistMovementIntelligence() {
+  state.authGeneration += 1;
+  state.page = null;
+  state.loading = false;
+  state.loadedAt = 0;
+  state.patientKey = "";
+  if (typeof document !== "undefined") {
+    document.querySelectorAll("[data-movement-intelligence-review]").forEach((panel) => panel.remove());
+  }
+}
+
 async function loadReviews(force = false) {
   const page = document.querySelector(".therapist-page");
   if (!page || !isConfigured || !supabase || state.loading) return;
@@ -84,6 +96,7 @@ async function loadReviews(force = false) {
   if (!force && state.page === page && state.patientKey === patientKey && Date.now() - state.loadedAt < 15000) return;
 
   state.loading = true;
+  const authGeneration = state.authGeneration;
   try {
     const { data, error } = await supabase
       .from("exercise_sessions")
@@ -92,22 +105,23 @@ async function loadReviews(force = false) {
       .order("completed_at", { ascending: false })
       .limit(400);
     if (error) throw error;
-    if (!page.isConnected) return;
+    if (authGeneration !== state.authGeneration || !page.isConnected) return;
 
     const sessionsByPatient = new Map(patientIds.map((id) => [id, []]));
     for (const session of data || []) {
       if (sessionsByPatient.has(session.patient_id)) sessionsByPatient.get(session.patient_id).push(session);
     }
     for (const item of visible) {
+      if (authGeneration !== state.authGeneration) return;
       renderReview(item.card, buildMovementIntelligenceReview(sessionsByPatient.get(item.patientId) || []));
     }
     state.page = page;
     state.patientKey = patientKey;
     state.loadedAt = Date.now();
   } catch (error) {
-    console.warn("Movement Intelligence therapist review unavailable", error);
+    if (authGeneration === state.authGeneration) console.warn("Movement Intelligence therapist review unavailable", error);
   } finally {
-    state.loading = false;
+    if (authGeneration === state.authGeneration) state.loading = false;
   }
 }
 
