@@ -151,8 +151,8 @@ function syncPatientReportChoices() {
     const noPain = selected?.dataset.axionNoPain === 'true';
     const activePain = selected?.value === 'pain' && !noPain;
     if (painScale) painScale.hidden = !activePain;
-    if (noPain && painRange) painRange.value = '0';
-    if (noPain && painOutput) painOutput.textContent = '0 / 10';
+    if (!activePain && painRange) painRange.value = '0';
+    if (!activePain && painOutput) painOutput.textContent = '0 / 10';
     if (note) {
       note.placeholder = noPain
         ? 'Optional: add a note about how the movement felt today.'
