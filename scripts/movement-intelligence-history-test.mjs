@@ -92,11 +92,25 @@ assert.equal(result.gaitLongitudinal.latestSessionId, "gait-2");
 assert.equal(result.gaitLongitudinal.previousSessionId, "gait-1");
 assert.equal(result.gaitLongitudinal.contextVerification, "same_explicit_environment");
 assert.equal(result.gaitLongitudinal.latestContext.environment, "home");
+assert.equal(result.contextTransfer.status, "unavailable");
+assert.equal(result.summary.contextTransferComparisonCount, 0);
 assert.ok(result.evidenceSources.includes("NCT05454007"));
 assert.ok(result.summary.compensationMigrationExerciseCount >= 1);
 assert.ok(result.summary.compensationMigrationContextCount >= 1);
 assert.equal(result.summary.gaitLongitudinalAvailable, true);
 assert.doesNotMatch(result.note, /clinically validated|injury risk score/i);
+
+const contextTransferSessions = [
+  session("ctx-home", "forward_lunge", 6, { environment: "home", knee: 9, trunk: 7 }),
+  session("ctx-clinic", "forward_lunge", 7, { environment: "clinic", knee: 5, trunk: 4 }),
+];
+const transferResult = analyzeMovementIntelligenceHistory(contextTransferSessions);
+assert.equal(transferResult.contextTransfer.status, "available");
+assert.equal(transferResult.contextTransfer.comparisonCount, 1);
+assert.equal(transferResult.summary.contextTransferComparisonCount, 1);
+assert.equal(transferResult.contextTransfer.comparisons[0].homeSessionId, "ctx-home");
+assert.equal(transferResult.contextTransfer.comparisons[0].clinicSessionId, "ctx-clinic");
+assert.ok(transferResult.evidenceSources.includes("NCT05454007"));
 
 const splitEnvironmentCompensation = [
   session("split-1", "bodyweight_squat", 1, { environment: "home", knee: 12, trunk: 3 }),
@@ -113,6 +127,7 @@ assert.equal(
   "three home plus three clinic sessions must not be pooled to satisfy the six-session Compensation Migration window",
 );
 assert.equal(splitResult.summary.compensationMigrationExerciseCount, 0);
+assert.equal(splitResult.contextTransfer.status, "available", "cross-setting observations remain available separately from compensation history");
 
 const environmentMismatch = sessions.map((item) => ({ ...item }));
 const latestGaitIndex = environmentMismatch.findIndex((item) => item.id === "gait-2");
@@ -126,6 +141,7 @@ const environmentResult = analyzeMovementIntelligenceHistory(environmentMismatch
 assert.equal(environmentResult.gaitLongitudinal.status, "unavailable");
 assert.equal(environmentResult.gaitLongitudinal.reason, "different_explicit_environment");
 assert.equal(environmentResult.summary.gaitLongitudinalAvailable, false);
+assert.equal(environmentResult.contextTransfer.status, "available", "Home/Clinic gait differences are reported separately instead of pooled longitudinally");
 
 const unknownEnvironment = [
   session("gait-u1", "heel_to_toe_walk", 6, { environment: "unknown", gaitTiming: gait1 }),
@@ -134,6 +150,7 @@ const unknownEnvironment = [
 const unknownResult = analyzeMovementIntelligenceHistory(unknownEnvironment);
 assert.equal(unknownResult.gaitLongitudinal.status, "available");
 assert.equal(unknownResult.gaitLongitudinal.contextVerification, "context_unknown");
+assert.equal(unknownResult.contextTransfer.status, "unavailable", "context transfer requires both settings to be explicit");
 
 const mixed = analyzeMovementIntelligenceHistory([
   sessions[0],
@@ -142,4 +159,4 @@ const mixed = analyzeMovementIntelligenceHistory([
 assert.equal(mixed.status, "unavailable");
 assert.equal(mixed.reason, "mixed_patients");
 
-console.log("Movement Intelligence history: compensation, cross-task and context-compatible gait signals stay separate and environment-stratified.");
+console.log("Movement Intelligence history: compensation, cross-task, gait and Home/Clinic context transfer stay separate and descriptive.");
