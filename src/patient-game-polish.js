@@ -14,6 +14,7 @@ import { syncPatientReportsNavigation } from "./patient-reports-nav.js";
 import { syncClinicalValidationSurface } from "./clinical-validation-surface.js";
 import { syncTodayRoadmapEntry } from "./today-roadmap-entry.js";
 import { syncTherapistReviewCopy } from "./therapist-review-copy.js";
+import { syncUiRestoration } from "./ui-restoration.js";
 import {
   bindExerciseStartContinuity,
   captureCameraRecoveryState,
@@ -41,10 +42,11 @@ function restVisible(overlay) {
 
 function syncLateClinicPresentation() {
   // clinic-readiness can finish async after the main presentation pass. These
-  // two helpers are tiny and idempotent: they only map the visible Today entry
-  // and normalize one therapist heading after those elements arrive.
+  // helpers are tiny and idempotent: they only map the visible Today entry,
+  // normalize one therapist heading, and re-apply the late patient presentation.
   syncTodayRoadmapEntry();
   syncTherapistReviewCopy();
+  syncUiRestoration();
 }
 
 function syncPresentationHierarchy() {
@@ -59,6 +61,7 @@ function syncPresentationHierarchy() {
   syncJourneyIntroPlacement();
   syncClinicalValidationSurface();
   syncLateClinicPresentation();
+  syncUiRestoration();
 }
 
 let presentationFrame = 0;
@@ -119,7 +122,7 @@ document.addEventListener('click', (event) => {
 }, true);
 
 // Keep the established rest-only timer contract intact. A separate lightweight
-// async-clinic sync only touches two idempotent presentation details after the
+// async-clinic sync only touches idempotent presentation details after the
 // clinic-ready enhancer finishes loading its data.
 const polishTimer = window.setInterval(syncRestExperience, 250);
 const lateClinicTimer = window.setInterval(syncLateClinicPresentation, 250);
