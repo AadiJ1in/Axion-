@@ -151,30 +151,36 @@ function syncPatientReportChoices() {
     const noPain = selected?.dataset.axionNoPain === 'true';
     const activePain = selected?.value === 'pain' && !noPain;
     if (painScale) painScale.hidden = !activePain;
-    if (noPain && painRange) painRange.value = '0';
-    if (noPain && painOutput) painOutput.textContent = '0 / 10';
+    if (!activePain && painRange) painRange.value = '0';
+    if (!activePain && painOutput) painOutput.textContent = '0 / 10';
     if (note) {
       note.placeholder = noPain
         ? 'Optional: add a note about how the movement felt today.'
         : activePain
           ? 'Describe when the pain happened and what you felt.'
-          : 'Describe what felt different during this exercise.';
+          : selected?.value === 'felt_wrong'
+            ? 'Describe what felt wrong during this exercise.'
+            : 'Describe what felt different during this exercise.';
     }
   };
 
   if (options.dataset.axionPositiveChoice !== 'true') {
     options.dataset.axionPositiveChoice = 'true';
     const painLabel = options.querySelector('input[value="pain"]')?.closest('label');
-    const negativeLabel = options.querySelector('input[value="felt_wrong"]')?.closest('label');
-    const positiveInput = negativeLabel?.querySelector('input');
-    const positiveText = negativeLabel?.querySelector('span');
-    if (painLabel && negativeLabel && positiveInput && positiveText) {
+    if (painLabel && !options.querySelector('[data-axion-no-pain-option]')) {
+      const positiveLabel = document.createElement('label');
+      positiveLabel.dataset.axionNoPainOption = 'true';
+      const positiveInput = document.createElement('input');
+      positiveInput.type = 'radio';
+      positiveInput.name = 'patient-report-type';
       positiveInput.value = 'pain';
       positiveInput.dataset.axionNoPain = 'true';
+      const positiveText = document.createElement('span');
       positiveText.textContent = 'No pain';
-      options.prepend(negativeLabel);
+      positiveLabel.append(positiveInput, positiveText);
       options.querySelectorAll('input').forEach((input) => { input.checked = false; });
       positiveInput.checked = true;
+      painLabel.before(positiveLabel);
     }
     const step = options.previousElementSibling;
     const heading = step?.querySelector('b');

@@ -15,14 +15,17 @@ test("patient Report tab opens the existing reporting page", async ({ page }) =>
   await expect(page.locator("#patient-report-form")).toBeVisible();
   await expect(page.locator("#patient-report-assignment")).toBeVisible();
 
-  // The patient-surface polish intentionally defaults this form to "No pain",
-  // which keeps the numeric pain control out of the way. Selecting the actual
-  // Pain choice must reveal the established 0–10 control and preserve its
-  // existing input/output wiring.
+  // Keep the low-friction "No pain" default without sacrificing the original
+  // movement-concern choices. The numeric control only appears for actual pain.
+  const reportChoices = page.locator('.patient-report-types span');
   const painScale = page.locator(".patient-pain-scale");
-  await expect(page.locator('.patient-report-types span').filter({ hasText: /^No pain$/ })).toBeVisible();
+  await expect(reportChoices.filter({ hasText: /^No pain$/ })).toBeVisible();
+  await expect(reportChoices.filter({ hasText: /^Pain$/ })).toBeVisible();
+  await expect(reportChoices.filter({ hasText: /^Movement felt wrong$/ })).toBeVisible();
+  await expect(reportChoices.filter({ hasText: /^Felt different today$/ })).toBeVisible();
   await expect(painScale).toBeHidden();
-  await page.locator('.patient-report-types span').filter({ hasText: /^Pain$/ }).click();
+
+  await reportChoices.filter({ hasText: /^Pain$/ }).click();
   await expect(painScale).toBeVisible();
 
   const painScore = page.locator("#patient-pain-score");
@@ -35,6 +38,18 @@ test("patient Report tab opens the existing reporting page", async ({ page }) =>
   });
   await expect(page.locator("#patient-pain-output")).toHaveText("4 / 10");
 
+  // Switching away from Pain must not leave a hidden stale pain value that
+  // could be attached to a movement-only concern on submit.
+  await reportChoices.filter({ hasText: /^Movement felt wrong$/ }).click();
+  await expect(painScale).toBeHidden();
+  await expect(painScore).toHaveValue("0");
+  await expect(page.locator("#patient-pain-output")).toHaveText("0 / 10");
+  await expect(page.locator("#patient-report-comment")).toHaveAttribute("placeholder", /felt wrong/i);
+
+  await reportChoices.filter({ hasText: /^Pain$/ }).click();
+  await expect(painScale).toBeVisible();
+  await expect(painScore).toHaveValue("0");
+
   await expect(page.locator("#patient-report-comment")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-axion-story", /.+/);
   await expect(page.locator("body")).toHaveAttribute("data-axion-ui-screen", "patient-report");
@@ -43,4 +58,16 @@ test("patient Report tab opens the existing reporting page", async ({ page }) =>
   await expect(reportNav.locator('button[data-nav]')).toHaveCount(5);
   await expect(reportNav.locator('[data-nav="patient-report"]')).toBeVisible();
   await expect(reportNav.locator('[data-nav="patient-report"]')).toHaveClass(/active/);
+
+  // The four report choices collapse to a single column on narrow phones and
+  // must not create horizontal scrolling.
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect(reportChoices).toHaveCount(4);
+  const overflow = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+  }));
+  expect(overflow.document).toBeLessThanOrEqual(overflow.viewport + 1);
+  expect(overflow.body).toBeLessThanOrEqual(overflow.viewport + 1);
 });
