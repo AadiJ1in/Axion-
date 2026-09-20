@@ -1,0 +1,101 @@
+.movement-intelligence-review {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(124, 179, 160, 0.22);
+  border-radius: 16px;
+  background: rgba(5, 20, 18, 0.58);
+}
+
+.mi-review-head,
+.mi-review-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mi-review-head span,
+.mi-review-card header span {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  font-weight: 800;
+  opacity: 0.72;
+}
+
+.mi-review-head b,
+.mi-review-card > b {
+  display: block;
+  margin-top: 2px;
+}
+
+.mi-review-head em,
+.mi-review-card header em {
+  font-style: normal;
+  font-size: 0.68rem;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(124, 179, 160, 0.10);
+  border: 1px solid rgba(124, 179, 160, 0.16);
+}
+
+.mi-review-boundary {
+  margin: 8px 0 12px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  opacity: 0.72;
+}
+
+.mi-review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mi-review-card {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.mi-review-card > b {
+  margin-top: 8px;
+  font-size: 0.88rem;
+}
+
+.mi-review-card p {
+  margin: 9px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  opacity: 0.72;
+}
+
+.mi-review-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.mi-review-metrics > div {
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.mi-review-metrics small,
+.mi-review-metrics b {
+  display: block;
+}
+
+.mi-review-metrics small {
+  font-size: 0.66rem;
+  line-height: 1.25;
+  opacity: 0.62;
+}
+
+.mi-review-metrics b {
+  margin-top: 3px;
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
