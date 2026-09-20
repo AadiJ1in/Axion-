@@ -14,6 +14,8 @@ on:
       - "src/evidence-informed-movement.js"
       - "src/clinical-evidence-registry.js"
       - "src/compensation-migration.js"
+      - "src/therapist-movement-intelligence.*"
+      - "src/therapist-review-audit*.js"
       - "scripts/biomechanics-intelligence-extension-test.mjs"
       - "scripts/*movement-intelligence*.mjs"
       - "scripts/gait-intelligence-test.mjs"
@@ -38,6 +40,8 @@ on:
       - "src/evidence-informed-movement.js"
       - "src/clinical-evidence-registry.js"
       - "src/compensation-migration.js"
+      - "src/therapist-movement-intelligence.*"
+      - "src/therapist-review-audit*.js"
       - "scripts/biomechanics-intelligence-extension-test.mjs"
       - "scripts/*movement-intelligence*.mjs"
       - "scripts/gait-intelligence-test.mjs"
@@ -79,6 +83,9 @@ jobs:
           node --check src/movement-context.js
           node --check src/movement-context-store.js
           node --check src/movement-context-ui.js
+          node --check src/therapist-movement-intelligence.js
+          node --check src/therapist-review-audit.js
+          node --check src/therapist-review-audit-core.js
           node --check src/evidence-informed-movement.js
           node --check src/clinical-evidence-registry.js
       - name: Run canonical biomechanics regression
