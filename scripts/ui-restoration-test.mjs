@@ -16,6 +16,9 @@ assert.match(js, /axion-fallback-game/, "non-adventure sessions still receive a 
 assert.match(js, /getState\?\.\(\)/, "fallback game reads the existing movement controller rather than inventing clinical reps");
 assert.match(js, /getTracks\(\)\.forEach|stream\.getTracks/, "orphaned camera tracks are explicitly stopped");
 assert.match(js, /visibilitychange/, "lab visibility recovery is handled");
+assert.match(js, /pointerdown[\s\S]*stabilizeBeginExercisePress/, "Begin Exercise press is committed before WebKit can swallow a ready-state click");
+assert.match(js, /clinic-calibration-grade/, "begin press stabilization remains gated by the existing calibration grade");
+assert.match(js, /recoveryVisible[\s\S]*safetyFlagged/, "begin press stabilization preserves camera recovery and safety blocks");
 assert.match(css, /object-fit:contain!important/, "camera uses contain so the patient's full body is not cropped");
 assert.match(css, /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/, "camera and movement buddy remain side-by-side on desktop");
 assert.match(css, /\.beacon-story-preview\{display:none!important\}/, "numbered story preview is visually removed");
@@ -29,4 +32,4 @@ for (const forbidden of ["sessionReps.push", "REP_COMPLETE", "clinicalTarget", "
   assert.equal(js.includes(forbidden), false, `presentation restoration must not alter clinical state (${forbidden})`);
 }
 
-console.log("UI restoration: visual, navigation, game fallback, Progress surfaces and camera lifecycle contracts passed.");
+console.log("UI restoration: visual, navigation, game fallback, Progress surfaces, WebKit begin press, and camera lifecycle contracts passed.");
