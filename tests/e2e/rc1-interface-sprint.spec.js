@@ -57,6 +57,18 @@ test("patient navigation keeps one canonical five-tab contract across rerenders"
   await expect(page.locator(".journey-welcome h1")).toHaveText(/^Hi,/);
   await expect(page.locator(".journey-welcome h1")).not.toContainText("Good afternoon");
 
+  await nav.locator('[data-nav="lab"]').click();
+  await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "journey");
+  await expect(page.locator(".journey-atlas")).toBeVisible();
+  await expectCanonicalPatientNav(nav);
+  await expect(nav.locator('[data-nav="lab"]')).toHaveAttribute("aria-current", "page");
+
+  await nav.locator('[data-nav="patient"]').click();
+  await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "today");
+  await expect(page.locator(".journey-atlas")).toBeHidden();
+  await expectCanonicalPatientNav(nav);
+  await expect(nav.locator('[data-nav="patient"]')).toHaveAttribute("aria-current", "page");
+
   await nav.locator('[data-nav="report"]').click();
   await expect(page.locator(".report-page")).toBeVisible();
   await expectCanonicalPatientNav(nav);
