@@ -1,8 +1,21 @@
-import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { chooseMediapipeDelegate, resolveMediapipeConfig } from "./mediapipe-config.js";
 import { createWorkerPoseRuntime, supportsPoseWorker } from "./pose-worker-runtime.js";
 
 const verifiedModelUrls = new Map();
+let mediapipeVisionPromise = null;
+
+// The direct compatibility runtime remains locally bundled from "@mediapipe/tasks-vision",
+// but it is loaded through import() so modern worker-capable sessions do not carry it
+// in Axion's initial application graph.
+function loadMediapipeVision() {
+  if (!mediapipeVisionPromise) {
+    mediapipeVisionPromise = import("@mediapipe/tasks-vision").catch((error) => {
+      mediapipeVisionPromise = null;
+      throw error;
+    });
+  }
+  return mediapipeVisionPromise;
+}
 
 function supportsWebGL() {
   try {
@@ -50,14 +63,26 @@ export function createDirectPoseRuntime({
   let delegate = null;
   let initializationPromise = null;
   let lifecycleGeneration = 0;
+  let drawingUtilsCtor = null;
+  let poseLandmarkerCtor = null;
 
   async function buildLandmarker() {
     const generation = lifecycleGeneration;
     onState({ code: "model_loading", label: "Loading movement model", quality: null });
+
+    // Start the model download while the direct MediaPipe implementation is
+    // being fetched. Modern browsers normally use the worker path and never
+    // need this chunk in the initial application graph.
+    const modelAssetPromise = verifiedModelUrl(config.model);
+    const mediapipeVision = await loadMediapipeVision();
+    const { DrawingUtils, FilesetResolver, PoseLandmarker } = mediapipeVision;
     const [vision, modelAssetPath] = await Promise.all([
       FilesetResolver.forVisionTasks(config.wasmRoot),
-      verifiedModelUrl(config.model),
+      modelAssetPromise,
     ]);
+    drawingUtilsCtor = DrawingUtils;
+    poseLandmarkerCtor = PoseLandmarker;
+
     const desiredDelegate = chooseMediapipeDelegate(config.delegate, {
       webgl: Boolean(webglAvailable()),
       forceCpu,
@@ -127,9 +152,9 @@ export function createDirectPoseRuntime({
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (!result.landmarks?.length) return;
-      const drawing = new DrawingUtils(ctx);
-      drawing.drawConnectors(result.landmarks[0], PoseLandmarker.POSE_CONNECTIONS, {
+      if (!result.landmarks?.length || !drawingUtilsCtor || !poseLandmarkerCtor) return;
+      const drawing = new drawingUtilsCtor(ctx);
+      drawing.drawConnectors(result.landmarks[0], poseLandmarkerCtor.POSE_CONNECTIONS, {
         color: "rgba(231,255,246,.72)",
         lineWidth: 3,
       });
