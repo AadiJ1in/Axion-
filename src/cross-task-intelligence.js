@@ -1,10 +1,10 @@
-// Axion Cross-Task Movement Intelligence v0.1
+// Axion Cross-Task Movement Intelligence v0.2
 //
 // This module compares within-person change directions across different exercises.
 // It never compares raw task values as though a squat and a lunge should have the
 // same kinematics. Outputs are descriptive research signals, not recovery grades.
 
-export const CROSS_TASK_INTELLIGENCE_VERSION = 1;
+export const CROSS_TASK_INTELLIGENCE_VERSION = 2;
 
 const finite = (value) => value === null || value === undefined || value === ""
   ? null
@@ -73,6 +73,13 @@ function biomechanicsSummary(session) {
   return session?.movement_summary?.biomechanics_v1 || null;
 }
 
+function movementContext(session) {
+  return session?.movement_summary?.movement_intelligence?.context
+    || session?.movement_summary?.movement_context
+    || session?.movement_summary?.biomechanics_v1?.intelligence?.context
+    || null;
+}
+
 function absFeature(summary, featureName) {
   const value = finite(summary?.features?.[featureName]?.mean);
   return value === null ? null : Math.abs(value);
@@ -88,7 +95,10 @@ function validQuality(summary, minimumCoverage, minimumVisibility) {
 }
 
 function contextValue(session, key) {
-  if (key === "environment") return session?.movement_summary?.movement_context?.environment || null;
+  const context = movementContext(session);
+  if (key === "environment") return context?.environment || null;
+  if (key === "camera_view") return session?.camera_view || context?.cameraView || null;
+  if (key === "prescribed_side") return session?.prescribed_side || session?.movement_summary?.prescribed_side || null;
   return session?.[key] ?? null;
 }
 
@@ -100,6 +110,14 @@ function contextCompatible(first, latest) {
     if (a && b && a !== "unknown" && b !== "unknown" && a !== b) return false;
   }
   return true;
+}
+
+function contextSummary(first, latest) {
+  return {
+    environment: contextValue(first, "environment") || contextValue(latest, "environment") || "unknown",
+    cameraView: contextValue(first, "camera_view") || contextValue(latest, "camera_view") || null,
+    prescribedSide: contextValue(first, "prescribed_side") || contextValue(latest, "prescribed_side") || null,
+  };
 }
 
 function directionForDelta(delta, floor) {
@@ -166,6 +184,7 @@ export function analyzeCrossTaskChangeConsistency(sessions = [], {
       firstCompletedAt: first.completed_at || first.created_at || null,
       latestCompletedAt: latest.completed_at || latest.created_at || null,
       sessionCount: taskSessions.length,
+      context: contextSummary(first, latest),
       families,
     });
   }
@@ -224,6 +243,6 @@ export function analyzeCrossTaskChangeConsistency(sessions = [], {
     interpretation: concordant.length
       ? `${concordant.length} measured feature family${concordant.length === 1 ? "" : "ies"} changed in the same direction across at least two repeated tasks.`
       : "No measured feature family showed the same non-trivial direction of change across at least two repeated tasks.",
-    note: "Cross-task consistency describes repeated within-task change directions. It does not establish recovery, deterioration, compensation, or cause.",
+    note: "Cross-task consistency describes repeated within-task change directions under compatible recorded context. It does not establish recovery, deterioration, compensation, or cause.",
   };
 }
