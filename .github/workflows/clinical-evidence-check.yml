@@ -1,0 +1,46 @@
+name: Clinical evidence registry
+
+on:
+  pull_request:
+    paths:
+      - "research/clinicaltrials/**"
+      - "src/clinical-evidence-registry.js"
+      - "src/evidence-informed-movement.js"
+      - "scripts/sync-clinicaltrials-evidence.mjs"
+      - "scripts/clinicaltrials-evidence-test.mjs"
+      - "scripts/evidence-informed-movement-test.mjs"
+      - ".github/workflows/clinical-evidence-check.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "research/clinicaltrials/**"
+      - "src/clinical-evidence-registry.js"
+      - "src/evidence-informed-movement.js"
+      - "scripts/sync-clinicaltrials-evidence.mjs"
+      - "scripts/clinicaltrials-evidence-test.mjs"
+      - "scripts/evidence-informed-movement-test.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  registry-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check evidence modules
+        run: |
+          node --check src/clinical-evidence-registry.js
+          node --check src/evidence-informed-movement.js
+          node --check scripts/sync-clinicaltrials-evidence.mjs
+          node --check scripts/clinicaltrials-evidence-test.mjs
+          node --check scripts/evidence-informed-movement-test.mjs
+      - name: Run evidence registry regression
+        run: node scripts/clinicaltrials-evidence-test.mjs
+      - name: Run evidence-informed movement regression
+        run: node scripts/evidence-informed-movement-test.mjs

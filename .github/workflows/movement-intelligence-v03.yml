@@ -1,0 +1,120 @@
+name: Movement Intelligence v0.3
+
+on:
+  pull_request:
+    paths:
+      - "src/biomechanics*.js"
+      - "src/movement-intelligence*.js"
+      - "src/movement-profiles*.js"
+      - "src/movement-runtime-context.js"
+      - "src/gait-intelligence.js"
+      - "src/cross-task-intelligence.js"
+      - "src/context-transfer-intelligence.js"
+      - "src/movement-context*.js"
+      - "src/evidence-informed-movement.js"
+      - "src/clinical-evidence-registry.js"
+      - "src/compensation-migration.js"
+      - "src/therapist-movement-intelligence.*"
+      - "src/therapist-review-audit*.js"
+      - "scripts/biomechanics-intelligence-extension-test.mjs"
+      - "scripts/*movement-intelligence*.mjs"
+      - "scripts/gait-intelligence-test.mjs"
+      - "scripts/cross-task-intelligence-test.mjs"
+      - "scripts/context-transfer-intelligence-test.mjs"
+      - "scripts/movement-context-test.mjs"
+      - "scripts/evidence-informed-movement-test.mjs"
+      - "scripts/clinicaltrials-evidence-test.mjs"
+      - ".github/workflows/movement-intelligence-v03.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/biomechanics*.js"
+      - "src/movement-intelligence*.js"
+      - "src/movement-profiles*.js"
+      - "src/movement-runtime-context.js"
+      - "src/gait-intelligence.js"
+      - "src/cross-task-intelligence.js"
+      - "src/context-transfer-intelligence.js"
+      - "src/movement-context*.js"
+      - "src/evidence-informed-movement.js"
+      - "src/clinical-evidence-registry.js"
+      - "src/compensation-migration.js"
+      - "src/therapist-movement-intelligence.*"
+      - "src/therapist-review-audit*.js"
+      - "scripts/biomechanics-intelligence-extension-test.mjs"
+      - "scripts/*movement-intelligence*.mjs"
+      - "scripts/gait-intelligence-test.mjs"
+      - "scripts/cross-task-intelligence-test.mjs"
+      - "scripts/context-transfer-intelligence-test.mjs"
+      - "scripts/movement-context-test.mjs"
+      - "scripts/evidence-informed-movement-test.mjs"
+      - "scripts/clinicaltrials-evidence-test.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  intelligence-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check Movement Intelligence modules
+        run: |
+          node --check src/biomechanics.js
+          node --check src/biomechanics-core.js
+          node --check src/movement-intelligence.js
+          node --check src/movement-intelligence-core.js
+          node --check src/movement-intelligence-session.js
+          node --check src/movement-intelligence-history.js
+          node --check src/movement-intelligence-review.js
+          node --check src/movement-intelligence-capabilities.js
+          node --check src/movement-intelligence-persistence.js
+          node --check src/movement-profiles.js
+          node --check src/movement-profiles-core.js
+          node --check src/movement-runtime-context.js
+          node --check src/gait-intelligence.js
+          node --check src/cross-task-intelligence.js
+          node --check src/context-transfer-intelligence.js
+          node --check src/movement-context.js
+          node --check src/movement-context-store.js
+          node --check src/movement-context-ui.js
+          node --check src/therapist-movement-intelligence.js
+          node --check src/therapist-review-audit.js
+          node --check src/therapist-review-audit-core.js
+          node --check src/evidence-informed-movement.js
+          node --check src/clinical-evidence-registry.js
+      - name: Run canonical biomechanics regression
+        run: node scripts/biomechanics-test.mjs
+      - name: Run live biomechanics intelligence extension regression
+        run: node scripts/biomechanics-intelligence-extension-test.mjs
+      - name: Run Movement Signature regression
+        run: node scripts/movement-intelligence-test.mjs
+      - name: Run live Movement Signature reference regression
+        run: node scripts/movement-intelligence-live-reference-test.mjs
+      - name: Run unified session contract regression
+        run: node scripts/movement-intelligence-session-test.mjs
+      - name: Run gait timing regression
+        run: node scripts/gait-intelligence-test.mjs
+      - name: Run cross-task regression
+        run: node scripts/cross-task-intelligence-test.mjs
+      - name: Run context transfer regression
+        run: node scripts/context-transfer-intelligence-test.mjs
+      - name: Run explicit context regression
+        run: node scripts/movement-context-test.mjs
+      - name: Run history composition regression
+        run: node scripts/movement-intelligence-history-test.mjs
+      - name: Run therapist review adapter regression
+        run: node scripts/movement-intelligence-review-test.mjs
+      - name: Run capability ledger regression
+        run: node scripts/movement-intelligence-capabilities-test.mjs
+      - name: Run persistence privacy regression
+        run: node scripts/movement-intelligence-persistence-test.mjs
+      - name: Run ClinicalTrials evidence regressions
+        run: |
+          node scripts/clinicaltrials-evidence-test.mjs
+          node scripts/evidence-informed-movement-test.mjs
