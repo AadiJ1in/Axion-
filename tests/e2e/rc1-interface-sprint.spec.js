@@ -18,6 +18,13 @@ async function expectNoHorizontalOverflow(page) {
   expect(overflow.body).toBeLessThanOrEqual(overflow.viewport + 1);
 }
 
+async function expectCanonicalPatientNav(nav) {
+  await expect(nav.locator('button[data-nav]')).toHaveCount(5);
+  await expect(nav.locator('button[data-nav] span')).toHaveText(patientLabels);
+  await expect(nav).toHaveAttribute("data-ui-primary-count", "5");
+  await expect(nav.locator('[data-nav="patient-report"]')).toBeVisible();
+}
+
 test("public site explains rehabilitation first and exposes clear demos", async ({ page }) => {
   await page.goto("/");
   await waitForPresentation(page);
@@ -38,30 +45,39 @@ test("public site explains rehabilitation first and exposes clear demos", async 
   await expect(page.locator('[data-demo-role="therapist"]')).toContainText("Experience as Therapist");
 });
 
-test("patient navigation restores Report beside Progress", async ({ page }) => {
+test("patient navigation keeps one canonical five-tab contract across rerenders", async ({ page }) => {
   await page.goto("/?journey-playtest=1");
   await waitForPresentation(page);
 
   const nav = page.locator('.topbar .nav[data-ui-patient-nav="true"]');
-  await expect(nav.locator('button[data-nav]')).toHaveCount(5);
-  await expect(nav.locator('button[data-nav] span')).toHaveText(patientLabels);
+  await expectCanonicalPatientNav(nav);
   await expect(nav.locator('[data-nav="report"]')).toHaveText(/Progress/i);
   await expect(nav.locator('[data-nav="report"]')).toHaveAttribute("data-ui-patient-progress", "true");
-  await expect(nav.locator('[data-nav="patient-report"]')).toBeVisible();
-  await expect(nav.locator('[data-nav="patient-report"]')).toHaveText(/Report/i);
+  await expect(nav.locator('[data-nav="patient"]')).toHaveAttribute("aria-current", "page");
   await expect(page.locator(".journey-welcome h1")).toHaveText(/^Hi,/);
   await expect(page.locator(".journey-welcome h1")).not.toContainText("Good afternoon");
+
+  await nav.locator('[data-nav="report"]').click();
+  await expect(page.locator(".report-page")).toBeVisible();
+  await expectCanonicalPatientNav(nav);
+  await expect(nav.locator('[data-nav="report"]')).toHaveAttribute("aria-current", "page");
 
   await nav.locator('[data-nav="patient-report"]').click();
   await expect(page.locator(".patient-report-page")).toBeVisible();
   await expect(page.locator(".patient-report-page h1")).toContainText("Tell your physical therapist");
-  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toHaveClass(/active/);
+  await expectCanonicalPatientNav(nav);
+  await expect(nav.locator('[data-nav="patient-report"]')).toHaveAttribute("aria-current", "page");
 
-  await page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient"]').click();
+  await nav.locator('[data-nav="patient-profile"]').click();
+  await expect(page.locator(".patient-profile-page")).toBeVisible();
+  await expectCanonicalPatientNav(nav);
+  await expect(nav.locator('[data-nav="patient-profile"]')).toHaveAttribute("aria-current", "page");
+
+  await nav.locator('[data-nav="patient"]').click();
   await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "today");
   await expect(page.locator(".journey-atlas")).toBeHidden();
-  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] button[data-nav]')).toHaveCount(5);
-  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toBeVisible();
+  await expectCanonicalPatientNav(nav);
+  await expect(nav.locator('[data-nav="patient"]')).toHaveAttribute("aria-current", "page");
 });
 
 test("patient Today has no horizontal overflow across the requested responsive matrix", async ({ page }) => {
@@ -69,7 +85,7 @@ test("patient Today has no horizontal overflow across the requested responsive m
     await page.setViewportSize({ width, height: width <= 430 ? 844 : 900 });
     await page.goto("/?journey-playtest=1");
     await waitForPresentation(page);
-    await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] button[data-nav]')).toHaveCount(5);
+    await expectCanonicalPatientNav(page.locator('.topbar .nav[data-ui-patient-nav="true"]'));
     await expect(page.locator('.clinic-today-recovery [data-clinic-start-today]')).toBeVisible();
     await expectNoHorizontalOverflow(page);
   }
@@ -82,7 +98,7 @@ test("mobile patient navigation remains five-wide with 44px targets", async ({ p
     await waitForPresentation(page);
 
     const nav = page.locator('.topbar .nav[data-ui-patient-nav="true"]');
-    await expect(nav.locator('button[data-nav]')).toHaveCount(5);
+    await expectCanonicalPatientNav(nav);
     const boxes = await nav.locator('button[data-nav]').evaluateAll((buttons) => buttons.map((button) => {
       const rect = button.getBoundingClientRect();
       return { width: rect.width, height: rect.height, left: rect.left, right: rect.right };
@@ -134,6 +150,6 @@ test("patient Today remains usable at 200 percent zoom", async ({ page }) => {
   await waitForPresentation(page);
   await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
   await expect(page.locator('.clinic-today-recovery [data-clinic-start-today]')).toBeVisible();
-  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toBeVisible();
+  await expectCanonicalPatientNav(page.locator('.topbar .nav[data-ui-patient-nav="true"]'));
   await expectNoHorizontalOverflow(page);
 });
