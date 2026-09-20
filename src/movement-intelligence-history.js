@@ -1,9 +1,10 @@
 import { analyzeExerciseCompensationMigration } from "./compensation-migration.js";
 import { analyzeCrossTaskChangeConsistency } from "./cross-task-intelligence.js";
+import { analyzeContextTransfer } from "./context-transfer-intelligence.js";
 import { compareGaitTimingSessions } from "./gait-intelligence.js";
 import { createMovementContext, movementContextsComparable } from "./movement-context.js";
 
-export const MOVEMENT_INTELLIGENCE_HISTORY_VERSION = 3;
+export const MOVEMENT_INTELLIGENCE_HISTORY_VERSION = 4;
 
 function timestamp(session) {
   const value = session?.completed_at || session?.created_at || session?.started_at;
@@ -135,6 +136,7 @@ export function analyzeMovementIntelligenceHistory(sessions = []) {
   const compensationMigration = compensationMigrationByContext(groups);
   const crossTask = analyzeCrossTaskChangeConsistency(sessions);
   const gaitLongitudinal = latestGaitComparison(sessions);
+  const contextTransfer = analyzeContextTransfer(sessions);
 
   return {
     status: "available",
@@ -147,17 +149,20 @@ export function analyzeMovementIntelligenceHistory(sessions = []) {
     compensationMigration,
     crossTask,
     gaitLongitudinal,
+    contextTransfer,
     evidenceSources: [...new Set([
       ...(compensationMigration.length ? ["NCT06183970"] : []),
       ...(crossTask?.status === "available" ? ["NCT03519087", "NCT05454007"] : []),
       ...(gaitLongitudinal?.status === "available" ? ["NCT05454007"] : []),
+      ...(contextTransfer?.status === "available" ? ["NCT05454007"] : []),
     ])],
     summary: {
       compensationMigrationExerciseCount: new Set(compensationMigration.map((item) => item.exerciseKey)).size,
       compensationMigrationContextCount: compensationMigration.length,
       crossTaskConcordantFamilyCount: crossTask?.status === "available" ? crossTask.concordantFamilyCount : 0,
       gaitLongitudinalAvailable: gaitLongitudinal?.status === "available",
+      contextTransferComparisonCount: contextTransfer?.status === "available" ? contextTransfer.comparisonCount : 0,
     },
-    note: "Each signal remains separate and descriptive. Explicitly different session environments are not pooled for longitudinal gait or Compensation Migration analysis. Axion does not combine these outputs into an injury-risk, recovery, diagnosis, or treatment score.",
+    note: "Each signal remains separate and descriptive. Explicitly different session environments are not pooled for longitudinal gait or Compensation Migration analysis; Home/Clinic differences are reported separately as context-transfer observations. Axion does not combine these outputs into an injury-risk, recovery, diagnosis, or treatment score.",
   };
 }
