@@ -28,7 +28,7 @@
   background:transparent!important;
   opacity:1!important;
   object-fit:contain!important;
-  filter:none!important;
+  filter:drop-shadow(0 0 1.25px rgba(0,0,0,.98)) drop-shadow(0 0 3px rgba(110,240,177,.34))!important;
   mix-blend-mode:normal!important;
   pointer-events:none!important;
 }
