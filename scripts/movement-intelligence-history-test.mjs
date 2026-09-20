@@ -81,7 +81,10 @@ assert.equal(result.status, "available");
 assert.equal(result.patientId, "patient-1");
 assert.equal(result.diagnostic, false);
 assert.equal(result.treatmentChanging, false);
-assert.ok(result.compensationMigration.some((item) => item.exerciseKey === "bodyweight_squat"));
+const squatMigration = result.compensationMigration.find((item) => item.exerciseKey === "bodyweight_squat");
+assert.ok(squatMigration);
+assert.equal(squatMigration.environment, "home");
+assert.equal(squatMigration.contextVerification, "same_explicit_environment");
 assert.equal(result.crossTask.status, "available");
 assert.ok(result.crossTask.concordantFamilyCount >= 1);
 assert.equal(result.gaitLongitudinal.status, "available");
@@ -91,8 +94,25 @@ assert.equal(result.gaitLongitudinal.contextVerification, "same_explicit_environ
 assert.equal(result.gaitLongitudinal.latestContext.environment, "home");
 assert.ok(result.evidenceSources.includes("NCT05454007"));
 assert.ok(result.summary.compensationMigrationExerciseCount >= 1);
+assert.ok(result.summary.compensationMigrationContextCount >= 1);
 assert.equal(result.summary.gaitLongitudinalAvailable, true);
 assert.doesNotMatch(result.note, /clinically validated|injury risk score/i);
+
+const splitEnvironmentCompensation = [
+  session("split-1", "bodyweight_squat", 1, { environment: "home", knee: 12, trunk: 3 }),
+  session("split-2", "bodyweight_squat", 2, { environment: "home", knee: 11.5, trunk: 3.5 }),
+  session("split-3", "bodyweight_squat", 3, { environment: "home", knee: 12.5, trunk: 3 }),
+  session("split-4", "bodyweight_squat", 10, { environment: "clinic", knee: 6, trunk: 8 }),
+  session("split-5", "bodyweight_squat", 11, { environment: "clinic", knee: 5.5, trunk: 8.5 }),
+  session("split-6", "bodyweight_squat", 12, { environment: "clinic", knee: 5, trunk: 9 }),
+];
+const splitResult = analyzeMovementIntelligenceHistory(splitEnvironmentCompensation);
+assert.equal(
+  splitResult.compensationMigration.some((item) => item.exerciseKey === "bodyweight_squat"),
+  false,
+  "three home plus three clinic sessions must not be pooled to satisfy the six-session Compensation Migration window",
+);
+assert.equal(splitResult.summary.compensationMigrationExerciseCount, 0);
 
 const environmentMismatch = sessions.map((item) => ({ ...item }));
 const latestGaitIndex = environmentMismatch.findIndex((item) => item.id === "gait-2");
@@ -122,4 +142,4 @@ const mixed = analyzeMovementIntelligenceHistory([
 assert.equal(mixed.status, "unavailable");
 assert.equal(mixed.reason, "mixed_patients");
 
-console.log("Movement Intelligence history: compensation, cross-task and context-compatible gait signals stay separate and descriptive.");
+console.log("Movement Intelligence history: compensation, cross-task and context-compatible gait signals stay separate and environment-stratified.");
