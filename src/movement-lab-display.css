@@ -88,16 +88,27 @@
   height:100%!important;
   background:transparent!important;
 }
+.lab-page .buddy-pane .pane-label{font-size:0!important}
+.lab-page .buddy-pane .pane-label::after{
+  content:"WORKOUT BUDDY · LIVE MIRROR";
+  font:500 .56rem "DM Mono",monospace;
+  letter-spacing:.1em;
+}
 .lab-page .buddy-pane>small{
   position:absolute;
   left:.8rem;
   right:.8rem;
   bottom:.75rem;
   z-index:4;
-  color:#9eb3aa!important;
-  font-size:.58rem!important;
+  color:transparent!important;
+  font-size:0!important;
   text-align:right;
   pointer-events:none;
+}
+.lab-page .buddy-pane>small::after{
+  content:"Mirrors your tracked movement; follow your prescribed range and pace.";
+  color:#9eb3aa!important;
+  font-size:.58rem!important;
 }
 
 /* Do not collapse the reference stage to 1px once the camera is live. The user
