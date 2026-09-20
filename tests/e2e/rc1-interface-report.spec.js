@@ -25,10 +25,6 @@ test("patient Report tab opens the existing reporting page", async ({ page }) =>
   await expect(reportChoices.filter({ hasText: /^Felt different today$/ })).toBeVisible();
   await expect(painScale).toBeHidden();
 
-  await reportChoices.filter({ hasText: /^Movement felt wrong$/ }).click();
-  await expect(painScale).toBeHidden();
-  await expect(page.locator("#patient-report-comment")).toHaveAttribute("placeholder", /felt wrong/i);
-
   await reportChoices.filter({ hasText: /^Pain$/ }).click();
   await expect(painScale).toBeVisible();
 
@@ -41,6 +37,18 @@ test("patient Report tab opens the existing reporting page", async ({ page }) =>
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await expect(page.locator("#patient-pain-output")).toHaveText("4 / 10");
+
+  // Switching away from Pain must not leave a hidden stale pain value that
+  // could be attached to a movement-only concern on submit.
+  await reportChoices.filter({ hasText: /^Movement felt wrong$/ }).click();
+  await expect(painScale).toBeHidden();
+  await expect(painScore).toHaveValue("0");
+  await expect(page.locator("#patient-pain-output")).toHaveText("0 / 10");
+  await expect(page.locator("#patient-report-comment")).toHaveAttribute("placeholder", /felt wrong/i);
+
+  await reportChoices.filter({ hasText: /^Pain$/ }).click();
+  await expect(painScale).toBeVisible();
+  await expect(painScore).toHaveValue("0");
 
   await expect(page.locator("#patient-report-comment")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-axion-story", /.+/);
