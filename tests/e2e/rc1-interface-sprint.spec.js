@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const patientLabels = ["Today", "Journey", "Progress", "Profile"];
+const patientLabels = ["Today", "Journey", "Progress", "Report", "Profile"];
 const requestedWidths = [1440, 1280, 1024, 768, 430, 390, 360, 320];
 const mobileWidths = [430, 390, 360, 320];
 
@@ -38,30 +38,30 @@ test("public site explains rehabilitation first and exposes clear demos", async 
   await expect(page.locator('[data-demo-role="therapist"]')).toContainText("Experience as Therapist");
 });
 
-test("patient navigation keeps Progress as the primary quantitative destination", async ({ page }) => {
+test("patient navigation restores Report beside Progress", async ({ page }) => {
   await page.goto("/?journey-playtest=1");
   await waitForPresentation(page);
 
   const nav = page.locator('.topbar .nav[data-ui-patient-nav="true"]');
-  await expect(nav.locator('button[data-nav]')).toHaveCount(4);
+  await expect(nav.locator('button[data-nav]')).toHaveCount(5);
   await expect(nav.locator('button[data-nav] span')).toHaveText(patientLabels);
   await expect(nav.locator('[data-nav="report"]')).toHaveText(/Progress/i);
   await expect(nav.locator('[data-nav="report"]')).toHaveAttribute("data-ui-patient-progress", "true");
-  await expect(nav.locator('[data-nav="patient-report"]')).toHaveCount(0);
-  await expect(page.locator('.ui-report-concern')).toBeVisible();
-  await expect(page.locator('.ui-report-concern')).toHaveText(/Report a concern/i);
+  await expect(nav.locator('[data-nav="patient-report"]')).toBeVisible();
+  await expect(nav.locator('[data-nav="patient-report"]')).toHaveText(/Report/i);
   await expect(page.locator(".journey-welcome h1")).toHaveText(/^Hi,/);
   await expect(page.locator(".journey-welcome h1")).not.toContainText("Good afternoon");
 
-  await expect(page.locator(".journey-atlas")).toBeHidden();
-  await nav.locator('[data-nav="lab"]').click();
-  await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "journey");
-  await expect(page.locator(".journey-atlas")).toBeVisible();
-  await expect(page.locator("[data-clinic-today]")).toBeHidden();
+  await nav.locator('[data-nav="patient-report"]').click();
+  await expect(page.locator(".patient-report-page")).toBeVisible();
+  await expect(page.locator(".patient-report-page h1")).toContainText("Tell your physical therapist");
+  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toHaveClass(/active/);
 
-  await nav.locator('[data-nav="patient"]').click();
+  await page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient"]').click();
   await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "today");
   await expect(page.locator(".journey-atlas")).toBeHidden();
+  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] button[data-nav]')).toHaveCount(5);
+  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toBeVisible();
 });
 
 test("patient Today has no horizontal overflow across the requested responsive matrix", async ({ page }) => {
@@ -69,25 +69,25 @@ test("patient Today has no horizontal overflow across the requested responsive m
     await page.setViewportSize({ width, height: width <= 430 ? 844 : 900 });
     await page.goto("/?journey-playtest=1");
     await waitForPresentation(page);
-    await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] button[data-nav]')).toHaveCount(4);
+    await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] button[data-nav]')).toHaveCount(5);
     await expect(page.locator('.clinic-today-recovery [data-clinic-start-today]')).toBeVisible();
     await expectNoHorizontalOverflow(page);
   }
 });
 
-test("mobile patient navigation remains four-wide with 44px targets", async ({ page }) => {
+test("mobile patient navigation remains five-wide with 44px targets", async ({ page }) => {
   for (const width of mobileWidths) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/?journey-playtest=1");
     await waitForPresentation(page);
 
     const nav = page.locator('.topbar .nav[data-ui-patient-nav="true"]');
-    await expect(nav.locator('button[data-nav]')).toHaveCount(4);
+    await expect(nav.locator('button[data-nav]')).toHaveCount(5);
     const boxes = await nav.locator('button[data-nav]').evaluateAll((buttons) => buttons.map((button) => {
       const rect = button.getBoundingClientRect();
       return { width: rect.width, height: rect.height, left: rect.left, right: rect.right };
     }));
-    expect(boxes).toHaveLength(4);
+    expect(boxes).toHaveLength(5);
     boxes.forEach((box) => {
       expect(box.height).toBeGreaterThanOrEqual(44);
       expect(box.width).toBeGreaterThan(0);
@@ -134,6 +134,6 @@ test("patient Today remains usable at 200 percent zoom", async ({ page }) => {
   await waitForPresentation(page);
   await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
   await expect(page.locator('.clinic-today-recovery [data-clinic-start-today]')).toBeVisible();
-  await expect(page.locator('.ui-report-concern')).toBeVisible();
+  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });

@@ -8,7 +8,10 @@ test("patient demo opens the prescribed Today experience instead of onboarding",
   await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "today");
   await expect(page.locator("[data-clinic-today]")).toBeVisible();
   await expect(page.locator(".onboarding-card")).toHaveCount(0);
-  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] button[data-nav]')).toHaveCount(4);
+  const nav = page.locator('.topbar .nav[data-ui-patient-nav="true"]');
+  await expect(nav.locator('button[data-nav]')).toHaveCount(5);
+  await expect(nav.locator('[data-nav="patient-report"]')).toBeVisible();
+  await expect(nav.locator('[data-nav="patient-report"]')).toHaveText(/Report/i);
 });
 
 test("therapist demo opens the review workspace", async ({ page }) => {
