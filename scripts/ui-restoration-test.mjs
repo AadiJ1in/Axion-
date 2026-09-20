@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [js, css, polish] = await Promise.all([
+const [js, css, progressCss, polish] = await Promise.all([
   readFile(new URL("../src/ui-restoration.js", import.meta.url), "utf8"),
   readFile(new URL("../src/ui-restoration.css", import.meta.url), "utf8"),
+  readFile(new URL("../src/ui-restoration-progress.css", import.meta.url), "utf8"),
   readFile(new URL("../src/patient-game-polish.js", import.meta.url), "utf8"),
 ]);
 
@@ -21,9 +22,11 @@ assert.match(css, /\.beacon-story-preview\{display:none!important\}/, "numbered 
 assert.match(css, /\.footer,/, "patient prototype footer is hidden");
 assert.match(css, /\.progress-timeline article/, "progress history receives the neutral light theme");
 assert.match(css, /\.clinic-today-status>b[\s\S]*color:#fff!important/, "current phase title is white");
+assert.match(progressCss, /\.safety-review-card/, "patient safety event cards use the restored Progress theme");
+assert.match(progressCss, /\.privacy-dashboard/, "patient data notice uses the restored Progress theme");
 
 for (const forbidden of ["sessionReps.push", "REP_COMPLETE", "clinicalTarget", "movement_summary"]) {
   assert.equal(js.includes(forbidden), false, `presentation restoration must not alter clinical state (${forbidden})`);
 }
 
-console.log("UI restoration: visual, navigation, game fallback and camera lifecycle contracts passed.");
+console.log("UI restoration: visual, navigation, game fallback, Progress surfaces and camera lifecycle contracts passed.");
