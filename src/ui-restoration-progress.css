@@ -1,0 +1,19 @@
+/* Final patient Progress surface overrides. Loaded after ui-restoration.css. */
+.report-page[data-ui-patient-progress="true"] .safety-review-card,
+.report-page[data-ui-patient-progress="true"] .safety-review-card article,
+.report-page[data-ui-patient-progress="true"] .privacy-dashboard{
+  border-color:#d2cec4!important;
+  background:#ebe7de!important;
+  color:#24352e!important;
+  box-shadow:none!important;
+}
+.report-page[data-ui-patient-progress="true"] .safety-review-card :is(h2,h3,b,strong),
+.report-page[data-ui-patient-progress="true"] .privacy-dashboard :is(h2,h3,b,strong){color:#24352e!important}
+.report-page[data-ui-patient-progress="true"] .safety-review-card :is(p,span,small,em),
+.report-page[data-ui-patient-progress="true"] .privacy-dashboard :is(p,span,small,em){color:#66736d!important}
+.report-page[data-ui-patient-progress="true"] .safety-review-card article{
+  border:1px solid #d4d0c7!important;
+  border-radius:10px!important;
+  margin-top:8px!important;
+}
+.report-page[data-ui-patient-progress="true"] .privacy-dashboard>.icon{color:#49745f!important}
