@@ -1,12 +1,39 @@
-// Keep the patient-facing quantitative view aligned with the four-item
-// navigation contract. Concern reporting is contextual and must never become
-// a fifth primary tab.
+// Keep Progress and the patient-submitted Report as separate destinations.
+// Progress summarizes measured rehabilitation data; Report lets a patient send
+// pain or movement concerns to the treating clinician.
 
-function setProgressLabel(button) {
+function setButtonLabel(button, label) {
   const span = button?.querySelector("span");
-  if (span) span.textContent = "Progress";
-  else if (button) button.textContent = "Progress";
-  button?.setAttribute("aria-label", "Progress");
+  if (span) span.textContent = label;
+  else if (button) button.textContent = label;
+  button?.setAttribute("aria-label", label);
+}
+
+function restoreReportTab(nav) {
+  const reportButton = nav?.querySelector('[data-nav="patient-report"]');
+  if (!reportButton) return;
+  setButtonLabel(reportButton, "Report");
+  reportButton.hidden = false;
+  reportButton.removeAttribute("aria-hidden");
+  reportButton.tabIndex = 0;
+  reportButton.style.order = "4";
+
+  const profileButton = nav.querySelector('[data-nav="patient-profile"]');
+  if (profileButton) profileButton.style.order = "5";
+
+  // The signed-in patient nav becomes a five-column bottom bar on compact
+  // screens. This inline declaration is inert while the desktop nav is flex.
+  nav.style.gridTemplateColumns = "repeat(5,minmax(0,1fr))";
+
+  const onReportPage = Boolean(document.querySelector(".patient-report-page"));
+  if (onReportPage) {
+    nav.querySelectorAll("button[data-nav]").forEach((button) => {
+      const active = button === reportButton;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+  }
 }
 
 function clarifyPatientProgressSummary(reportPage) {
@@ -31,10 +58,12 @@ export function syncPatientReportsNavigation() {
   if (!nav?.querySelector('[data-nav="patient"]')) return;
 
   const progressButton = nav.querySelector('[data-nav="report"]');
-  if (!progressButton) return;
-  setProgressLabel(progressButton);
-  progressButton.dataset.uiPatientProgress = "true";
+  if (progressButton) {
+    setButtonLabel(progressButton, "Progress");
+    progressButton.dataset.uiPatientProgress = "true";
+  }
 
+  restoreReportTab(nav);
   clarifyPatientProgressSummary(document.querySelector(".report-page"));
 }
 
