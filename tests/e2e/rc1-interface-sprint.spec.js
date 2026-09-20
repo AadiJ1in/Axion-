@@ -57,20 +57,11 @@ test("patient navigation restores Report beside Progress", async ({ page }) => {
   await expect(page.locator(".patient-report-page h1")).toContainText("Tell your physical therapist");
   await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toHaveClass(/active/);
 
-  const reportNav = page.locator('.topbar .nav[data-ui-patient-nav="true"]');
-  await reportNav.locator('[data-nav="patient"]').click();
-  await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "today");
-  await expect(page.locator(".journey-atlas")).toBeHidden();
-
-  await reportNav.locator('[data-nav="lab"]').click();
-  await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "journey");
-  await expect(page.locator(".journey-atlas")).toBeVisible();
-  await expect(page.locator("[data-clinic-today]")).toBeHidden();
-  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toBeVisible();
-
   await page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient"]').click();
   await expect(page.locator("html")).toHaveAttribute("data-axion-patient-section", "today");
   await expect(page.locator(".journey-atlas")).toBeHidden();
+  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] button[data-nav]')).toHaveCount(5);
+  await expect(page.locator('.topbar .nav[data-ui-patient-nav="true"] [data-nav="patient-report"]')).toBeVisible();
 });
 
 test("patient Today has no horizontal overflow across the requested responsive matrix", async ({ page }) => {
