@@ -16,6 +16,7 @@ for (const capability of manifest.requiredCapabilities || []) {
   ids.add(capability.id);
   assert.ok(fileSet.has(capability.repositoryFile), `missing required migration file ${capability.repositoryFile}`);
   assert.equal(capability.destructive, false, `RC1 manifest must not silently include destructive migration ${capability.id}`);
+  assert.match(capability.productionVersion || "", /^\d{14}$/, `required capability ${capability.id} must record its production migration version`);
 }
 
 const prefixes = new Map();
@@ -32,12 +33,20 @@ for (const [prefix, list] of prefixes) {
   assert.deepEqual([...list].sort(), accepted, `unregistered duplicate migration prefix ${prefix}`);
 }
 
+const rc1ProductionContract = manifest.requiredCapabilities
+  .filter((item) => ["rc1_verified_session_identity", "rc1_application_schema_version"].includes(item.id))
+  .sort((a, b) => a.deploymentOrder - b.deploymentOrder);
+assert.deepEqual(rc1ProductionContract.map((item) => item.id),
+  ["rc1_verified_session_identity", "rc1_application_schema_version"],
+  "RC1 production migrations must remain present in deterministic order");
+assert.deepEqual(rc1ProductionContract.map((item) => item.deploymentOrder), [1, 2],
+  "RC1 production migration order changed unexpectedly");
+assert.deepEqual(rc1ProductionContract.map((item) => item.productionVersion),
+  ["20260913173534", "20260913173553"],
+  "RC1 production migration versions no longer match the verified production migration history");
+
 const pending = manifest.requiredCapabilities.filter((item) => item.productionVersion === null);
-assert.deepEqual(pending.map((item) => item.id), ["rc1_verified_session_identity", "rc1_application_schema_version"],
-  "unexpected pending RC1 production migration set");
-assert.deepEqual(pending.map((item) => item.deploymentOrder), [1, 2], "RC1 migrations must have deterministic order");
-assert.equal(new Set(pending.map((item) => item.repositoryFile.split("_")[0])).size, pending.length,
-  "new RC1 migration versions must be unique");
+assert.equal(pending.length, 0, "all required RC1 capabilities must be recorded as deployed in production");
 
 const schemaFile = manifest.requiredCapabilities.find((item) => item.id === "rc1_application_schema_version")?.repositoryFile;
 const schemaVersionSql = fs.readFileSync(path.join(migrationDir, schemaFile), "utf8");

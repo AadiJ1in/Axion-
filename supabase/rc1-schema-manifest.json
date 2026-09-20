@@ -97,7 +97,7 @@
       "id": "rc1_verified_session_identity",
       "repositoryFile": "20260911131500_rc1_verified_session_identity.sql",
       "productionMigration": "rc1_verified_session_identity",
-      "productionVersion": null,
+      "productionVersion": "20260913173534",
       "changeType": "additive-schema-and-validation-trigger",
       "destructive": false,
       "deploymentOrder": 1
@@ -106,7 +106,7 @@
       "id": "rc1_application_schema_version",
       "repositoryFile": "20260911131600_rc1_application_schema_version.sql",
       "productionMigration": "rc1_application_schema_version",
-      "productionVersion": null,
+      "productionVersion": "20260913173553",
       "changeType": "additive-rpc",
       "destructive": false,
       "deploymentOrder": 2
