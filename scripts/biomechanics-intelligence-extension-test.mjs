@@ -45,12 +45,19 @@ function gaitReps() {
   return reps;
 }
 
+function withoutIntelligence(summary) {
+  const { intelligence, ...canonical } = summary || {};
+  return canonical;
+}
+
 const gait = summarizeSessionBiomechanics(gaitReps());
 assert.equal(gait.schemaVersion, 1);
 assert.equal(gait.intelligence.schemaVersion, 1);
 assert.equal(gait.intelligence.experimental, true);
 assert.equal(gait.intelligence.diagnostic, false);
 assert.equal(gait.intelligence.derivedOnly, true);
+assert.equal(gait.intelligence.context.environment, "unknown");
+assert.equal(gait.intelligence.context.explicit, false);
 assert.equal(gait.intelligence.gaitTiming.status, "available");
 assert.ok(Number.isFinite(gait.intelligence.gaitTiming.cadenceStepsPerMinute));
 assert.deepEqual(gait.intelligence.evidenceSources, ["NCT05454007"]);
@@ -62,11 +69,22 @@ const ordinaryReps = [
 ];
 const ordinary = summarizeSessionBiomechanics(ordinaryReps);
 const ordinaryCore = summarizeCore(ordinaryReps);
-assert.deepEqual(ordinary, ordinaryCore, "non-gait sessions retain canonical biomechanics output unchanged");
-assert.equal(ordinary.intelligence, undefined);
+assert.deepEqual(
+  withoutIntelligence(ordinary),
+  ordinaryCore,
+  "non-gait sessions retain canonical biomechanics measurements unchanged",
+);
+assert.equal(ordinary.intelligence.context.environment, "unknown");
+assert.equal(ordinary.intelligence.context.explicit, false);
+assert.equal(ordinary.intelligence.gaitTiming, null);
+assert.deepEqual(ordinary.intelligence.evidenceSources, []);
+assert.equal(containsRawMovementData(ordinary), false, "context metadata must remain derived-only");
 
 const mixedLabels = gaitReps();
 mixedLabels[3].angleLabel = "Alternating step height";
-assert.equal(summarizeSessionBiomechanics(mixedLabels).intelligence, undefined, "mixed labels fail closed instead of guessing gait");
+const mixed = summarizeSessionBiomechanics(mixedLabels);
+assert.equal(mixed.intelligence.context.environment, "unknown");
+assert.equal(mixed.intelligence.gaitTiming, null, "mixed labels fail closed instead of guessing gait");
+assert.deepEqual(mixed.intelligence.evidenceSources, []);
 
-console.log("Biomechanics intelligence extension: gait timing persists through live summary while other sessions remain unchanged.");
+console.log("Biomechanics intelligence extension: canonical measurements stay unchanged, context persists, and gait timing fails closed outside heel-to-toe sessions.");
