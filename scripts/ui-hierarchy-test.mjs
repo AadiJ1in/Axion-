@@ -17,21 +17,27 @@ assert.match(stabilityCss, /axion-kingdom-world\.webp/);
 assert.match(stabilityCss, /campaign-cloud\{animation:none!important/);
 assert.doesNotMatch(ui, /MutationObserver/);
 assert.match(ui, /function ensureJourneyIntro\(page\)/, "journey hierarchy must be idempotent");
-assert.match(ui, /page\.querySelectorAll\(\"\[data-ui-journey-intro\]\"\)/, "duplicate journey intros must be collapsed");
+assert.match(ui, /page\.querySelectorAll\("\[data-ui-journey-intro\]"\)/, "duplicate journey intros must be collapsed");
 assert.doesNotMatch(ui, /support\?\.after\(atlas\)/, "journey atlas must not be unconditionally moved on every sync tick");
 assert.doesNotMatch(ui, /today\.after\(support\)/, "journey support must stay in source order");
 assert.doesNotMatch(ui, /anchor\.after\(intro\)|intro\.after\(atlas\)|atlas\.after\(phases\)/, "journey presentation must not reparent major sections");
 assert.doesNotMatch(ui, /supabase|exercise_sessions|roadmap_node_completions|rep_metrics/i);
 
-for (const label of ["Today", "Journey", "Progress", "Report", "Profile"]) assert.match(ui, new RegExp(`"${label}"`));
-for (const label of ["Overview", "Patients", "Plans", "Exercise Library", "Alerts"]) assert.match(ui, new RegExp(`"${label}"`));
+for (const label of ["Today", "Journey", "Progress", "Profile"]) assert.match(ui, new RegExp(`"${label}"`));
+assert.match(ui, /Report a concern/);
+assert.match(ui, /concern\.hidden = true/);
+for (const label of ["Overview", "Patients", "Plans", "Exercise Library"]) assert.match(ui, new RegExp(`"${label}"`));
+assert.doesNotMatch(ui, /alerts:\s*"Alerts"/);
+assert.match(ui, /patientPrimaryNavigationCount:\s*4/);
+assert.match(ui, /therapistPrimaryNavigationCount:\s*4/);
 assert.match(ui, /dataUiPatientJourney|uiPatientJourney/);
 assert.match(ui, /Patients who may need your review/);
 assert.match(ui, /Start Session/);
 assert.match(ui, /Let's get you positioned/);
 assert.match(ui, /Begin Exercise/);
 assert.match(ui, /Finish Session/);
-assert.match(ui, /Good afternoon/);
+assert.match(ui, /`Hi, \$\{pretty\}`/);
+assert.doesNotMatch(ui, /Good afternoon/);
 
 assert.match(css, /grid-template-columns:220px minmax\(0,1fr\)/);
 assert.match(css, /clinic-attention-grid\{display:grid!important;grid-template-columns:1fr!important/);
@@ -43,4 +49,4 @@ assert.match(css, /@media\(max-width:900px\)/);
 assert.match(css, /@media\(max-width:680px\)/);
 assert.match(css, /prefers-reduced-motion/);
 
-console.log("UI hierarchy regression passed: progressive disclosure, focused Motion Lab, readable navigation, responsive touch targets.");
+console.log("UI hierarchy regression passed: four-destination navigation, contextual concern reporting, focused Motion Lab, responsive touch targets.");

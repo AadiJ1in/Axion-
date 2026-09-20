@@ -18,21 +18,15 @@ export function syncUiStability() {
   const view = visiblePatientView();
   root.dataset.axionPatientSurface = patientNav ? "true" : "false";
 
-  if (patientNav) {
-    const report = patientNav.querySelector('[data-nav="patient-report"]');
-    if (report) {
-      report.hidden = false;
-      report.removeAttribute("aria-hidden");
-      report.tabIndex = 0;
-    }
-    if (view && PATIENT_VIEWS.has(view)) {
-      patientNav.querySelectorAll("button[data-nav]").forEach((button) => {
-        const active = button.dataset.nav === view;
-        button.classList.toggle("active", active);
-        if (active) button.setAttribute("aria-current", "page");
-        else button.removeAttribute("aria-current");
-      });
-    }
+  if (patientNav && view && PATIENT_VIEWS.has(view)) {
+    patientNav.querySelectorAll("button[data-nav]").forEach((button) => {
+      // Contextual views such as "Report a concern" intentionally have no
+      // permanent primary-navigation tab. Never recreate or unhide one here.
+      const active = button.dataset.nav === view;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
   }
 
   try {
