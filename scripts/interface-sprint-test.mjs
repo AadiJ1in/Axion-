@@ -52,7 +52,9 @@ assert.ok(css.includes('.lab-page[data-ui-phase="active"] .journey-panel'), 'act
 assert.ok(css.includes('.live-metrics>div:nth-child(n+3)'), 'active Movement Lab must hide secondary live metrics');
 assert.ok(css.includes('#start-camera') && css.includes('#reset-session'), 'active session must suppress setup/reset controls');
 assert.ok(css.includes(':focus-visible'), 'focus visibility must be explicitly preserved');
-assert.ok(css.includes('prefers-reduced-motion:reduce'), 'reduced motion must be respected');\nassert.ok(css.includes('color:#e8b58a!important'), 'Report a concern must use readable high-contrast text on dark surfaces');\nassert.ok(!css.includes('font-size:.64rem!important') && !css.includes('font-size:.68rem!important'), 'mobile primary-navigation labels must not shrink below the readability floor');
+assert.ok(css.includes('prefers-reduced-motion:reduce'), 'reduced motion must be respected');
+assert.ok(css.includes('color:#e8b58a!important'), 'Report a concern must use readable high-contrast text on dark surfaces');
+assert.ok(!css.includes('font-size:.64rem!important') && !css.includes('font-size:.68rem!important'), 'mobile primary-navigation labels must not shrink below the readability floor');
 
 assert.ok(patientPolish.includes('MAX_JOURNEY_MISSIONS_PER_REGION = 8'), 'journey regions must cap presentation chunks at eight missions');
 assert.ok(patientPolish.includes('MIN_JOURNEY_MISSIONS_PER_REGION = 3'), 'journey regions should prefer at least three missions per chapter');
