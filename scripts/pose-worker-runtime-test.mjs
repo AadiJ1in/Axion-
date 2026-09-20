@@ -1,6 +1,25 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createPoseRuntime } from '../src/pose-runtime.js';
 import { resolveMediapipeConfig } from '../src/mediapipe-config.js';
+
+const poseRuntimeSource = readFileSync(new URL('../src/pose-runtime.js', import.meta.url), 'utf8');
+const poseWorkerSource = readFileSync(new URL('../src/pose-worker.js', import.meta.url), 'utf8');
+assert.doesNotMatch(
+  poseRuntimeSource,
+  /^import\s+\{[^\n]*\}\s+from\s+["']@mediapipe\/tasks-vision["'];?/m,
+  'direct MediaPipe implementation must not remain in the initial application import graph',
+);
+assert.match(
+  poseRuntimeSource,
+  /import\(["']@mediapipe\/tasks-vision["']\)/,
+  'local compatibility tracking must lazy-load MediaPipe only when initialized',
+);
+assert.match(
+  poseWorkerSource,
+  /^import\s+\{[^\n]*\}\s+from\s+["']@mediapipe\/tasks-vision["'];?/m,
+  'the dedicated pose worker keeps its own MediaPipe implementation',
+);
 
 const tuned = resolveMediapipeConfig({
   minPoseDetectionConfidence: .6,
@@ -89,4 +108,4 @@ assert.equal(terminated, 1, 'worker is terminated during tracker teardown');
 if (originalWorker === undefined) delete globalThis.Worker; else globalThis.Worker = originalWorker;
 if (originalCreateImageBitmap === undefined) delete globalThis.createImageBitmap; else globalThis.createImageBitmap = originalCreateImageBitmap;
 
-console.log('Pose worker runtime passed: configurable vision tuning, worker selection, buffered non-blocking inference, bounded backlog, and teardown.');
+console.log('Pose worker runtime passed: configurable vision tuning, lazy direct-runtime boundary, worker selection, buffered non-blocking inference, bounded backlog, and teardown.');
