@@ -1,4 +1,3 @@
-import "./movement-lab-display.css";
 import { drawExplorer } from "./ruins-runner.js";
 
 // Presentation-only movement companion. This module reads the existing game state
