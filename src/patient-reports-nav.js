@@ -20,7 +20,11 @@ function restoreReportTab(nav) {
   const reportButton = liveReportButton || persistentReportButton;
   if (!reportButton) return;
 
-  if (reportButton.parentElement !== nav) nav.appendChild(reportButton);
+  const profileButton = nav.querySelector('[data-nav="patient-profile"]');
+  if (reportButton.parentElement !== nav || reportButton.nextElementSibling !== profileButton) {
+    if (profileButton) nav.insertBefore(reportButton, profileButton);
+    else nav.appendChild(reportButton);
+  }
   setButtonLabel(reportButton, "Report");
   reportButton.classList.remove("ui-report-concern");
   reportButton.hidden = false;
@@ -28,7 +32,6 @@ function restoreReportTab(nav) {
   reportButton.tabIndex = 0;
   reportButton.style.order = "4";
 
-  const profileButton = nav.querySelector('[data-nav="patient-profile"]');
   if (profileButton) profileButton.style.order = "5";
 
   // The signed-in patient nav becomes a five-column bottom bar on compact
