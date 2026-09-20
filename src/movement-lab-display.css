@@ -3,6 +3,11 @@
    need a dark, high-contrast stage so the patient, pose overlay, and buddy remain
    visible. This file is presentation-only and does not alter tracking logic. */
 
+.lab-page .capture-panel>.motion-stage{
+  width:100%!important;
+  max-width:1180px!important;
+  margin:12px auto!important;
+}
 .lab-page .motion-stage{
   border-color:#31463e!important;
   background:#07100f!important;
@@ -115,7 +120,8 @@
    explicitly needs to see both themselves and the buddy while exercising. */
 .camera-squat-lab .adventure-card:has(.movement-game-stage.active).camera-live + .motion-stage{
   position:relative!important;
-  width:auto!important;
+  width:100%!important;
+  max-width:1180px!important;
   height:clamp(300px,30vw,430px)!important;
   overflow:hidden!important;
   opacity:1!important;
@@ -149,6 +155,7 @@
 }
 
 @media(max-width:900px){
+  .lab-page .capture-panel>.motion-stage{max-width:760px!important}
   .lab-page .motion-stage:has(.buddy-pane){
     grid-template-columns:1fr 1fr!important;
     height:auto!important;
