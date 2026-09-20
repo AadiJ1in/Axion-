@@ -1,6 +1,14 @@
-// Keep Progress and the patient-submitted Report as separate destinations.
-// Progress summarizes measured rehabilitation data; Report lets a patient send
-// pain or movement concerns to the treating clinician.
+// Canonical signed-in patient navigation. Presentation layers may temporarily
+// rearrange controls while a screen renders, but this module is the final pass:
+// Today · Journey · Progress · Report · Profile.
+
+export const PATIENT_NAV_CONTRACT = Object.freeze([
+  ["patient", "Today"],
+  ["lab", "Journey"],
+  ["report", "Progress"],
+  ["patient-report", "Report"],
+  ["patient-profile", "Profile"],
+]);
 
 let persistentReportButton = null;
 
@@ -11,45 +19,74 @@ function setButtonLabel(button, label) {
   button?.setAttribute("aria-label", label);
 }
 
-function restoreReportTab(nav) {
-  // interface-sprint may temporarily move or detach this already-bound button
-  // while it builds secondary actions. Keep the real button so its main.js
-  // navigation listener survives view changes; never replace it with a clone.
-  const liveReportButton = document.querySelector('[data-nav="patient-report"]');
-  if (liveReportButton) persistentReportButton = liveReportButton;
-  const reportButton = liveReportButton || persistentReportButton;
-  if (!reportButton) return;
-
-  const profileButton = nav.querySelector('[data-nav="patient-profile"]');
-  if (reportButton.parentElement !== nav || reportButton.nextElementSibling !== profileButton) {
-    if (profileButton) nav.insertBefore(reportButton, profileButton);
-    else nav.appendChild(reportButton);
+function activePatientDestination() {
+  if (document.querySelector(".patient-report-page")) return "patient-report";
+  if (document.querySelector(".patient-profile-page")) return "patient-profile";
+  if (document.querySelector(".report-page")) return "report";
+  if (document.querySelector(".patient-portal")) {
+    return document.documentElement.dataset.axionPatientSection === "journey" ? "lab" : "patient";
   }
-  setButtonLabel(reportButton, "Report");
-  reportButton.classList.remove("ui-report-concern");
-  reportButton.hidden = false;
-  reportButton.removeAttribute("aria-hidden");
-  reportButton.tabIndex = 0;
-  reportButton.style.order = "4";
+  return null;
+}
 
-  if (profileButton) profileButton.style.order = "5";
+function patientButton(nav, view) {
+  const inNav = nav.querySelector(`[data-nav="${view}"]`);
+  if (inNav) return inNav;
 
-  // interface-sprint.css still contains a compact four-column declaration from
-  // the previous navigation contract. Use an inline important declaration here
-  // so the final five-destination patient contract always wins until that legacy
-  // presentation layer is removed.
-  nav.style.setProperty("grid-template-columns", "repeat(5,minmax(0,1fr))", "important");
-  nav.dataset.uiPrimaryCount = "5";
-
-  const onReportPage = Boolean(document.querySelector(".patient-report-page"));
-  if (onReportPage) {
-    nav.querySelectorAll("button[data-nav]").forEach((button) => {
-      const active = button === reportButton;
-      button.classList.toggle("active", active);
-      if (active) button.setAttribute("aria-current", "page");
-      else button.removeAttribute("aria-current");
-    });
+  // interface-sprint can temporarily move the already-bound Report button into
+  // a contextual-action container. Preserve that exact node so the main.js
+  // navigation listener survives; never replace it with a clone.
+  if (view === "patient-report") {
+    const liveReportButton = document.querySelector('[data-nav="patient-report"]');
+    if (liveReportButton) persistentReportButton = liveReportButton;
+    return liveReportButton || persistentReportButton;
   }
+  return null;
+}
+
+function enforcePatientNavigation(nav) {
+  const orderedButtons = [];
+
+  PATIENT_NAV_CONTRACT.forEach(([view, label], index) => {
+    const button = patientButton(nav, view);
+    if (!button) return;
+
+    setButtonLabel(button, label);
+    button.hidden = false;
+    button.removeAttribute("aria-hidden");
+    button.tabIndex = 0;
+    button.style.order = String(index + 1);
+    button.classList.remove("ui-report-concern");
+    delete button.dataset.uiPublicTarget;
+
+    if (view === "report") button.dataset.uiPatientProgress = "true";
+    orderedButtons.push(button);
+  });
+
+  // appendChild moves existing nodes without replacing their event listeners.
+  // Do this in canonical order so DOM order, keyboard order, and visual order agree.
+  orderedButtons.forEach((button) => nav.appendChild(button));
+
+  nav.dataset.uiPatientNav = "true";
+  nav.dataset.uiPrimaryCount = String(PATIENT_NAV_CONTRACT.length);
+
+  // Legacy presentation CSS still contains four-column declarations. The final
+  // patient contract owns the signed-in layout until those intermediate layers
+  // are retired, so this declaration intentionally wins with !important.
+  nav.style.setProperty(
+    "grid-template-columns",
+    `repeat(${PATIENT_NAV_CONTRACT.length},minmax(0,1fr))`,
+    "important",
+  );
+
+  const activeView = activePatientDestination();
+  if (!activeView) return;
+  nav.querySelectorAll("button[data-nav]").forEach((button) => {
+    const active = button.dataset.nav === activeView;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
 }
 
 function clarifyPatientProgressSummary(reportPage) {
@@ -70,16 +107,10 @@ function clarifyPatientProgressSummary(reportPage) {
 
 export function syncPatientReportsNavigation() {
   if (typeof document === "undefined") return;
-  const nav = document.querySelector('.topbar .nav[data-ui-patient-nav="true"]');
+  const nav = document.querySelector('.topbar .nav[data-ui-patient-nav="true"], .topbar .nav');
   if (!nav?.querySelector('[data-nav="patient"]')) return;
 
-  const progressButton = nav.querySelector('[data-nav="report"]');
-  if (progressButton) {
-    setButtonLabel(progressButton, "Progress");
-    progressButton.dataset.uiPatientProgress = "true";
-  }
-
-  restoreReportTab(nav);
+  enforcePatientNavigation(nav);
   clarifyPatientProgressSummary(document.querySelector(".report-page"));
 }
 
