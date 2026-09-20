@@ -27,11 +27,19 @@ function session(id, exerciseKey, date, {
     prescribed_side: "either",
     completed_at: date,
     movement_summary: {
-      movement_context: { environment, source: "user_selected" },
       biomechanics_v1: {
         schemaVersion: 1,
         averageCoverage: coverage,
         averageVisibility: visibility,
+        intelligence: {
+          context: {
+            version: 1,
+            environment,
+            source: environment === "unknown" ? "default_unknown" : "user_selected",
+            explicit: environment !== "unknown",
+            cameraView,
+          },
+        },
         features: {
           knee_flexion_asymmetry_deg: feature(knee),
           hip_flexion_asymmetry_deg: feature(hip),
@@ -61,6 +69,7 @@ assert.equal(result.status, "available");
 assert.equal(result.repeatedTaskCount, 3);
 assert.equal(result.clinicalInterpretation, false);
 assert.deepEqual(result.sourceTrials, ["NCT03519087", "NCT05454007"]);
+assert.equal(result.taskChanges[0].context.environment, "home");
 const knee = result.familyConsistency.find((item) => item.family === "knee_asymmetry");
 assert.equal(knee.pattern, "concordant_direction");
 assert.equal(knee.direction, "decreased");
@@ -81,6 +90,14 @@ const mismatchResult = analyzeCrossTaskChangeConsistency(contextMismatch);
 assert.equal(mismatchResult.status, "unavailable");
 assert.equal(mismatchResult.reason, "insufficient_repeated_tasks");
 
+const unknownContext = [
+  session("sq-u1", "bodyweight_squat", "2026-09-01T12:00:00Z", { environment: "unknown", knee: 10 }),
+  session("sq-u2", "bodyweight_squat", "2026-09-10T12:00:00Z", { environment: "home", knee: 5 }),
+  session("lu-u1", "forward_lunge", "2026-09-02T12:00:00Z", { environment: "unknown", knee: 9 }),
+  session("lu-u2", "forward_lunge", "2026-09-11T12:00:00Z", { environment: "home", knee: 4 }),
+];
+assert.equal(analyzeCrossTaskChangeConsistency(unknownContext).status, "available", "unknown context remains comparable but unverified");
+
 const mixedPatients = [
   session("p1a", "bodyweight_squat", "2026-09-01T12:00:00Z", { patientId: "p1" }),
   session("p2a", "bodyweight_squat", "2026-09-02T12:00:00Z", { patientId: "p2" }),
@@ -96,4 +113,4 @@ const lowQuality = repeatedTasks.map((item) => ({
 }));
 assert.equal(analyzeCrossTaskChangeConsistency(lowQuality).reason, "insufficient_repeated_tasks");
 
-console.log("Cross-task intelligence: task-specific baselines, context compatibility, direction consistency and quality gating passed.");
+console.log("Cross-task intelligence: task-specific baselines, persisted context compatibility, direction consistency and quality gating passed.");
