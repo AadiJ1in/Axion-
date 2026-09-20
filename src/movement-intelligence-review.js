@@ -67,7 +67,7 @@ function gaitCard(history) {
     evidenceSources: ["NCT05454007"],
     reviewOnly: true,
     automaticAction: false,
-    interpretation: "Describes timing changes between compatible gait sessions without defining improvement, deterioration, or gait pathology.",
+    interpretation: "Describes timing changes between compatible gait sessions without assigning a clinical direction or category.",
   };
 }
 
@@ -92,7 +92,7 @@ function contextTransferCards(history) {
     evidenceSources: ["NCT05454007"],
     reviewOnly: true,
     automaticAction: false,
-    interpretation: "Reports same-exercise measurement differences across explicitly recorded settings. The difference is not assigned a cause or clinical direction.",
+    interpretation: "Reports same-exercise measurement differences across explicitly recorded settings. No clinical direction is assigned.",
   }));
 }
 
@@ -117,7 +117,7 @@ function crossTaskCard(history) {
     evidenceSources: ["NCT03519087", "NCT05454007"],
     reviewOnly: true,
     automaticAction: false,
-    interpretation: "Shows whether within-task feature changes repeat in the same or different directions across exercises. It does not identify compensation, recovery, or cause.",
+    interpretation: "Shows whether within-task feature changes repeat in the same or different directions across exercises. The pattern is not labeled as compensation or recovery.",
   };
 }
 
@@ -139,7 +139,7 @@ function compensationCards(history) {
       evidenceSources: ["NCT06183970"],
       reviewOnly: true,
       automaticAction: false,
-      interpretation: "One measured feature family decreased while another increased relative to the same person's early-session reference. This does not establish mechanical load transfer, injury migration, or causation.",
+      interpretation: "One measured feature family decreased while another increased relative to the same person's early-session reference. This remains a descriptive inverse pattern for therapist review.",
     }));
 }
 
