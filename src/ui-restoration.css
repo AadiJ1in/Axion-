@@ -1,0 +1,235 @@
+/* Patient visual restoration layer. Loaded last so it can correct regressions without touching tracking logic. */
+
+:root{
+  --axion-cream:#f4efe5;
+  --axion-cream-2:#ebe6dc;
+  --axion-gray:#dedfdc;
+  --axion-gray-2:#cfd2ce;
+  --axion-charcoal:#2d3431;
+  --axion-charcoal-2:#414744;
+  --axion-ink:#24352e;
+  --axion-muted:#66736d;
+  --axion-border:#cbc8bf;
+}
+
+/* Remove prototype/demo chrome from the signed-in patient product. */
+html[data-axion-patient-surface="true"] .footer,
+html[data-axion-patient-surface="true"] .prototype-strip,
+body[data-axion-ui-screen="patient"] .footer,
+body[data-axion-ui-screen="patient"] .prototype-strip{display:none!important}
+
+/* Today: keep the warm product language while making the primary recovery card readable. */
+.patient-portal [data-clinic-today].clinic-today-recovery{
+  border-color:var(--axion-border)!important;
+  background:var(--axion-gray)!important;
+  box-shadow:0 12px 30px rgba(55,63,58,.08)!important;
+}
+.patient-portal [data-clinic-today] .clinic-today-copy{
+  color:var(--axion-ink)!important;
+  background:linear-gradient(135deg,#e5e4df,#d9dbd7)!important;
+}
+.patient-portal [data-clinic-today] .clinic-today-copy :is(h2,h3,b){color:var(--axion-ink)!important}
+.patient-portal [data-clinic-today] .clinic-today-copy :is(p,small){color:#71807a!important}
+.patient-portal [data-clinic-today] .clinic-today-copy li{
+  border-color:#c8cbc6!important;
+  background:rgba(255,255,255,.31)!important;
+}
+.patient-portal [data-clinic-today] .clinic-today-copy li>span{border-color:#b7beb9!important}
+.patient-portal [data-clinic-today] .clinic-today-status{
+  border-left:1px solid #737a76!important;
+  background:linear-gradient(150deg,#4b514e,#353b38)!important;
+  color:#fff!important;
+}
+.patient-portal [data-clinic-today] .clinic-today-status>small,
+.patient-portal [data-clinic-today] .clinic-today-status>span,
+.patient-portal [data-clinic-today] .clinic-today-status dt{color:#cbd2cf!important}
+.patient-portal [data-clinic-today] .clinic-today-status>b,
+.patient-portal [data-clinic-today] .clinic-today-status dd{color:#fff!important}
+.patient-portal [data-clinic-today] .clinic-today-status>i{background:rgba(255,255,255,.13)!important}
+.patient-portal [data-clinic-today] .clinic-today-status dl div{border-color:rgba(255,255,255,.16)!important}
+
+/* Journey: show the full roadmap instead of trapping it inside a huge green scroll box. */
+html[data-axion-patient-section="journey"] .campaign-world{
+  overflow:visible!important;
+  border:0!important;
+  background:transparent!important;
+}
+html[data-axion-patient-section="journey"] .campaign-scroll{
+  height:auto!important;
+  max-height:none!important;
+  min-height:0!important;
+  overflow:visible!important;
+  padding:12px!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+html[data-axion-patient-section="journey"] .campaign-scroll::before,
+html[data-axion-patient-section="journey"] .campaign-scroll::after{display:none!important}
+html[data-axion-patient-section="journey"] .campaign-region{
+  min-height:260px!important;
+  margin:0 0 14px!important;
+  padding:24px 20px 30px!important;
+  border:1px solid #d0ccc2!important;
+  border-radius:20px!important;
+  background:#e7e4dc!important;
+  box-shadow:0 8px 24px rgba(68,73,68,.06)!important;
+  filter:none!important;
+  opacity:1!important;
+  transform:none!important;
+}
+html[data-axion-patient-section="journey"] .campaign-scenery{
+  opacity:.18!important;
+  filter:grayscale(.1) saturate(.65) brightness(1.25)!important;
+}
+html[data-axion-patient-section="journey"] .campaign-region.state-future::after{background:rgba(238,235,226,.34)!important}
+html[data-axion-patient-section="journey"] .campaign-region>header{
+  border-color:rgba(53,72,63,.14)!important;
+  background:rgba(247,245,238,.88)!important;
+  color:var(--axion-ink)!important;
+  box-shadow:0 6px 18px rgba(74,78,72,.06)!important;
+}
+html[data-axion-patient-section="journey"] .campaign-region>header :is(small,h3,span){color:var(--axion-ink)!important}
+html[data-axion-patient-section="journey"] .journey-body{align-items:start!important}
+html[data-axion-patient-section="journey"] .beacon-current-mission,
+html[data-axion-patient-section="journey"] .beacon-prescription-launch,
+html[data-axion-patient-section="journey"] .journey-care-note{
+  border-color:#d1cdc3!important;
+  background:#eeeae1!important;
+  color:var(--axion-ink)!important;
+  box-shadow:none!important;
+}
+html[data-axion-patient-section="journey"] .beacon-current-mission :is(h3,b,strong),
+html[data-axion-patient-section="journey"] .beacon-prescription-launch :is(h3,b,strong),
+html[data-axion-patient-section="journey"] .journey-care-note :is(b,strong){color:var(--axion-ink)!important}
+html[data-axion-patient-section="journey"] .beacon-current-mission :is(p,span,small),
+html[data-axion-patient-section="journey"] .beacon-prescription-launch :is(p,span,small),
+html[data-axion-patient-section="journey"] .journey-care-note :is(p,span,small){color:#64716b!important}
+html[data-axion-patient-section="journey"] .beacon-story-preview{display:none!important}
+
+/* Progress: replace the heavy black cards with the same warm neutral family used elsewhere. */
+.report-page[data-ui-patient-progress="true"] .longitudinal-card,
+.report-page[data-ui-patient-progress="true"] .progress-timeline article,
+.report-page[data-ui-patient-progress="true"] .report-metrics,
+.report-page[data-ui-patient-progress="true"] .progress-comparison,
+.report-page[data-ui-patient-progress="true"] .comparison-session,
+.report-page[data-ui-patient-progress="true"] .recent-patient-reports,
+.report-page[data-ui-patient-progress="true"] .recent-patient-reports article{
+  border-color:#d2cec4!important;
+  background:#ebe7de!important;
+  color:var(--axion-ink)!important;
+  box-shadow:none!important;
+}
+.report-page[data-ui-patient-progress="true"] :is(.longitudinal-card,.progress-timeline article,.report-metrics,.progress-comparison,.comparison-session,.recent-patient-reports) :is(h2,h3,b,strong){color:var(--axion-ink)!important}
+.report-page[data-ui-patient-progress="true"] :is(.longitudinal-card,.progress-timeline article,.report-metrics,.progress-comparison,.comparison-session,.recent-patient-reports) :is(p,small,span,em,dt){color:#66736d!important}
+.report-page[data-ui-patient-progress="true"] .timeline-node{background:#dfe2dd!important;border-color:#bcc4be!important;color:#42534b!important}
+.report-page[data-ui-patient-progress="true"] .progress-timeline article.current .timeline-node{background:var(--mint)!important;color:#143025!important}
+.report-page[data-ui-patient-progress="true"] .info-pill{color:#245b45!important;border-color:#a7c8b6!important;background:#dcece3!important}
+
+/* Movement Lab: game on top, live camera left, live movement twin right. */
+body:has(.lab-page){background:linear-gradient(180deg,#ece8dd,#d9d5ca)!important}
+.lab-page .motion-workspace{display:block!important;max-width:1440px!important}
+.lab-page .journey-panel{display:none!important}
+.lab-page .capture-panel{
+  padding:12px!important;
+  border-color:#c8cbc6!important;
+  background:#d9dcd8!important;
+  box-shadow:0 14px 36px rgba(40,47,43,.12)!important;
+}
+.lab-page .panel-topline{color:#44544d!important}
+.lab-page .panel-topline b{color:#24352e!important}
+.lab-page .tracking-chips>span{color:#50645b!important;border-color:#b7c0ba!important;background:rgba(255,255,255,.26)!important}
+
+/* Keep the movement-controlled game visible as the primary top surface. */
+.lab-page .movement-game-card{display:block!important;margin:0 0 12px!important;border-color:#c4c9c4!important;background:#e4e5e1!important;box-shadow:none!important}
+.lab-page .movement-game-heading,
+.lab-page .beacon-story-briefing,
+.lab-page .exercise-game-identity{background:#eceae4!important;color:#24352e!important;border-color:#d0cec6!important}
+.lab-page .movement-game-heading :is(h3,b,strong),
+.lab-page .beacon-story-briefing :is(h3,h4,b,strong),
+.lab-page .exercise-game-identity :is(h3,b,strong){color:#24352e!important}
+.lab-page .movement-game-heading :is(p,span,small),
+.lab-page .beacon-story-briefing :is(p,span,small),
+.lab-page .exercise-game-identity :is(p,span,small){color:#66736d!important}
+.lab-page .game-how-to{display:none!important}
+.lab-page #movement-game-stage{border-radius:14px!important;overflow:hidden!important;background:#18231f!important}
+.lab-page .adventure-viewport{min-height:clamp(260px,30vw,420px)!important}
+
+/* The old black camera void was mostly a sizing/cropping problem. Keep the entire body visible. */
+.lab-page .motion-stage{
+  min-height:0!important;
+  height:clamp(330px,38vw,520px)!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:1px!important;
+  overflow:hidden!important;
+  border-color:#bdc4bf!important;
+  border-radius:14px!important;
+  background:#c7cbc7!important;
+}
+.lab-page .camera-pane,
+.lab-page .twin-pane{
+  min-height:330px!important;
+  background:#e1e3df!important;
+}
+.lab-page .camera-pane{border-right:1px solid #bdc4bf!important}
+.lab-page .camera-pane video,
+.lab-page .camera-pane canvas{
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+  background:#d8dbd7!important;
+}
+.lab-page .camera-pane.camera-on video{opacity:1!important}
+.lab-page .camera-placeholder{background:linear-gradient(180deg,#e4e6e2,#d6dad6)!important;color:#5e7067!important}
+.lab-page .camera-placeholder b{color:#31463c!important}
+.lab-page .twin-pane{
+  background:
+    linear-gradient(rgba(48,76,63,.06) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(48,76,63,.06) 1px,transparent 1px),
+    radial-gradient(circle at 50% 52%,rgba(75,151,115,.12),transparent 38%),
+    #e5e6e1!important;
+  background-size:28px 28px,28px 28px,auto,auto!important;
+}
+.lab-page .twin-pane .movement-twin{inset:4% 12% 2%!important;width:76%!important;height:94%!important}
+.lab-page .buddy-pane{display:none!important}
+.lab-page .pane-label{background:rgba(244,242,235,.88)!important;border-color:#c1c7c2!important;color:#3a5146!important}
+.lab-page .target-label{color:#52655c!important}
+.lab-page .live-metrics{border-color:#bcc5bf!important;background:#ecece8!important}
+.lab-page .live-metrics>div{border-color:#c9cfca!important}
+.lab-page .live-metrics span{color:#66766f!important}
+.lab-page .live-metrics b{color:#253a30!important}
+.lab-page .coach-card{border-color:#c8c5d7!important;background:#e8e5ec!important}
+.lab-page .coach-card p{color:#4c5c55!important}
+.lab-page .capture-actions{background:transparent!important}
+
+/* Fallback movement game for exercises whose current prescription does not render an adventure card. */
+.axion-fallback-game{
+  margin:0 0 12px;
+  border:1px solid #bdc6c0;
+  border-radius:14px;
+  overflow:hidden;
+  background:#26342e;
+  color:#f7faf8;
+}
+.axion-fallback-game__head{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:11px 14px;background:#e9e7e0;color:#24352e}
+.axion-fallback-game__head small{display:block;color:#4d675b;font:700 10px "DM Mono",monospace;letter-spacing:.12em}
+.axion-fallback-game__head b{display:block;margin-top:3px;font-size:16px}
+.axion-fallback-game__head span{color:#62716a;font-size:12px}
+.axion-fallback-game__stage{position:relative;height:clamp(230px,28vw,360px);overflow:hidden;background:linear-gradient(180deg,#20372f 0%,#2e5242 60%,#d4c99e 60%,#b9aa79 100%)}
+.axion-fallback-game__stage::before{content:"";position:absolute;left:0;right:0;top:59%;height:3px;background:rgba(255,255,255,.25)}
+.axion-fallback-game__goal{position:absolute;right:8%;top:26%;width:74px;height:74px;border:3px solid rgba(132,232,184,.7);border-radius:50%;box-shadow:0 0 0 10px rgba(132,232,184,.09),0 0 30px rgba(132,232,184,.16)}
+.axion-fallback-game__player{position:absolute;left:12%;top:50%;width:42px;height:42px;border-radius:50%;transform:translate(-50%,-50%);background:#78eab3;border:4px solid rgba(255,255,255,.75);box-shadow:0 10px 26px rgba(0,0,0,.25);transition:transform 80ms linear,left 80ms linear,top 80ms linear}
+.axion-fallback-game__player::after{content:"YOU";position:absolute;top:46px;left:50%;translate:-50% 0;color:#fff;font:700 9px "DM Mono",monospace;letter-spacing:.1em;white-space:nowrap}
+.axion-fallback-game__status{position:absolute;left:14px;bottom:12px;padding:7px 9px;border-radius:8px;background:rgba(12,25,20,.72);color:#e6f2ec;font-size:12px;backdrop-filter:blur(8px)}
+
+@media(max-width:900px){
+  html[data-axion-patient-section="journey"] .journey-body{grid-template-columns:1fr!important}
+  html[data-axion-patient-section="journey"] .journey-mission{position:static!important}
+}
+@media(max-width:700px){
+  .patient-portal [data-clinic-today].clinic-today-recovery{grid-template-columns:1fr!important}
+  .patient-portal [data-clinic-today] .clinic-today-status{border-left:0!important;border-top:1px solid #737a76!important}
+  .lab-page .motion-stage{height:auto!important;grid-template-columns:1fr!important}
+  .lab-page .camera-pane{border-right:0!important;border-bottom:1px solid #bdc4bf!important}
+  .lab-page .camera-pane,.lab-page .twin-pane{min-height:320px!important}
+}
