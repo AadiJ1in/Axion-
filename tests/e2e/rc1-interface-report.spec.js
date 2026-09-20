@@ -14,13 +14,18 @@ test("patient Report tab opens the existing reporting page", async ({ page }) =>
   await expect(page.locator(".patient-report-page h1")).toContainText("Tell your physical therapist");
   await expect(page.locator("#patient-report-form")).toBeVisible();
   await expect(page.locator("#patient-report-assignment")).toBeVisible();
-  await expect(page.locator(".patient-pain-scale")).toBeVisible();
 
-  // Native range controls can report zero visual height in headless WebKit even
-  // while they remain enabled and interactive. Verify the actual Report wiring
-  // instead of depending on that browser-specific visibility calculation.
+  // The patient-surface polish intentionally defaults this form to "No pain",
+  // which keeps the numeric pain control out of the way. Selecting the actual
+  // Pain choice must reveal the established 0–10 control and preserve its
+  // existing input/output wiring.
+  const painScale = page.locator(".patient-pain-scale");
+  await expect(page.locator('.patient-report-types span').filter({ hasText: /^No pain$/ })).toBeVisible();
+  await expect(painScale).toBeHidden();
+  await page.locator('.patient-report-types span').filter({ hasText: /^Pain$/ }).click();
+  await expect(painScale).toBeVisible();
+
   const painScore = page.locator("#patient-pain-score");
-  await expect(painScore).toHaveCount(1);
   await expect(painScore).toHaveAttribute("type", "range");
   await expect(painScore).toBeEnabled();
   await expect(painScore).toHaveValue("0");
