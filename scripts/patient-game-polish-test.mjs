@@ -32,4 +32,6 @@ stable.acknowledgeSafety();
 assert.equal(stable.getState().paused,true,'acknowledgement alone does not resume clinical tracking');
 assert.equal(stable.getState().safetyFlagged,false,'explicit acknowledgement allows the existing resume handler to proceed');
 
-console.log('Movement Lab rest clarity, resume recovery, visual smoothing, and roadmap-tail checks passed.');
+await import('./ui-restoration-test.mjs');
+
+console.log('Movement Lab rest clarity, resume recovery, visual smoothing, roadmap-tail, and UI restoration checks passed.');
