@@ -5,11 +5,21 @@ function feature(mean) {
   return { reps: 8, mean, min: mean - 1, max: mean + 1 };
 }
 
-function biomech({ knee = 10, hip = 8, ankle = 6, trunk = 4, pelvis = 3 } = {}) {
+function biomech({ knee = 10, hip = 8, ankle = 6, trunk = 4, pelvis = 3, environment = "home", gaitTiming = null } = {}) {
   return {
     schemaVersion: 1,
     averageCoverage: 0.94,
     averageVisibility: 0.92,
+    intelligence: {
+      context: {
+        version: 1,
+        environment,
+        source: environment === "unknown" ? "default_unknown" : "user_selected",
+        explicit: environment !== "unknown",
+        cameraView: "front",
+      },
+      gaitTiming,
+    },
     features: {
       knee_flexion_asymmetry_deg: feature(knee),
       hip_flexion_asymmetry_deg: feature(hip),
@@ -33,11 +43,25 @@ function session(id, exerciseKey, day, values = {}) {
     prescribed_side: "either",
     completed_at: `2026-09-${String(day).padStart(2, "0")}T12:00:00Z`,
     movement_summary: {
-      movement_context: { environment: "home", source: "user_selected" },
       biomechanics_v1: biomech(values),
     },
   };
 }
+
+const gait1 = {
+  status: "available",
+  cadenceStepsPerMinute: 72,
+  timingSymmetryDifferencePct: 5,
+  timingVariabilityPct: 4,
+  alternationPct: 96,
+};
+const gait2 = {
+  status: "available",
+  cadenceStepsPerMinute: 78,
+  timingSymmetryDifferencePct: 3,
+  timingVariabilityPct: 3,
+  alternationPct: 100,
+};
 
 const sessions = [
   session("sq-1", "bodyweight_squat", 1, { knee: 12, trunk: 3 }),
@@ -48,38 +72,8 @@ const sessions = [
   session("sq-6", "bodyweight_squat", 12, { knee: 5, trunk: 9 }),
   session("lu-1", "forward_lunge", 4, { knee: 10, trunk: 4 }),
   session("lu-2", "forward_lunge", 13, { knee: 5, trunk: 8 }),
-  {
-    ...session("gait-1", "heel_to_toe_walk", 5, { knee: 5, trunk: 4 }),
-    movement_summary: {
-      ...session("tmp-a", "heel_to_toe_walk", 5).movement_summary,
-      movement_intelligence: {
-        context: { environment: "home", explicit: true },
-        gaitTiming: {
-          status: "available",
-          cadenceStepsPerMinute: 72,
-          timingSymmetryDifferencePct: 5,
-          timingVariabilityPct: 4,
-          alternationPct: 96,
-        },
-      },
-    },
-  },
-  {
-    ...session("gait-2", "heel_to_toe_walk", 14, { knee: 5, trunk: 4 }),
-    movement_summary: {
-      ...session("tmp-b", "heel_to_toe_walk", 14).movement_summary,
-      movement_intelligence: {
-        context: { environment: "home", explicit: true },
-        gaitTiming: {
-          status: "available",
-          cadenceStepsPerMinute: 78,
-          timingSymmetryDifferencePct: 3,
-          timingVariabilityPct: 3,
-          alternationPct: 100,
-        },
-      },
-    },
-  },
+  session("gait-1", "heel_to_toe_walk", 5, { knee: 5, trunk: 4, gaitTiming: gait1 }),
+  session("gait-2", "heel_to_toe_walk", 14, { knee: 5, trunk: 4, gaitTiming: gait2 }),
 ];
 
 const result = analyzeMovementIntelligenceHistory(sessions);
@@ -93,10 +87,33 @@ assert.ok(result.crossTask.concordantFamilyCount >= 1);
 assert.equal(result.gaitLongitudinal.status, "available");
 assert.equal(result.gaitLongitudinal.latestSessionId, "gait-2");
 assert.equal(result.gaitLongitudinal.previousSessionId, "gait-1");
+assert.equal(result.gaitLongitudinal.contextVerification, "same_explicit_environment");
+assert.equal(result.gaitLongitudinal.latestContext.environment, "home");
 assert.ok(result.evidenceSources.includes("NCT05454007"));
 assert.ok(result.summary.compensationMigrationExerciseCount >= 1);
 assert.equal(result.summary.gaitLongitudinalAvailable, true);
 assert.doesNotMatch(result.note, /clinically validated|injury risk score/i);
+
+const environmentMismatch = sessions.map((item) => ({ ...item }));
+const latestGaitIndex = environmentMismatch.findIndex((item) => item.id === "gait-2");
+environmentMismatch[latestGaitIndex] = session("gait-2", "heel_to_toe_walk", 14, {
+  knee: 5,
+  trunk: 4,
+  environment: "clinic",
+  gaitTiming: gait2,
+});
+const environmentResult = analyzeMovementIntelligenceHistory(environmentMismatch);
+assert.equal(environmentResult.gaitLongitudinal.status, "unavailable");
+assert.equal(environmentResult.gaitLongitudinal.reason, "different_explicit_environment");
+assert.equal(environmentResult.summary.gaitLongitudinalAvailable, false);
+
+const unknownEnvironment = [
+  session("gait-u1", "heel_to_toe_walk", 6, { environment: "unknown", gaitTiming: gait1 }),
+  session("gait-u2", "heel_to_toe_walk", 15, { environment: "home", gaitTiming: gait2 }),
+];
+const unknownResult = analyzeMovementIntelligenceHistory(unknownEnvironment);
+assert.equal(unknownResult.gaitLongitudinal.status, "available");
+assert.equal(unknownResult.gaitLongitudinal.contextVerification, "context_unknown");
 
 const mixed = analyzeMovementIntelligenceHistory([
   sessions[0],
@@ -105,4 +122,4 @@ const mixed = analyzeMovementIntelligenceHistory([
 assert.equal(mixed.status, "unavailable");
 assert.equal(mixed.reason, "mixed_patients");
 
-console.log("Movement Intelligence history: compensation, cross-task and gait signals stay separate and descriptive.");
+console.log("Movement Intelligence history: compensation, cross-task and context-compatible gait signals stay separate and descriptive.");
