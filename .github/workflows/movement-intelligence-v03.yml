@@ -7,6 +7,7 @@ on:
       - "src/movement-intelligence*.js"
       - "src/gait-intelligence.js"
       - "src/cross-task-intelligence.js"
+      - "src/context-transfer-intelligence.js"
       - "src/movement-context*.js"
       - "src/evidence-informed-movement.js"
       - "src/clinical-evidence-registry.js"
@@ -15,6 +16,7 @@ on:
       - "scripts/*movement-intelligence*.mjs"
       - "scripts/gait-intelligence-test.mjs"
       - "scripts/cross-task-intelligence-test.mjs"
+      - "scripts/context-transfer-intelligence-test.mjs"
       - "scripts/movement-context-test.mjs"
       - "scripts/evidence-informed-movement-test.mjs"
       - "scripts/clinicaltrials-evidence-test.mjs"
@@ -27,6 +29,7 @@ on:
       - "src/movement-intelligence*.js"
       - "src/gait-intelligence.js"
       - "src/cross-task-intelligence.js"
+      - "src/context-transfer-intelligence.js"
       - "src/movement-context*.js"
       - "src/evidence-informed-movement.js"
       - "src/clinical-evidence-registry.js"
@@ -35,6 +38,7 @@ on:
       - "scripts/*movement-intelligence*.mjs"
       - "scripts/gait-intelligence-test.mjs"
       - "scripts/cross-task-intelligence-test.mjs"
+      - "scripts/context-transfer-intelligence-test.mjs"
       - "scripts/movement-context-test.mjs"
       - "scripts/evidence-informed-movement-test.mjs"
       - "scripts/clinicaltrials-evidence-test.mjs"
@@ -62,6 +66,7 @@ jobs:
           node --check src/movement-intelligence-persistence.js
           node --check src/gait-intelligence.js
           node --check src/cross-task-intelligence.js
+          node --check src/context-transfer-intelligence.js
           node --check src/movement-context.js
           node --check src/movement-context-store.js
           node --check src/movement-context-ui.js
@@ -79,6 +84,8 @@ jobs:
         run: node scripts/gait-intelligence-test.mjs
       - name: Run cross-task regression
         run: node scripts/cross-task-intelligence-test.mjs
+      - name: Run context transfer regression
+        run: node scripts/context-transfer-intelligence-test.mjs
       - name: Run explicit context regression
         run: node scripts/movement-context-test.mjs
       - name: Run history composition regression
