@@ -1,8 +1,9 @@
 import { analyzeExerciseCompensationMigration } from "./compensation-migration.js";
 import { analyzeCrossTaskChangeConsistency } from "./cross-task-intelligence.js";
 import { compareGaitTimingSessions } from "./gait-intelligence.js";
+import { createMovementContext, movementContextsComparable } from "./movement-context.js";
 
-export const MOVEMENT_INTELLIGENCE_HISTORY_VERSION = 1;
+export const MOVEMENT_INTELLIGENCE_HISTORY_VERSION = 2;
 
 function timestamp(session) {
   const value = session?.completed_at || session?.created_at || session?.started_at;
@@ -15,6 +16,13 @@ function gaitTiming(session) {
     || session?.movement_summary?.gait_intelligence
     || session?.movement_summary?.biomechanics_v1?.intelligence?.gaitTiming
     || null;
+}
+
+function movementContext(session) {
+  return session?.movement_summary?.movement_intelligence?.context
+    || session?.movement_summary?.movement_context
+    || session?.movement_summary?.biomechanics_v1?.intelligence?.context
+    || createMovementContext();
 }
 
 function groupByExercise(sessions) {
@@ -53,12 +61,33 @@ function latestGaitComparison(sessions) {
       clinicalInterpretation: false,
     };
   }
+
+  const latestContext = movementContext(latest);
+  const previousContext = movementContext(previous);
+  const contextCheck = movementContextsComparable(latestContext, previousContext);
+  if (!contextCheck.comparable) {
+    return {
+      status: "unavailable",
+      reason: "different_explicit_environment",
+      latestSessionId: latest.id || null,
+      previousSessionId: previous.id || null,
+      latestContext,
+      previousContext,
+      contextVerification: contextCheck.verification,
+      sourceTrials: ["NCT05454007"],
+      clinicalInterpretation: false,
+    };
+  }
+
   return {
     latestSessionId: latest.id || null,
     previousSessionId: previous.id || null,
     latestCompletedAt: latest.completed_at || latest.created_at || null,
     previousCompletedAt: previous.completed_at || previous.created_at || null,
     exerciseKey: latest.exercise_key,
+    latestContext,
+    previousContext,
+    contextVerification: contextCheck.verification,
     ...compareGaitTimingSessions(gaitTiming(latest), gaitTiming(previous)),
   };
 }
@@ -105,6 +134,6 @@ export function analyzeMovementIntelligenceHistory(sessions = []) {
       crossTaskConcordantFamilyCount: crossTask?.status === "available" ? crossTask.concordantFamilyCount : 0,
       gaitLongitudinalAvailable: gaitLongitudinal?.status === "available",
     },
-    note: "Each signal remains separate and descriptive. Axion does not combine these outputs into an injury-risk, recovery, diagnosis, or treatment score.",
+    note: "Each signal remains separate and descriptive. Explicitly different session environments are not pooled for longitudinal gait comparison. Axion does not combine these outputs into an injury-risk, recovery, diagnosis, or treatment score.",
   };
 }
