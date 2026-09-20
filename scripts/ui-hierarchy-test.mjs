@@ -25,15 +25,26 @@ assert.doesNotMatch(ui, /anchor\.after\(intro\)|intro\.after\(atlas\)|atlas\.aft
 assert.doesNotMatch(ui, /supabase|exercise_sessions|roadmap_node_completions|rep_metrics/i);
 
 // ui-hierarchy keeps its compact intermediate presentation, while the final
-// patient-reports navigation pass restores the requested Report destination.
+// patient-reports navigation pass owns the canonical five-destination contract.
 for (const label of ["Today", "Journey", "Progress", "Profile"]) assert.match(ui, new RegExp(`"${label}"`));
 assert.match(ui, /Report a concern/);
 assert.match(ui, /concern\.hidden = true/);
-assert.match(reportsNav, /\[data-nav="patient-report"\]/, "final patient navigation must recover the existing Report button");
-assert.match(reportsNav, /setButtonLabel\(reportButton, "Report"\)/, "restored destination must be labeled Report");
-assert.match(reportsNav, /insertBefore\(reportButton, profileButton\)/, "Report must remain before Profile in DOM order");
-assert.match(reportsNav, /uiPrimaryCount = "5"/, "final patient navigation contract must expose five destinations");
-assert.match(reportsNav, /repeat\(5,minmax\(0,1fr\)\)/, "compact patient navigation must make room for all five tabs");
+assert.match(reportsNav, /PATIENT_NAV_CONTRACT = Object\.freeze/);
+for (const [view, label] of [
+  ["patient", "Today"],
+  ["lab", "Journey"],
+  ["report", "Progress"],
+  ["patient-report", "Report"],
+  ["patient-profile", "Profile"],
+]) {
+  assert.match(reportsNav, new RegExp(`\\["${view}", "${label}"\\]`), `canonical patient navigation must contain ${label}`);
+}
+assert.match(reportsNav, /orderedButtons\.forEach\(\(button\) => nav\.appendChild\(button\)\)/, "canonical navigation must own DOM order without cloning buttons");
+assert.match(reportsNav, /button\.hidden = false/, "all final patient destinations must be visible");
+assert.match(reportsNav, /button\.removeAttribute\("aria-hidden"\)/, "all final patient destinations must be exposed to assistive technology");
+assert.match(reportsNav, /button\.tabIndex = 0/, "all final patient destinations must be keyboard reachable");
+assert.match(reportsNav, /activePatientDestination\(\)/, "final navigation must reconcile active state after rerenders");
+assert.match(reportsNav, /PATIENT_NAV_CONTRACT\.length/, "primary count and layout must derive from the canonical contract");
 for (const label of ["Overview", "Patients", "Plans", "Exercise Library"]) assert.match(ui, new RegExp(`"${label}"`));
 assert.doesNotMatch(ui, /alerts:\s*"Alerts"/);
 assert.match(ui, /patientPrimaryNavigationCount:\s*4/);
@@ -57,4 +68,4 @@ assert.match(css, /@media\(max-width:900px\)/);
 assert.match(css, /@media\(max-width:680px\)/);
 assert.match(css, /prefers-reduced-motion/);
 
-console.log("UI hierarchy regression passed: restored five-destination patient navigation, focused Motion Lab, responsive touch targets.");
+console.log("UI hierarchy regression passed: canonical five-destination patient navigation, focused Motion Lab, responsive touch targets.");
