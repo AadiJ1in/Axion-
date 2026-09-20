@@ -53,6 +53,39 @@ function labelMovementMirror() {
   if (cameraLabel) cameraLabel.textContent = "YOU · LIVE CAMERA";
 }
 
+function beginExerciseStartIsSafe(button) {
+  if (!button || button.disabled || !button.isConnected) return false;
+  const grade = document.querySelector("#clinic-calibration-grade");
+  const recovery = document.querySelector("#camera-recovery");
+  const recoveryVisible = Boolean(recovery && !recovery.classList.contains("hidden"));
+  const resting = Boolean(document.querySelector("#set-rest-overlay:not(.hidden)"));
+  const state = controller()?.getState?.();
+  return Boolean(grade?.classList.contains("ready"))
+    && !recoveryVisible
+    && !resting
+    && !state?.safetyFlagged;
+}
+
+// WebKit can re-evaluate a disabled form control between pointerdown and the
+// native click event. Commit an already-approved Begin Exercise press on
+// pointerdown so frame-level tracking jitter cannot swallow the patient's press.
+// This never bypasses calibration: the button must already be enabled and the
+// clinic gate must still report Good with no recovery, safety, or rest state.
+function stabilizeBeginExercisePress(event) {
+  const begin = event.target.closest?.("#clinic-begin-exercise");
+  if (!begin || begin.dataset.axionBeginCommitted === "true" || !beginExerciseStartIsSafe(begin)) return;
+  begin.dataset.axionBeginCommitted = "true";
+  event.preventDefault();
+  begin.click();
+  window.setTimeout(() => {
+    if (begin.isConnected && !/exercise started/i.test(begin.textContent || "")) {
+      delete begin.dataset.axionBeginCommitted;
+    }
+  }, 300);
+}
+
+document.addEventListener("pointerdown", stabilizeBeginExercisePress, true);
+
 function fallbackGameMarkup() {
   return `<section class="axion-fallback-game" aria-label="Movement-controlled game">
     <div class="axion-fallback-game__head"><div><small>MOVEMENT GAME</small><b>Recovery Run</b></div><span>Your movement controls the guide. Clinical rep counting stays unchanged.</span></div>
