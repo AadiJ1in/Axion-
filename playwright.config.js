@@ -11,7 +11,10 @@ export default defineConfig({
   expect: { timeout: 8_000 },
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // GitHub-hosted WebKit occasionally misses the first tracker-start timing
+  // window even when the same strict case passes immediately on retry. Keep
+  // local runs deterministic while allowing one CI retry for runner jitter.
+  retries: process.env.CI ? 1 : 0,
   reporter: [["line"]],
   use: {
     baseURL: "http://127.0.0.1:4173",
