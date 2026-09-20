@@ -12,10 +12,18 @@ function option(value, label) {
   return element;
 }
 
-function mountContextControl() {
-  if (typeof document === "undefined") return;
-  const actions = document.querySelector(".capture-actions");
-  if (!actions || document.getElementById(CONTROL_ID)) return;
+export function syncMovementContextControl(root = document) {
+  if (typeof document === "undefined") return false;
+  const actions = root?.querySelector?.(".capture-actions") || document.querySelector(".capture-actions");
+  if (!actions) return false;
+
+  const existing = document.getElementById(CONTROL_ID);
+  if (existing) {
+    const select = existing.querySelector("select");
+    const preferred = readMovementContextPreference().environment;
+    if (select && select.value !== preferred) select.value = preferred;
+    return true;
+  }
 
   const wrapper = document.createElement("label");
   wrapper.id = CONTROL_ID;
@@ -43,15 +51,5 @@ function mountContextControl() {
 
   wrapper.append(title, select, helper);
   actions.prepend(wrapper);
-}
-
-if (typeof document !== "undefined") {
-  const observer = new MutationObserver(() => mountContextControl());
-  const root = document.querySelector("#app") || document.body;
-  if (root) observer.observe(root, { childList: true, subtree: true });
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mountContextControl, { once: true });
-  } else {
-    mountContextControl();
-  }
+  return true;
 }
