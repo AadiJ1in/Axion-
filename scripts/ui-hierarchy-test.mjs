@@ -6,6 +6,7 @@ const css = fs.readFileSync(new URL("../src/ui-hierarchy.css", import.meta.url),
 const polish = fs.readFileSync(new URL("../src/patient-game-polish.js", import.meta.url), "utf8");
 const stability = fs.readFileSync(new URL("../src/ui-stability.js", import.meta.url), "utf8");
 const stabilityCss = fs.readFileSync(new URL("../src/ui-stability.css", import.meta.url), "utf8");
+const reportsNav = fs.readFileSync(new URL("../src/patient-reports-nav.js", import.meta.url), "utf8");
 
 assert.match(polish, /syncUiHierarchy/);
 assert.match(polish, /window\.setInterval\(syncRestExperience, 250\)/);
@@ -23,9 +24,16 @@ assert.doesNotMatch(ui, /today\.after\(support\)/, "journey support must stay in
 assert.doesNotMatch(ui, /anchor\.after\(intro\)|intro\.after\(atlas\)|atlas\.after\(phases\)/, "journey presentation must not reparent major sections");
 assert.doesNotMatch(ui, /supabase|exercise_sessions|roadmap_node_completions|rep_metrics/i);
 
+// ui-hierarchy keeps its compact intermediate presentation, while the final
+// patient-reports navigation pass restores the requested Report destination.
 for (const label of ["Today", "Journey", "Progress", "Profile"]) assert.match(ui, new RegExp(`"${label}"`));
 assert.match(ui, /Report a concern/);
 assert.match(ui, /concern\.hidden = true/);
+assert.match(reportsNav, /\[data-nav="patient-report"\]/, "final patient navigation must recover the existing Report button");
+assert.match(reportsNav, /setButtonLabel\(reportButton, "Report"\)/, "restored destination must be labeled Report");
+assert.match(reportsNav, /insertBefore\(reportButton, profileButton\)/, "Report must remain before Profile in DOM order");
+assert.match(reportsNav, /uiPrimaryCount = "5"/, "final patient navigation contract must expose five destinations");
+assert.match(reportsNav, /repeat\(5,minmax\(0,1fr\)\)/, "compact patient navigation must make room for all five tabs");
 for (const label of ["Overview", "Patients", "Plans", "Exercise Library"]) assert.match(ui, new RegExp(`"${label}"`));
 assert.doesNotMatch(ui, /alerts:\s*"Alerts"/);
 assert.match(ui, /patientPrimaryNavigationCount:\s*4/);
@@ -49,4 +57,4 @@ assert.match(css, /@media\(max-width:900px\)/);
 assert.match(css, /@media\(max-width:680px\)/);
 assert.match(css, /prefers-reduced-motion/);
 
-console.log("UI hierarchy regression passed: four-destination navigation, contextual concern reporting, focused Motion Lab, responsive touch targets.");
+console.log("UI hierarchy regression passed: restored five-destination patient navigation, focused Motion Lab, responsive touch targets.");
