@@ -1,10 +1,10 @@
-// Axion Context Transfer Intelligence v0.1
+// Axion Context Transfer Intelligence v0.2
 //
 // Compares the same person's same exercise across explicitly recorded Home and
 // Clinic sessions. The output is descriptive only: it reports measured setting
 // differences without deciding which setting is better or assigning clinical cause.
 
-export const CONTEXT_TRANSFER_INTELLIGENCE_VERSION = 1;
+export const CONTEXT_TRANSFER_INTELLIGENCE_VERSION = 2;
 
 const finite = (value) => value === null || value === undefined || value === ""
   ? null
@@ -14,6 +14,11 @@ const round = (value, digits = 2) => {
   if (number === null) return null;
   const factor = 10 ** digits;
   return Math.round(number * factor) / factor;
+};
+const difference = (left, right, digits = 2) => {
+  const a = finite(left);
+  const b = finite(right);
+  return a === null || b === null ? null : round(a - b, digits);
 };
 
 const FEATURE_FAMILIES = Object.freeze([
@@ -47,6 +52,28 @@ function environment(session) {
   return value === "home" || value === "clinic" ? value : "unknown";
 }
 
+function cameraView(session) {
+  return session?.camera_view
+    || session?.capture_context?.camera_view
+    || session?.movement_summary?.camera_view
+    || movementContext(session)?.cameraView
+    || null;
+}
+
+function prescribedSide(session) {
+  return session?.prescribed_side || session?.movement_summary?.prescribed_side || null;
+}
+
+function captureCompatible(homeSession, clinicSession) {
+  const homeView = cameraView(homeSession);
+  const clinicView = cameraView(clinicSession);
+  if (homeView && clinicView && homeView !== clinicView) return false;
+  const homeSide = prescribedSide(homeSession);
+  const clinicSide = prescribedSide(clinicSession);
+  if (homeSide && clinicSide && homeSide !== clinicSide) return false;
+  return true;
+}
+
 function usableQuality(session, minimumCoverage, minimumVisibility) {
   const summary = biomechanics(session);
   const coverage = finite(summary?.averageCoverage);
@@ -78,6 +105,7 @@ function nearestHomeClinicPair(sessions, maximumGapMs) {
   let best = null;
   for (const homeSession of home) {
     for (const clinicSession of clinic) {
+      if (!captureCompatible(homeSession, clinicSession)) continue;
       const gapMs = Math.abs(timestamp(homeSession) - timestamp(clinicSession));
       if (gapMs > maximumGapMs) continue;
       if (!best || gapMs < best.gapMs || (gapMs === best.gapMs && Math.max(timestamp(homeSession), timestamp(clinicSession)) > best.latestMs)) {
@@ -111,9 +139,9 @@ function pairSummary(exerciseKey, pair) {
   const clinicGait = gaitTiming(pair.clinicSession);
   const gait = homeGait?.status === "available" && clinicGait?.status === "available"
     ? {
-      cadenceHomeMinusClinicStepsPerMinute: round(finite(homeGait.cadenceStepsPerMinute) - finite(clinicGait.cadenceStepsPerMinute), 1),
-      timingSymmetryDifferenceHomeMinusClinicPct: round(finite(homeGait.timingSymmetryDifferencePct) - finite(clinicGait.timingSymmetryDifferencePct), 1),
-      timingVariabilityHomeMinusClinicPct: round(finite(homeGait.timingVariabilityPct) - finite(clinicGait.timingVariabilityPct), 1),
+      cadenceHomeMinusClinicStepsPerMinute: difference(homeGait.cadenceStepsPerMinute, clinicGait.cadenceStepsPerMinute, 1),
+      timingSymmetryDifferenceHomeMinusClinicPct: difference(homeGait.timingSymmetryDifferencePct, clinicGait.timingSymmetryDifferencePct, 1),
+      timingVariabilityHomeMinusClinicPct: difference(homeGait.timingVariabilityPct, clinicGait.timingVariabilityPct, 1),
     }
     : null;
 
@@ -124,6 +152,11 @@ function pairSummary(exerciseKey, pair) {
     homeCompletedAt: pair.homeSession.completed_at || pair.homeSession.created_at || null,
     clinicCompletedAt: pair.clinicSession.completed_at || pair.clinicSession.created_at || null,
     pairGapDays: round(pair.gapMs / 86400000, 1),
+    captureContext: {
+      cameraView: cameraView(pair.homeSession) || cameraView(pair.clinicSession) || null,
+      prescribedSide: prescribedSide(pair.homeSession) || prescribedSide(pair.clinicSession) || null,
+      verification: "compatible_capture_context",
+    },
     features,
     gait,
   };
@@ -193,6 +226,6 @@ export function analyzeContextTransfer(sessions = [], {
     sourceTrials: ["NCT05454007"],
     evidenceRelation: "study_design_precedent",
     clinicalInterpretation: false,
-    note: "Reports same-exercise measurement differences between explicitly recorded Home and Clinic sessions. Differences may reflect setting, timing, capture, fatigue, learning, or other factors; Axion does not assign cause or clinical meaning.",
+    note: "Reports same-exercise measurement differences between explicitly recorded Home and Clinic sessions with compatible capture context. Differences may reflect setting, timing, fatigue, learning, or other factors; Axion does not assign cause or clinical meaning.",
   };
 }
