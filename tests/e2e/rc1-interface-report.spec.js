@@ -50,4 +50,16 @@ test("patient Report tab opens the existing reporting page", async ({ page }) =>
   await expect(reportNav.locator('button[data-nav]')).toHaveCount(5);
   await expect(reportNav.locator('[data-nav="patient-report"]')).toBeVisible();
   await expect(reportNav.locator('[data-nav="patient-report"]')).toHaveClass(/active/);
+
+  // The four report choices collapse to a single column on narrow phones and
+  // must not create horizontal scrolling.
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect(reportChoices).toHaveCount(4);
+  const overflow = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+  }));
+  expect(overflow.document).toBeLessThanOrEqual(overflow.viewport + 1);
+  expect(overflow.body).toBeLessThanOrEqual(overflow.viewport + 1);
 });
