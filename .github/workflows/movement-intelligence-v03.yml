@@ -7,7 +7,7 @@ on:
       - "src/movement-intelligence*.js"
       - "src/gait-intelligence.js"
       - "src/cross-task-intelligence.js"
-      - "src/movement-context.js"
+      - "src/movement-context*.js"
       - "src/evidence-informed-movement.js"
       - "src/clinical-evidence-registry.js"
       - "src/compensation-migration.js"
@@ -27,7 +27,7 @@ on:
       - "src/movement-intelligence*.js"
       - "src/gait-intelligence.js"
       - "src/cross-task-intelligence.js"
-      - "src/movement-context.js"
+      - "src/movement-context*.js"
       - "src/evidence-informed-movement.js"
       - "src/clinical-evidence-registry.js"
       - "src/compensation-migration.js"
@@ -63,6 +63,8 @@ jobs:
           node --check src/gait-intelligence.js
           node --check src/cross-task-intelligence.js
           node --check src/movement-context.js
+          node --check src/movement-context-store.js
+          node --check src/movement-context-ui.js
           node --check src/evidence-informed-movement.js
           node --check src/clinical-evidence-registry.js
       - name: Run canonical biomechanics regression
