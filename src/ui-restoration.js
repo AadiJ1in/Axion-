@@ -1,4 +1,5 @@
 import "./ui-restoration.css";
+import "./ui-restoration-progress.css";
 
 let fallbackAnimation = 0;
 let trackedLabVideo = null;
