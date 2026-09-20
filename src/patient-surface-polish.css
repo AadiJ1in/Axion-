@@ -160,7 +160,7 @@ html[data-axion-patient-surface="true"] body[data-axion-ui-screen="report"] .rep
 
 /* Simple patient input: a positive default, with the pain scale only when pain is selected. */
 .patient-report-page .patient-report-types{
-  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
   gap:.6rem!important;
 }
 .patient-report-page .patient-report-types span{
