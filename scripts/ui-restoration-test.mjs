@@ -19,6 +19,12 @@ assert.match(js, /visibilitychange/, "lab visibility recovery is handled");
 assert.match(js, /pointerdown[\s\S]*stabilizeBeginExercisePress/, "Begin Exercise press is committed before WebKit can swallow a ready-state click");
 assert.match(js, /clinic-calibration-grade/, "begin press stabilization remains gated by the existing calibration grade");
 assert.match(js, /recoveryVisible[\s\S]*safetyFlagged/, "begin press stabilization preserves camera recovery and safety blocks");
+assert.match(js, /function labCameraIsActive/, "visibility recovery distinguishes an already-active camera session");
+assert.match(js, /cameraWasActiveBeforeVisibility = labCameraIsActive\(lab\)/, "camera recovery records whether access was active before backgrounding");
+assert.match(js, /function recoverLabCameraIfNeeded\(\{ allowStart = false \} = \{\}\)/, "automatic camera start is deny-by-default");
+assert.match(js, /if \(!page \|\| document\.hidden \|\| !allowStart\) return;/, "camera auto-recovery requires an explicit active-session gate");
+const pageshowSection = js.split('window.addEventListener("pageshow"')[1]?.split('window.addEventListener("pagehide"')[0] || "";
+assert.equal(pageshowSection.includes("recoverLabCameraIfNeeded"), false, "pageshow must not silently request camera access");
 assert.match(css, /object-fit:contain!important/, "camera uses contain so the patient's full body is not cropped");
 assert.match(css, /grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/, "camera and movement buddy remain side-by-side on desktop");
 assert.match(css, /\.beacon-story-preview\{display:none!important\}/, "numbered story preview is visually removed");
@@ -32,4 +38,4 @@ for (const forbidden of ["sessionReps.push", "REP_COMPLETE", "clinicalTarget", "
   assert.equal(js.includes(forbidden), false, `presentation restoration must not alter clinical state (${forbidden})`);
 }
 
-console.log("UI restoration: visual, navigation, game fallback, Progress surfaces, WebKit begin press, and camera lifecycle contracts passed.");
+console.log("UI restoration: visual, navigation, game fallback, Progress surfaces, WebKit begin press, camera access gate, and camera lifecycle contracts passed.");
