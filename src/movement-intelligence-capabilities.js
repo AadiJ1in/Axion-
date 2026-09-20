@@ -2,7 +2,7 @@
 // This is intentionally stricter than marketing copy: "implemented_research" means
 // code + regression coverage exist, not that the capability is clinically validated.
 
-export const MOVEMENT_INTELLIGENCE_CAPABILITIES_VERSION = 1;
+export const MOVEMENT_INTELLIGENCE_CAPABILITIES_VERSION = 2;
 
 export const MOVEMENT_INTELLIGENCE_CAPABILITIES = Object.freeze([
   Object.freeze({
@@ -30,7 +30,7 @@ export const MOVEMENT_INTELLIGENCE_CAPABILITIES = Object.freeze([
     clinicalValidationStatus: "not_validated",
     exercises: ["heel_to_toe_walk"],
     evidenceSources: ["NCT05454007"],
-    output: "descriptive change versus a compatible prior gait session",
+    output: "descriptive change versus a compatible prior gait session within compatible recorded context",
   }),
   Object.freeze({
     id: "explicit_session_context",
@@ -40,6 +40,15 @@ export const MOVEMENT_INTELLIGENCE_CAPABILITIES = Object.freeze([
     exercises: ["all"],
     evidenceSources: ["NCT05454007"],
     output: "explicit home/clinic/other/unknown context without location inference",
+  }),
+  Object.freeze({
+    id: "home_clinic_context_transfer",
+    implementationStatus: "implemented_research",
+    productStatus: "experimental",
+    clinicalValidationStatus: "not_validated",
+    exercises: ["same_exercise_home_clinic_pair"],
+    evidenceSources: ["NCT05454007"],
+    output: "descriptive same-exercise Home-minus-Clinic biomechanics and gait-timing differences using quality- and capture-compatible sessions",
   }),
   Object.freeze({
     id: "cross_task_change_consistency",
@@ -57,7 +66,7 @@ export const MOVEMENT_INTELLIGENCE_CAPABILITIES = Object.freeze([
     clinicalValidationStatus: "not_validated",
     exercises: ["same_repeated_exercise"],
     evidenceSources: ["NCT06183970"],
-    output: "persistent inverse cross-family movement-feature change candidate",
+    output: "persistent inverse cross-family movement-feature change candidate stratified by recorded environment",
   }),
   Object.freeze({
     id: "movement_amplitude_change",
