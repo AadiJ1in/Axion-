@@ -5,6 +5,8 @@ on:
     paths:
       - "src/biomechanics*.js"
       - "src/movement-intelligence*.js"
+      - "src/movement-profiles*.js"
+      - "src/movement-runtime-context.js"
       - "src/gait-intelligence.js"
       - "src/cross-task-intelligence.js"
       - "src/context-transfer-intelligence.js"
@@ -27,6 +29,8 @@ on:
     paths:
       - "src/biomechanics*.js"
       - "src/movement-intelligence*.js"
+      - "src/movement-profiles*.js"
+      - "src/movement-runtime-context.js"
       - "src/gait-intelligence.js"
       - "src/cross-task-intelligence.js"
       - "src/context-transfer-intelligence.js"
@@ -60,10 +64,14 @@ jobs:
           node --check src/biomechanics.js
           node --check src/biomechanics-core.js
           node --check src/movement-intelligence.js
+          node --check src/movement-intelligence-core.js
           node --check src/movement-intelligence-session.js
           node --check src/movement-intelligence-history.js
           node --check src/movement-intelligence-capabilities.js
           node --check src/movement-intelligence-persistence.js
+          node --check src/movement-profiles.js
+          node --check src/movement-profiles-core.js
+          node --check src/movement-runtime-context.js
           node --check src/gait-intelligence.js
           node --check src/cross-task-intelligence.js
           node --check src/context-transfer-intelligence.js
@@ -78,6 +86,8 @@ jobs:
         run: node scripts/biomechanics-intelligence-extension-test.mjs
       - name: Run Movement Signature regression
         run: node scripts/movement-intelligence-test.mjs
+      - name: Run live Movement Signature reference regression
+        run: node scripts/movement-intelligence-live-reference-test.mjs
       - name: Run unified session contract regression
         run: node scripts/movement-intelligence-session-test.mjs
       - name: Run gait timing regression
