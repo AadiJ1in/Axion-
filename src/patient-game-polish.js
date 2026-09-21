@@ -11,6 +11,7 @@ import { syncUiStability } from "./ui-stability.js";
 import { syncPatientSurfacePolish } from "./patient-surface-polish.js";
 import { syncInterfaceSprint } from "./interface-sprint.js";
 import { syncPatientReportsNavigation } from "./patient-reports-nav.js";
+import "./patient-today-contrast.css";
 import { syncClinicalValidationSurface } from "./clinical-validation-surface.js";
 import { syncTodayRoadmapEntry } from "./today-roadmap-entry.js";
 import { syncTherapistReviewCopy } from "./therapist-review-copy.js";
