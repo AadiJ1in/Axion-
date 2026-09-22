@@ -6,6 +6,7 @@ import "./plan-version-history.js";
 import "./session-review-notes.js";
 import "./demo-entry.js";
 import "./movement-buddy-runtime.js";
+import "./tab-transition-stability.js";
 import { syncUiHierarchy } from "./ui-hierarchy.js";
 import { syncUiHierarchyP1 } from "./ui-hierarchy-p1.js";
 import { syncUiStability } from "./ui-stability.js";
