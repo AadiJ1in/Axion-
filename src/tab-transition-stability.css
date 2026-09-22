@@ -1,0 +1,129 @@
+html[data-axion-route-transition] .topbar,
+html[data-axion-route-transition] .topbar *,
+html[data-axion-route-transition] main,
+html[data-axion-route-transition] main * {
+  animation: none !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-axion-route-transition] .topbar {
+  min-height: 72px;
+}
+
+html[data-axion-route-transition] .topbar .patient-nav,
+html[data-axion-route-transition] .topbar .nav[data-ui-patient-nav="true"] {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+}
+
+.axion-transition-placeholder {
+  box-sizing: border-box;
+  border: 1px solid rgba(35, 53, 46, 0.12);
+  background: #ece7de;
+  color: #26352e;
+  box-shadow: none;
+}
+
+.axion-transition-placeholder--today {
+  min-height: 248px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 28px;
+  align-items: center;
+  padding: 30px;
+}
+
+.axion-transition-placeholder__copy span,
+.axion-transition-placeholder--phases > div > span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #617069;
+}
+
+.axion-transition-placeholder__copy h2 {
+  margin: 0 0 8px;
+  font-size: clamp(1.3rem, 2.4vw, 2rem);
+  line-height: 1.08;
+  color: #26352e;
+}
+
+.axion-transition-placeholder__copy p,
+.axion-transition-placeholder--phases p {
+  margin: 0;
+  color: #6c746e;
+  line-height: 1.55;
+}
+
+.axion-transition-placeholder__status {
+  display: grid;
+  gap: 10px;
+}
+
+.axion-transition-placeholder__status i {
+  display: block;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(38, 53, 46, 0.09);
+}
+
+.axion-transition-placeholder__status i:nth-child(2) { width: 78%; }
+.axion-transition-placeholder__status i:nth-child(3) { width: 56%; }
+
+.axion-transition-placeholder--phases {
+  min-height: 120px;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  padding: 22px 28px;
+}
+
+.axion-transition-placeholder--phases ol {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+}
+
+.axion-transition-placeholder--phases li {
+  min-height: 48px;
+  border-radius: 14px;
+  background: rgba(38, 53, 46, 0.075);
+}
+
+.axion-transition-placeholder[data-axion-loading-slow="true"] {
+  border-style: dashed;
+}
+
+@media (max-width: 760px) {
+  .axion-transition-placeholder--today {
+    min-height: 230px;
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 24px;
+  }
+
+  .axion-transition-placeholder__status {
+    display: none;
+  }
+
+  .axion-transition-placeholder--phases {
+    min-height: 112px;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 20px 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .axion-transition-placeholder,
+  .axion-transition-placeholder * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
