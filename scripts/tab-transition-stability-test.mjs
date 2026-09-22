@@ -15,6 +15,7 @@ assert.match(css, /repeat\(5, minmax\(0, 1fr\)\)/, "patient navigation must rema
 assert.match(css, /animation: none !important/, "transient route animations must be suppressed during DOM replacement");
 assert.doesNotMatch(polish, /lateClinicTimer/, "patient polish must not continuously poll late clinic presentation");
 assert.doesNotMatch(polish, /document\.addEventListener\('click', \(\) => window\.setTimeout\(schedulePresentationHierarchy/, "ordinary clicks must not cause a second presentation pass");
-assert.ok(index.indexOf("./src/tab-transition-stability.js") > index.indexOf("./src/patient-game-polish.js"), "transition stability must load after patient presentation polish");
+assert.match(polish, /import "\.\/tab-transition-stability\.js";/, "transition stability must load through patient-game-polish");
+assert.ok(!index.includes("./src/tab-transition-stability.js"), "transition stability must not add a third top-level boot script");
 
 console.log("Patient tab transition stability: event-driven route settling and async Today placeholders passed.");
