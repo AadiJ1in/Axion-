@@ -14,14 +14,14 @@ assert.ok(js.includes('acknowledgeSafety'), 'explicit resume must release the sa
 assert.ok(js.includes('setInterval(syncRestExperience, 250)'), 'rest countdown is synchronized without DOM observers');
 assert.ok(!js.includes('lateClinicTimer'), 'global presentation must not poll every 250ms');
 assert.ok(!js.includes("document.addEventListener('click', () => window.setTimeout(schedulePresentationHierarchy"), 'ordinary clicks must not trigger a second global presentation pass');
+assert.ok(js.includes('import "./tab-transition-stability.js";'), 'transition stability must load through the existing patient-polish entry');
 assert.ok(css.includes("REST TIME LEFT"), 'rest overlay must clearly label its countdown');
 assert.ok(css.includes("url('/axion-kingdom-world.webp')"), 'roadmap tail must continue the kingdom artwork');
 assert.ok(css.includes('.camera-pane video{opacity:0'), 'empty camera media is hidden until active');
 assert.ok(ui.includes('HOW TO PLAY'), 'movement games must explain their controls');
 assert.ok(index.includes('./src/patient-game-polish.css'), 'polish stylesheet must load last');
 assert.ok(index.includes('./src/patient-game-polish.js'), 'observer-free polish helper must load');
-assert.ok(index.includes('./src/tab-transition-stability.js'), 'tab stability helper must load after patient polish');
-assert.ok(index.indexOf('./src/tab-transition-stability.js') > index.indexOf('./src/patient-game-polish.js'), 'tab stability must be the final patient runtime layer');
+assert.ok(!index.includes('./src/tab-transition-stability.js'), 'transition stability must not create a third top-level boot entry');
 assert.ok(transitionJs.includes('new MutationObserver'), 'tab stability may use one scoped observer for top-level view replacement');
 assert.ok(transitionJs.includes('appObserver?.observe(app, { childList: true, subtree: true })'), 'transition observer must be scoped to #app instead of documentElement');
 assert.ok(!transitionJs.includes('setInterval'), 'tab stability must be event-driven and never poll the DOM');
