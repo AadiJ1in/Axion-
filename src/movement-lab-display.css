@@ -1,0 +1,173 @@
+/* Movement Lab optical/gameplay correction.
+   Keep the surrounding patient UI warm/light, but the camera + movement surfaces
+   need a dark, high-contrast stage so the patient, pose overlay, and buddy remain
+   visible. This file is presentation-only and does not alter tracking logic. */
+
+.lab-page .capture-panel>.motion-stage{
+  width:100%!important;
+  max-width:1180px!important;
+  margin:12px auto!important;
+}
+.lab-page .motion-stage{
+  border-color:#31463e!important;
+  background:#07100f!important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.018),0 10px 28px rgba(27,38,33,.14)!important;
+}
+
+.lab-page .camera-pane,
+.lab-page .twin-pane,
+.lab-page .buddy-pane{
+  background:#08120f!important;
+}
+
+/* The pose canvas sits above the video. It must stay transparent or it visually
+   replaces the patient's live image with a pale/white rectangle. */
+.lab-page .camera-pane video{
+  background:#050a08!important;
+  opacity:1!important;
+  object-fit:contain!important;
+  filter:brightness(.98) contrast(1.08) saturate(.96)!important;
+  mix-blend-mode:normal!important;
+}
+.lab-page .camera-pane canvas{
+  background:transparent!important;
+  opacity:1!important;
+  object-fit:contain!important;
+  filter:drop-shadow(0 0 1.25px rgba(0,0,0,.98)) drop-shadow(0 0 3px rgba(110,240,177,.34))!important;
+  mix-blend-mode:normal!important;
+  pointer-events:none!important;
+}
+.lab-page .camera-pane.camera-on video{opacity:1!important}
+
+.lab-page .camera-placeholder{
+  color:#9eb3aa!important;
+  background:
+    radial-gradient(circle at 50% 45%,rgba(110,240,177,.08),transparent 38%),
+    linear-gradient(180deg,#0c1814,#07100f)!important;
+}
+.lab-page .camera-placeholder b{color:#d7e7df!important}
+
+/* Restore the live movement twin instead of hiding it for camera-squat mode. */
+.camera-squat-lab .twin-pane,
+.lab-page .twin-pane{
+  display:block!important;
+  background:
+    linear-gradient(rgba(110,240,177,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(110,240,177,.045) 1px,transparent 1px),
+    radial-gradient(circle at 50% 52%,rgba(110,240,177,.12),transparent 36%),
+    linear-gradient(180deg,#0c1915,#07100f)!important;
+  background-size:28px 28px,28px 28px,auto,auto!important;
+}
+.lab-page .twin-pane .movement-twin{
+  opacity:1!important;
+  filter:none!important;
+}
+.lab-page .twin-pane .twin-bone{
+  stroke-width:8!important;
+  filter:drop-shadow(0 0 8px rgba(110,240,177,.48))!important;
+}
+.lab-page .twin-pane .twin-joint{
+  filter:drop-shadow(0 0 9px rgba(110,240,177,.82))!important;
+}
+
+/* The existing markup already contains a buddy canvas for the squat mission.
+   The restoration layer hid it; show it again and give it a readable game stage. */
+.lab-page .motion-stage:has(.buddy-pane){
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  height:clamp(300px,30vw,430px)!important;
+}
+.lab-page .motion-stage:has(.buddy-pane) .buddy-pane{
+  display:block!important;
+  min-width:0!important;
+  min-height:300px!important;
+  position:relative!important;
+  overflow:hidden!important;
+  border-left:1px solid rgba(183,216,199,.14)!important;
+  background:
+    radial-gradient(circle at 50% 38%,rgba(110,240,177,.13),transparent 34%),
+    linear-gradient(180deg,#10231c 0%,#091611 62%,#07100f 100%)!important;
+}
+.lab-page #exercise-buddy{
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  background:transparent!important;
+}
+.lab-page .buddy-pane .pane-label{font-size:0!important}
+.lab-page .buddy-pane .pane-label::after{
+  content:"WORKOUT BUDDY · LIVE MIRROR";
+  font:500 .56rem "DM Mono",monospace;
+  letter-spacing:.1em;
+}
+.lab-page .buddy-pane>small{
+  position:absolute;
+  left:.8rem;
+  right:.8rem;
+  bottom:.75rem;
+  z-index:4;
+  color:transparent!important;
+  font-size:0!important;
+  text-align:right;
+  pointer-events:none;
+}
+.lab-page .buddy-pane>small::after{
+  content:"Mirrors your tracked movement; follow your prescribed range and pace.";
+  color:#9eb3aa!important;
+  font-size:.58rem!important;
+}
+
+/* Do not collapse the reference stage to 1px once the camera is live. The user
+   explicitly needs to see both themselves and the buddy while exercising. */
+.camera-squat-lab .adventure-card:has(.movement-game-stage.active).camera-live + .motion-stage{
+  position:relative!important;
+  width:100%!important;
+  max-width:1180px!important;
+  height:clamp(300px,30vw,430px)!important;
+  overflow:hidden!important;
+  opacity:1!important;
+  pointer-events:auto!important;
+}
+
+.lab-page .pane-label{
+  border-color:rgba(183,216,199,.18)!important;
+  background:rgba(5,13,10,.86)!important;
+  color:#d8eee3!important;
+  backdrop-filter:blur(8px)!important;
+}
+.lab-page .target-label{color:#9bb0a6!important}
+.lab-page .target-label i{border-color:#a797ff!important}
+
+/* Game avatar overlay: the game remains entertainment-only, while a small camera
+   picture-in-picture keeps the patient visible during play. */
+.lab-page .adventure-viewport{position:relative!important}
+.lab-page .axion-avatar-game-layer{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  z-index:3!important;
+  pointer-events:none!important;
+}
+.lab-page .game-mode-badge,
+.lab-page .game-feedback,
+.lab-page .game-completion{
+  z-index:6!important;
+}
+
+@media(max-width:900px){
+  .lab-page .capture-panel>.motion-stage{max-width:760px!important}
+  .lab-page .motion-stage:has(.buddy-pane){
+    grid-template-columns:1fr 1fr!important;
+    height:auto!important;
+  }
+  /* On smaller screens preserve the two things the patient must see: self + buddy. */
+  .lab-page .motion-stage:has(.buddy-pane) .twin-pane{display:none!important}
+  .lab-page .motion-stage:has(.buddy-pane) .camera-pane,
+  .lab-page .motion-stage:has(.buddy-pane) .buddy-pane{min-height:300px!important}
+}
+
+@media(max-width:620px){
+  .lab-page .motion-stage:has(.buddy-pane){grid-template-columns:1fr!important}
+  .lab-page .motion-stage:has(.buddy-pane) .camera-pane,
+  .lab-page .motion-stage:has(.buddy-pane) .buddy-pane{min-height:290px!important}
+}

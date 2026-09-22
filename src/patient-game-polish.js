@@ -5,6 +5,8 @@ import "./therapist-review-audit.js";
 import "./plan-version-history.js";
 import "./session-review-notes.js";
 import "./demo-entry.js";
+import "./movement-buddy-runtime.js";
+import "./tab-transition-stability.js";
 import { syncUiHierarchy } from "./ui-hierarchy.js";
 import { syncUiHierarchyP1 } from "./ui-hierarchy-p1.js";
 import { syncUiStability } from "./ui-stability.js";
@@ -121,14 +123,12 @@ document.addEventListener('click', (event) => {
   }, 80);
 }, true);
 
-// Keep the established rest-only timer contract intact. A separate lightweight
-// async-clinic sync only touches idempotent presentation details after the
-// clinic-ready enhancer finishes loading its data.
+// Rest timing is the only periodic patient-polish task. Global presentation
+// hierarchy is now render/event driven so tab changes cannot be rearranged again
+// by a background 250 ms presentation pass.
 const polishTimer = window.setInterval(syncRestExperience, 250);
-const lateClinicTimer = window.setInterval(syncLateClinicPresentation, 250);
 window.addEventListener('pagehide', () => {
   window.clearInterval(polishTimer);
-  window.clearInterval(lateClinicTimer);
   if (presentationFrame) window.cancelAnimationFrame(presentationFrame);
 }, { once:true });
 window.addEventListener('pageshow', schedulePresentationHierarchy);
@@ -138,6 +138,6 @@ document.addEventListener('visibilitychange', () => {
     schedulePresentationHierarchy();
   }
 });
-document.addEventListener('click', () => window.setTimeout(schedulePresentationHierarchy, 0));
+
 syncPresentationHierarchy();
 syncRestExperience();
