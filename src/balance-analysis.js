@@ -7,7 +7,9 @@
 
 export const BALANCE_ANALYSIS_SCHEMA_VERSION = 2;
 
-const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = (value) => value === null || value === undefined || value === ""
+  ? null
+  : (Number.isFinite(Number(value)) ? Number(value) : null);
 const round = (value, digits = 3) => {
   const n = finite(value);
   if (n === null) return null;
@@ -21,7 +23,9 @@ function point(landmarks, index) {
 
 function validPoint(landmarks, index, minVisibility = 0.55) {
   const p = point(landmarks, index);
-  return p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility ?? 1) >= minVisibility;
+  if (!p) return false;
+  if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+  return (p.visibility ?? 1) >= minVisibility;
 }
 
 function midpoint(a, b) {
@@ -133,11 +137,11 @@ function covariance(xs, ys) {
 // as camera-derived hip-motion area in normalized torso units squared.
 function motionEllipse95Area(xs, ys) {
   if (xs.length < 3 || xs.length !== ys.length) return null;
-  const varianceX = standardDeviation(xs) ** 2;
-  const varianceY = standardDeviation(ys) ** 2;
+  const sdX = standardDeviation(xs);
+  const sdY = standardDeviation(ys);
   const cov = covariance(xs, ys);
-  if (![varianceX, varianceY, cov].every(Number.isFinite)) return null;
-  const determinant = Math.max(0, varianceX * varianceY - cov ** 2);
+  if (![sdX, sdY, cov].every(Number.isFinite)) return null;
+  const determinant = Math.max(0, (sdX ** 2) * (sdY ** 2) - cov ** 2);
   return Math.PI * 5.991 * Math.sqrt(determinant);
 }
 
@@ -192,15 +196,16 @@ export function createBalanceAccumulator({ stance = "unspecified", side = "eithe
     },
     finish(explicitEndMs = null) {
       if (Number.isFinite(explicitEndMs)) endedAt = explicitEndMs;
-      const hipX = frames.map((frame) => finite(frame.hipRelativeX)).filter((v) => v !== null);
-      const hipY = frames.map((frame) => finite(frame.hipRelativeY)).filter((v) => v !== null);
-      const trunk = frames.map((frame) => finite(frame.trunkTiltDeg)).filter((v) => v !== null);
-      const pelvis = frames.map((frame) => finite(frame.pelvisTiltDeg)).filter((v) => v !== null);
+      const pairedHipFrames = frames.filter((frame) => Number.isFinite(finite(frame.hipRelativeX)) && Number.isFinite(finite(frame.hipRelativeY)));
+      const hipX = pairedHipFrames.map((frame) => finite(frame.hipRelativeX));
+      const hipY = pairedHipFrames.map((frame) => finite(frame.hipRelativeY));
+      const trunk = frames.map((frame) => finite(frame.trunkTiltDeg)).filter(Number.isFinite);
+      const pelvis = frames.map((frame) => finite(frame.pelvisTiltDeg)).filter(Number.isFinite);
       const holdSeconds = Number.isFinite(startedAt) && Number.isFinite(endedAt) ? Math.max(0, endedAt - startedAt) / 1000 : null;
-      const usableSeconds = usableDurationSeconds(frames);
+      const usableSeconds = usableDurationSeconds(pairedHipFrames);
       const path = pathLength(hipX, hipY);
       const coverage = totalFrames ? frames.length / totalFrames : null;
-      const quality = captureQuality({ coverage, frames: frames.length, durationSeconds: usableSeconds });
+      const quality = captureQuality({ coverage, frames: pairedHipFrames.length, durationSeconds: usableSeconds });
 
       return Object.freeze({
         schemaVersion: BALANCE_ANALYSIS_SCHEMA_VERSION,
@@ -211,8 +216,9 @@ export function createBalanceAccumulator({ stance = "unspecified", side = "eithe
         usableCaptureSeconds: round(usableSeconds, 2),
         totalFrames,
         usableFrames: frames.length,
+        pairedMotionFrames: pairedHipFrames.length,
         coverage: round(coverage, 3),
-        sampleRateHz: round(frameRate(frames), 1),
+        sampleRateHz: round(frameRate(pairedHipFrames), 1),
         quality,
         sway: Object.freeze({
           hipPathLengthTorso: round(path, 4),
