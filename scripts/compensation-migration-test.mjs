@@ -54,6 +54,36 @@ function session(index, {
   };
 }
 
+function v2Session(index, {
+  frontKnee = 8,
+  thigh = 5,
+  counterTilt = 4,
+  frontalCoverage = .9,
+  worldCoverage = .88,
+  ...options
+} = {}) {
+  const base = session(index, options);
+  const legacy = base.movement_summary.biomechanics_v1;
+  const feature = (mean) => Number.isFinite(mean) ? ({ reps: 8, mean, min: mean - 1, max: mean + 1 }) : null;
+  return {
+    ...base,
+    movement_summary: {
+      biomechanics_v2: {
+        ...legacy,
+        schemaVersion: 2,
+        averageFrontalPlaneCoverage: frontalCoverage,
+        averageWorldLandmarkCoverage: worldCoverage,
+        features: {
+          ...legacy.features,
+          frontal_knee_projection_asymmetry_deg: feature(frontKnee),
+          thigh_frontal_inclination_asymmetry_deg: feature(thigh),
+          shoulder_pelvis_counter_tilt_deg: feature(counterTilt),
+        },
+      },
+    },
+  };
+}
+
 const stable = Array.from({ length: 6 }, (_, index) => session(index));
 const stableResult = analyzeExerciseCompensationMigration(stable);
 assert.equal(stableResult.status, "available");
@@ -61,6 +91,7 @@ assert.equal(stableResult.patientId, "patient-1");
 assert.equal(stableResult.referenceType, "early_session_within_person");
 assert.equal(stableResult.comparisonContext.verification, "verified_from_metadata");
 assert.equal(stableResult.redistributionCandidates.length, 0);
+assert.deepEqual(stableResult.quality.biomechanicsSchemaVersions, [1]);
 assert.match(stableResult.interpretation, /No persistent, directionally consistent/);
 
 const migrating = [
@@ -229,4 +260,50 @@ const mixedPatientHistory = analyzeCompensationMigrationHistory([
 assert.equal(mixedPatientHistory.length, 1);
 assert.equal(mixedPatientHistory[0].reason, "mixed_patients");
 
-console.log("Compensation migration: same-exercise windows, persistence, identity, context, feature support, quality and redistribution guards passed.");
+// v2-specific behavior: frontal-plane features participate only when frontal
+// coverage is adequate. World-space features likewise require world support.
+const v2Migrating = [
+  v2Session(0, { frontKnee: 14, thigh: 4, counterTilt: 3 }),
+  v2Session(1, { frontKnee: 15, thigh: 4, counterTilt: 3 }),
+  v2Session(2, { frontKnee: 13, thigh: 5, counterTilt: 4 }),
+  v2Session(3, { frontKnee: 5, thigh: 10, counterTilt: 10 }),
+  v2Session(4, { frontKnee: 4, thigh: 11, counterTilt: 11 }),
+  v2Session(5, { frontKnee: 5, thigh: 12, counterTilt: 12 }),
+];
+const v2Result = analyzeExerciseCompensationMigration(v2Migrating);
+assert.equal(v2Result.status, "available");
+assert.deepEqual(v2Result.quality.biomechanicsSchemaVersions, [2]);
+assert(v2Result.featureShifts.some((item) => item.feature === "frontal_knee_projection_asymmetry_deg"));
+assert(v2Result.featureShifts.some((item) => item.feature === "thigh_frontal_inclination_asymmetry_deg"));
+assert(v2Result.featureShifts.some((item) => item.feature === "shoulder_pelvis_counter_tilt_deg"));
+
+const poorFrontal = v2Migrating.map((item) => ({
+  ...item,
+  movement_summary: {
+    biomechanics_v2: {
+      ...item.movement_summary.biomechanics_v2,
+      averageFrontalPlaneCoverage: .2,
+    },
+  },
+}));
+const poorFrontalResult = analyzeExerciseCompensationMigration(poorFrontal);
+assert.equal(poorFrontalResult.status, "available", "general session quality can remain usable while a view-dependent feature fails closed");
+assert.equal(poorFrontalResult.featureShifts.some((item) => item.feature === "frontal_knee_projection_asymmetry_deg"), false);
+assert.equal(poorFrontalResult.featureShifts.some((item) => item.feature === "thigh_frontal_inclination_asymmetry_deg"), false);
+assert.equal(poorFrontalResult.featureShifts.some((item) => item.feature === "shoulder_pelvis_counter_tilt_deg"), false);
+
+const poorWorld = v2Migrating.map((item) => ({
+  ...item,
+  movement_summary: {
+    biomechanics_v2: {
+      ...item.movement_summary.biomechanics_v2,
+      averageWorldLandmarkCoverage: .2,
+    },
+  },
+}));
+const poorWorldResult = analyzeExerciseCompensationMigration(poorWorld);
+assert.equal(poorWorldResult.featureShifts.some((item) => item.feature === "trunk_3d_tilt_deg"), false);
+assert.equal(poorWorldResult.featureShifts.some((item) => item.feature === "pelvis_depth_asymmetry_pct"), false);
+assert(poorWorldResult.featureShifts.some((item) => item.feature === "frontal_knee_projection_asymmetry_deg"), "frontal-plane features remain available when only world-space support is low");
+
+console.log("Compensation migration v2: same-exercise windows, persistence, identity, context, legacy compatibility, feature-specific quality support, and redistribution guards passed.");
