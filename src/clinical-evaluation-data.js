@@ -94,3 +94,23 @@ export async function listClinicalEvaluationResults(patientId, { evaluationType 
   if (error) throw error;
   return data || [];
 }
+
+/**
+ * Read derived movement summaries already authorized by exercise_sessions RLS.
+ * The therapist-facing longitudinal view never requests raw camera media or raw
+ * pose landmarks. RLS remains the source of truth for patient access.
+ */
+export async function listPatientBiomechanicsSessions(patientId, { exerciseKey = null, limit = 120 } = {}) {
+  if (!supabase || !patientId) return [];
+  let query = supabase
+    .from("exercise_sessions")
+    .select("id,patient_id,exercise_key,movement_summary,started_at,completed_at,created_at,session_identity_context")
+    .eq("patient_id", patientId)
+    .not("movement_summary", "is", null)
+    .order("completed_at", { ascending: false, nullsFirst: false })
+    .limit(Math.max(1, Math.min(300, Number(limit) || 120)));
+  if (exerciseKey) query = query.eq("exercise_key", exerciseKey);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).filter((row) => row?.movement_summary?.biomechanics_v2 || row?.movement_summary?.biomechanics_v1);
+}
