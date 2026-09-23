@@ -3,9 +3,11 @@ import { extractBiomechanicsFrame } from "./biomechanics.js";
 import { listClinicalEvaluations, getClinicalEvaluation } from "./clinical-evaluations.js";
 import { createBalanceAccumulator, extractBalanceFrame } from "./balance-analysis.js";
 import { analyzeFrameAsymmetry, summarizeSessionAsymmetry } from "./asymmetry-analysis.js";
+import { buildLongitudinalAsymmetryTimeline } from "./longitudinal-asymmetry.js";
 import {
   listAuthorizedEvaluationPatients,
   listClinicalEvaluationResults,
+  listPatientBiomechanicsSessions,
   saveClinicalEvaluationResult,
 } from "./clinical-evaluation-data.js";
 
@@ -22,6 +24,8 @@ const state = {
   selectedPatientId: null,
   patients: [],
   captureContext: {},
+  biomechanicsSessions: [],
+  longitudinalExerciseKey: null,
 };
 
 const html = (value = "") => String(value).replace(/[&<>"']/g, (character) => ({
@@ -84,7 +88,15 @@ function setStatus(message) {
   if (target) target.textContent = message || "";
 }
 
-function setLive({ reps = null, angle = null, time = null, leftKnee = null, rightKnee = null, kneeDelta = null } = {}) {
+function setLive({
+  reps = null,
+  angle = null,
+  time = null,
+  leftKnee = null,
+  rightKnee = null,
+  kneeDelta = null,
+  frontalKneeDelta = null,
+} = {}) {
   const values = [
     ["[data-clinical-live-reps]", reps],
     ["[data-clinical-live-angle]", angle],
@@ -92,6 +104,7 @@ function setLive({ reps = null, angle = null, time = null, leftKnee = null, righ
     ["[data-clinical-live-left-knee]", leftKnee],
     ["[data-clinical-live-right-knee]", rightKnee],
     ["[data-clinical-live-knee-delta]", kneeDelta],
+    ["[data-clinical-live-frontal-knee-delta]", frontalKneeDelta],
   ];
   values.forEach(([selector, value]) => {
     const target = document.querySelector(selector);
@@ -99,34 +112,78 @@ function setLive({ reps = null, angle = null, time = null, leftKnee = null, righ
   });
 }
 
-function formatNumber(value, suffix = "") {
+function formatNumber(value, suffix = "", digits = 1) {
   const number = Number(value);
-  return Number.isFinite(number) ? `${Math.round(number * 10) / 10}${suffix}` : "—";
+  if (!Number.isFinite(number)) return "—";
+  const factor = 10 ** digits;
+  return `${Math.round(number * factor) / factor}${suffix}`;
+}
+
+function formatMetric(metric, value) {
+  const unit = metric?.unit || "";
+  if (unit === "deg") return formatNumber(value, "°");
+  if (unit === "% torso") return formatNumber(value, "% torso");
+  return formatNumber(value, unit ? ` ${unit}` : "");
+}
+
+function qualityBadge(quality, label = "Capture quality") {
+  if (!quality?.grade) return "";
+  const grade = String(quality.grade).toLowerCase();
+  return `<span class="clinical-quality-badge clinical-quality-badge--${html(grade)}">${html(label)}: ${html(grade)}</span>`;
 }
 
 function asymmetryMarkup(summary) {
   if (!summary?.bilateral || !Object.keys(summary.bilateral).length) {
-    return `<div class="clinical-eval-asymmetry"><h4>Full-body asymmetry</h4><p class="clinical-eval-note">No bilateral rep profile is available for this trial.</p></div>`;
+    return `<div class="clinical-eval-asymmetry"><h4>Kinetic-chain profile</h4><p class="clinical-eval-note">No paired bilateral rep profile is available for this trial.</p></div>`;
   }
-  const labels = { kneeFlexion: "Knee bend", hipFlexion: "Hip bend", ankleAngle: "Ankle angle" };
-  const rows = Object.entries(summary.bilateral).map(([key, metric]) => `
-    <div class="clinical-eval-row">
-      <span>${html(labels[key] || metric.label || key)}</span>
-      <span>L ${formatNumber(metric.left, "°")}</span>
-      <span>R ${formatNumber(metric.right, "°")}</span>
-      <span>Δ ${formatNumber(metric.absoluteDelta, "°")}</span>
-    </div>`).join("");
+
+  const order = ["kneeFlexion", "frontalKneeProjection", "hipFlexion", "thighInclination", "ankleAngle", "kneePath"];
+  const rows = order.filter((key) => summary.bilateral[key]).map((key) => {
+    const metric = summary.bilateral[key];
+    const direction = metric.consistentGreaterSide && !["mixed", "similar_or_below_resolution"].includes(metric.consistentGreaterSide)
+      ? `${metric.consistentGreaterSide} across ${Math.round((metric.directionConsistency || 0) * 100)}% of directional reps`
+      : metric.consistentGreaterSide === "mixed" ? "direction varied across reps" : "no stable side direction";
+    return `
+      <div class="clinical-eval-row">
+        <span><b>${html(metric.label || key)}</b><small>${html(direction)}</small></span>
+        <span>L ${formatMetric(metric, metric.left)}</span>
+        <span>R ${formatMetric(metric, metric.right)}</span>
+        <span>Δ ${formatMetric(metric, metric.absoluteDelta)}</span>
+      </div>`;
+  }).join("");
+
   const compensation = summary.compensation || {};
+  const pairedCoverage = Number(summary.quality?.pairedRepCoverage);
   return `<div class="clinical-eval-asymmetry">
-    <h4>Full-body asymmetry</h4>
-    <div class="clinical-eval-row"><b>Measure</b><b>Left</b><b>Right</b><b>Difference</b></div>
+    <div class="clinical-eval-section-title"><div><h4>Kinetic-chain profile</h4><p>Same-rep left/right comparisons plus trunk and pelvis context.</p></div>${qualityBadge(summary.quality, "Measurement support")}</div>
+    <div class="clinical-eval-row clinical-eval-row--header"><b>Measure</b><b>Left</b><b>Right</b><b>Difference</b></div>
     ${rows}
-    <div class="clinical-eval-result-grid">
-      <div class="clinical-eval-metric"><small>Trunk tilt</small><strong>${formatNumber(compensation.trunkImageTiltDeg, "°")}</strong></div>
-      <div class="clinical-eval-metric"><small>Pelvis tilt</small><strong>${formatNumber(compensation.pelvisTiltDeg, "°")}</strong></div>
-      ${compensation.kneePathMagnitude ? `<div class="clinical-eval-metric"><small>Knee-path difference</small><strong>${formatNumber(compensation.kneePathMagnitude.absoluteDelta, "% torso")}</strong></div>` : ""}
+    <div class="clinical-chain-grid">
+      <div class="clinical-chain-node"><small>Trunk</small><strong>${formatNumber(compensation.trunkImageTiltDeg, "°")}</strong><span>image-plane tilt</span></div>
+      <div class="clinical-chain-node"><small>Shoulder ↔ pelvis</small><strong>${formatNumber(compensation.shoulderPelvisCounterTiltDeg, "°")}</strong><span>counter-tilt</span></div>
+      <div class="clinical-chain-node"><small>Pelvis</small><strong>${formatNumber(compensation.pelvisTiltDeg, "°")}</strong><span>line tilt</span></div>
+      <div class="clinical-chain-node"><small>Knee path</small><strong>${compensation.kneePathMagnitude ? formatNumber(compensation.kneePathMagnitude.absoluteDelta, "% torso") : "—"}</strong><span>side difference</span></div>
     </div>
+    ${Number.isFinite(pairedCoverage) ? `<p class="clinical-eval-note">Paired-rep coverage: ${formatNumber(pairedCoverage * 100, "%", 0)}. A side difference is calculated only when both sides exist in the same rep.</p>` : ""}
+    ${summary.bilateral.frontalKneeProjection ? `<p class="clinical-eval-note"><b>2D knee screen:</b> frontal knee projection is an image-plane descriptor. It should not be treated as a 3D knee-angle measurement.</p>` : ""}
     <p class="clinical-eval-note">${html(summary.interpretationGuardrail || "Side-to-side camera measurements are descriptive kinematics and require standardized repeated capture for longitudinal interpretation.")}</p>
+  </div>`;
+}
+
+function balanceMarkup(balance) {
+  if (!balance) return "";
+  const sway = balance.sway || {};
+  return `<div class="clinical-balance-summary">
+    <div class="clinical-eval-section-title"><div><h4>Camera-derived balance motion</h4><p>Body motion relative to the visible base of support.</p></div>${qualityBadge(balance.quality)}</div>
+    <div class="clinical-eval-result-grid clinical-eval-result-grid--balance">
+      <div class="clinical-eval-metric"><small>ML hip range</small><strong>${formatNumber(sway.hipMedialLateralRangeTorso, " torso", 3)}</strong></div>
+      <div class="clinical-eval-metric"><small>Hip path velocity</small><strong>${formatNumber(sway.hipPathVelocityTorsoPerSecond, " torso/s", 3)}</strong></div>
+      <div class="clinical-eval-metric"><small>ML hip RMS</small><strong>${formatNumber(sway.hipMedialLateralRmsTorso, " torso", 3)}</strong></div>
+      <div class="clinical-eval-metric"><small>95% hip-motion ellipse</small><strong>${formatNumber(sway.hipMotionEllipse95AreaTorso2, " torso²", 4)}</strong></div>
+      <div class="clinical-eval-metric"><small>Trunk variability</small><strong>${formatNumber(sway.trunkTiltSdDeg, "°")}</strong></div>
+      <div class="clinical-eval-metric"><small>Capture coverage</small><strong>${formatNumber((balance.coverage ?? 0) * 100, "%", 0)}</strong></div>
+    </div>
+    <p class="clinical-eval-note">Base reference: ${html(balance.baseReference || "not recorded")}. ${html(balance.interpretationGuardrail || "")}</p>
   </div>`;
 }
 
@@ -177,7 +234,7 @@ async function saveCurrentResult() {
     });
     setStatus("Evaluation saved to the patient record.");
     if (button) button.textContent = "Saved";
-    await renderHistory();
+    await Promise.all([renderHistory(), loadLongitudinalSessions({ preserveExercise: true })]);
   } catch (error) {
     setStatus(error?.message || "Evaluation could not be saved.");
     if (button) button.disabled = false;
@@ -195,17 +252,12 @@ function renderResult(result) {
   const metrics = result.metrics || {};
   const balance = result.balance;
   let primary = "";
-  if (result.id === "chair_stand_30s") primary = `<div class="clinical-eval-metric"><small>30-second chair stand</small><strong>${metrics.repetitions ?? 0} completed stands</strong></div>`;
-  else if (result.id === "four_stage_balance" || result.id === "single_leg_stance") primary = `<div class="clinical-eval-metric"><small>Observed hold time</small><strong>${formatNumber(balance?.holdSeconds, " s")}</strong></div>`;
-  else if (result.id === "single_leg_squat") primary = `<div class="clinical-eval-metric"><small>Captured repetitions</small><strong>${metrics.repetitions ?? 0}</strong></div>`;
-  else if (result.id === "tug") primary = `<div class="clinical-eval-metric"><small>Timed Up & Go</small><strong>${formatNumber(result.tugSeconds, " s")}</strong></div>`;
-  const balanceDetails = balance ? `<div class="clinical-eval-result-grid">
-    <div class="clinical-eval-metric"><small>Hip ML sway range</small><strong>${formatNumber(balance.sway?.hipMedialLateralRangeTorso, " torso")}</strong></div>
-    <div class="clinical-eval-metric"><small>Trunk sway SD</small><strong>${formatNumber(balance.sway?.trunkTiltSdDeg, "°")}</strong></div>
-    <div class="clinical-eval-metric"><small>Capture coverage</small><strong>${formatNumber((balance.coverage || 0) * 100, "%")}</strong></div>
-  </div><p class="clinical-eval-note">${html(balance.interpretationGuardrail)}</p>` : "";
+  if (result.id === "chair_stand_30s") primary = `<div class="clinical-eval-metric clinical-eval-metric--primary"><small>30-second chair stand</small><strong>${metrics.repetitions ?? 0} completed stands</strong></div>`;
+  else if (result.id === "four_stage_balance" || result.id === "single_leg_stance") primary = `<div class="clinical-eval-metric clinical-eval-metric--primary"><small>Observed hold time</small><strong>${formatNumber(balance?.holdSeconds, " s")}</strong></div>`;
+  else if (result.id === "single_leg_squat") primary = `<div class="clinical-eval-metric clinical-eval-metric--primary"><small>Captured repetitions</small><strong>${metrics.repetitions ?? 0}</strong></div>`;
+  else if (result.id === "tug") primary = `<div class="clinical-eval-metric clinical-eval-metric--primary"><small>Timed Up & Go</small><strong>${formatNumber(result.tugSeconds, " s")}</strong></div>`;
   const saveDisabled = state.selectedPatientId ? "" : " disabled";
-  container.innerHTML = `<h3>${html(evaluation?.shortName || "Evaluation")} result</h3>${primary}${balanceDetails}${asymmetryMarkup(result.asymmetry)}<p class="clinical-eval-note"><b>Clinical boundary:</b> ${html(evaluation?.interpretation || "Review in clinical context.")}</p><button class="button button--primary" type="button" data-clinical-save${saveDisabled}>Save to patient record</button>${state.selectedPatientId ? "" : `<p class="clinical-eval-note">Select a patient above to save this result.</p>`}`;
+  container.innerHTML = `<h3>${html(evaluation?.shortName || "Evaluation")} result</h3>${primary}${balanceMarkup(balance)}${asymmetryMarkup(result.asymmetry)}<p class="clinical-eval-note"><b>Clinical boundary:</b> ${html(evaluation?.interpretation || "Review in clinical context.")}</p><button class="button button--primary" type="button" data-clinical-save${saveDisabled}>Save to patient record</button>${state.selectedPatientId ? "" : `<p class="clinical-eval-note">Select a patient above to save this result.</p>`}`;
   container.querySelector("[data-clinical-save]")?.addEventListener("click", saveCurrentResult);
 }
 
@@ -217,6 +269,7 @@ function renderRunner() {
   const tug = evaluation.id === "tug";
   const balance = evaluation.id === "four_stage_balance";
   const unilateral = evaluation.id === "single_leg_stance" || evaluation.id === "single_leg_squat";
+  const showFrontalKnee = evaluation.id === "single_leg_squat";
   runner.innerHTML = `
     <h3>${html(evaluation.name)}</h3>
     <p class="clinical-eval-protocol">${html(evaluation.protocol)}</p>
@@ -226,7 +279,7 @@ function renderRunner() {
       ${evaluation.id === "single_leg_stance" ? `<label>Trial limit (sec)<input data-clinical-duration type="number" min="5" max="60" value="30" /></label>` : ""}
       ${tug ? `<button class="button button--primary" type="button" data-clinical-tug-start>Start TUG timer</button><button class="button button--ghost" type="button" data-clinical-tug-stop disabled>Stop</button>` : `<button class="button button--primary" type="button" data-clinical-eval-start>Start camera evaluation</button><button class="button button--ghost" type="button" data-clinical-eval-stop disabled>Stop</button>`}
     </div>
-    ${tug ? `<div class="clinical-eval-tug-clock" data-clinical-tug-clock>0.0 s</div><p class="clinical-eval-note">Axion times the standardized sequence, but the clinician must verify the chair, 3 m / 10 ft course, turn point, assistive-device use, and safety.</p>` : `<div class="clinical-eval-camera" data-clinical-eval-camera><video data-clinical-eval-video muted playsinline></video><canvas data-clinical-eval-canvas></canvas></div><div class="clinical-eval-live"><div><small>Time</small><strong data-clinical-live-time>0.0 s</strong></div><div><small>Reps</small><strong data-clinical-live-reps>0</strong></div><div><small>Movement</small><strong data-clinical-live-angle>—</strong></div><div><small>Left knee bend</small><strong data-clinical-live-left-knee>—</strong></div><div><small>Right knee bend</small><strong data-clinical-live-right-knee>—</strong></div><div><small>Knee difference</small><strong data-clinical-live-knee-delta>—</strong></div></div>`}
+    ${tug ? `<div class="clinical-eval-tug-clock" data-clinical-tug-clock>0.0 s</div><p class="clinical-eval-note">Axion times the standardized sequence, but the clinician must verify the chair, 3 m / 10 ft course, turn point, assistive-device use, and safety.</p>` : `<div class="clinical-eval-camera" data-clinical-eval-camera><video data-clinical-eval-video muted playsinline></video><canvas data-clinical-eval-canvas></canvas></div><div class="clinical-eval-live"><div><small>Time</small><strong data-clinical-live-time>0.0 s</strong></div><div><small>Reps</small><strong data-clinical-live-reps>0</strong></div><div><small>Movement</small><strong data-clinical-live-angle>—</strong></div><div><small>Left knee bend</small><strong data-clinical-live-left-knee>—</strong></div><div><small>Right knee bend</small><strong data-clinical-live-right-knee>—</strong></div><div><small>Knee difference</small><strong data-clinical-live-knee-delta>—</strong></div>${showFrontalKnee ? `<div><small>2D frontal knee Δ</small><strong data-clinical-live-frontal-knee-delta>—</strong></div>` : ""}</div>`}
     <p class="clinical-eval-status" data-clinical-eval-status>${html(evaluation.safety)}</p>
   `;
   bindRunnerEvents();
@@ -259,11 +312,17 @@ async function startCameraEvaluation() {
     prescribedSide: config.prescribedSide,
     onPose: (landmarks) => {
       const now = performance.now();
-      if (state.balance) state.balance.push(extractBalanceFrame({ imageLandmarks: landmarks, timestampMs: now }));
+      if (state.balance) state.balance.push(extractBalanceFrame({ imageLandmarks: landmarks, timestampMs: now, stance, side }));
       const frame = extractBiomechanicsFrame({ imageLandmarks: landmarks, timestampMs: now });
       const asymmetry = analyzeFrameAsymmetry(frame);
       const knee = asymmetry?.bilateral?.kneeFlexion;
-      if (knee) setLive({ leftKnee: formatNumber(knee.left, "°"), rightKnee: formatNumber(knee.right, "°"), kneeDelta: formatNumber(knee.absoluteDelta, "°") });
+      const frontalKnee = asymmetry?.bilateral?.frontalKneeProjection;
+      setLive({
+        leftKnee: knee ? formatNumber(knee.left, "°") : null,
+        rightKnee: knee ? formatNumber(knee.right, "°") : null,
+        kneeDelta: knee ? formatNumber(knee.absoluteDelta, "°") : null,
+        frontalKneeDelta: frontalKnee ? formatNumber(frontalKnee.absoluteDelta, "°") : null,
+      });
     },
     onUpdate: (update) => {
       const angle = Number.isFinite(update?.jointAngle) ? `${Math.round(update.jointAngle)}°` : update?.stage || "—";
@@ -359,10 +418,80 @@ async function renderHistory() {
     container.innerHTML = rows.length ? rows.map((row) => {
       const evaluation = getClinicalEvaluation(row.evaluation_type);
       const date = row.completed_at ? new Date(row.completed_at).toLocaleDateString() : "";
-      return `<div class="clinical-eval-history-row"><span><b>${html(evaluation?.shortName || row.evaluation_type)}</b><small>${html(date)}</small></span><strong>${html(historySummary(row))}</strong></div>`;
+      const grade = row?.result?.asymmetry?.quality?.grade || row?.result?.balance?.quality?.grade || null;
+      return `<div class="clinical-eval-history-row"><span><b>${html(evaluation?.shortName || row.evaluation_type)}</b><small>${html(date)}${grade ? ` · ${html(grade)} capture support` : ""}</small></span><strong>${html(historySummary(row))}</strong></div>`;
     }).join("") : `<p class="clinical-eval-note">No saved clinical evaluations yet.</p>`;
-  } catch (error) {
+  } catch {
     container.innerHTML = `<p class="clinical-eval-note">Evaluation history could not load.</p>`;
+  }
+}
+
+function trendStateText(stateName) {
+  if (stateName === "larger_difference") return "larger side difference";
+  if (stateName === "smaller_difference") return "smaller side difference";
+  return "within measurement variability";
+}
+
+function longitudinalMarkup(timeline) {
+  if (!timeline || timeline.status === "unavailable") return `<p class="clinical-eval-note">No quality-gated biomechanics sessions are available yet.</p>`;
+  const trendOrder = ["kneeFlexion", "frontalKneeProjection", "hipFlexion", "thighInclination", "ankleAngle", "kneePathMagnitude"];
+  const trendCards = trendOrder.filter((key) => timeline.trends?.[key]).map((key) => {
+    const trend = timeline.trends[key];
+    return `<div class="clinical-longitudinal-card clinical-longitudinal-card--${html(trend.change.state)}"><small>${html(trend.label)}</small><strong>${formatNumber(trend.baseline.absoluteDelta, "")} → ${formatNumber(trend.recent.absoluteDelta, "")}</strong><span>${html(trendStateText(trend.change.state))}</span></div>`;
+  }).join("");
+  const candidates = (timeline.redistributionCandidates || []).slice(0, 3).map((candidate) => `<li>${html(candidate.description)}</li>`).join("");
+  const recentTimeline = (timeline.timeline || []).slice(-8).map((entry) => {
+    const date = entry.capturedAt ? new Date(entry.capturedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—";
+    const knee = entry.bilateral?.kneeFlexion?.absoluteDelta;
+    return `<span class="clinical-timeline-point"><b>${html(date)}</b><small>${Number.isFinite(knee) ? `Knee Δ ${formatNumber(knee, "°")}` : "session"}</small></span>`;
+  }).join("");
+
+  if (timeline.status === "timeline_only_insufficient_nonoverlapping_sessions") {
+    return `<div class="clinical-longitudinal-meta"><span>${timeline.usableSessions} usable sessions</span><span>${timeline.requiredUsableSessions} required for trend inference</span></div><div class="clinical-timeline-strip">${recentTimeline}</div><p class="clinical-eval-note">${html(timeline.interpretationGuardrail)}</p>`;
+  }
+  return `<div class="clinical-longitudinal-meta"><span>${timeline.usableSessions} usable sessions</span><span>early ${timeline.baselineSessions} vs recent ${timeline.recentSessions}</span></div><div class="clinical-timeline-strip">${recentTimeline}</div><div class="clinical-longitudinal-grid">${trendCards || `<p class="clinical-eval-note">No bilateral trend had enough paired feature support.</p>`}</div>${candidates ? `<div class="clinical-redistribution"><b>Cross-chain changes for clinician review</b><ul>${candidates}</ul><p>These are inverse kinematic changes, not proof that force or mechanical load transferred between joints.</p></div>` : ""}<p class="clinical-eval-note">${html(timeline.interpretationGuardrail)}</p>`;
+}
+
+function renderLongitudinal() {
+  const container = document.querySelector("[data-clinical-longitudinal]");
+  if (!container) return;
+  if (!state.selectedPatientId) {
+    container.innerHTML = `<p class="clinical-eval-note">Select an active patient to review longitudinal kinetic-chain changes.</p>`;
+    return;
+  }
+  const exerciseKeys = [...new Set(state.biomechanicsSessions.map((session) => session.exercise_key).filter(Boolean))];
+  if (!exerciseKeys.length) {
+    container.innerHTML = `<p class="clinical-eval-note">No saved biomechanics sessions are available for this patient yet.</p>`;
+    return;
+  }
+  if (!state.longitudinalExerciseKey || !exerciseKeys.includes(state.longitudinalExerciseKey)) {
+    const currentExercise = trackerConfig(state.selected, "either")?.exerciseKey;
+    state.longitudinalExerciseKey = exerciseKeys.includes(currentExercise) ? currentExercise : exerciseKeys[0];
+  }
+  const timeline = buildLongitudinalAsymmetryTimeline(state.biomechanicsSessions, { exerciseKey: state.longitudinalExerciseKey });
+  container.innerHTML = `<div class="clinical-longitudinal-head"><div><b>Compensation migration review</b><p>Compare non-overlapping early vs recent sessions of the same exercise.</p></div><label>Exercise<select data-clinical-longitudinal-exercise>${exerciseKeys.map((key) => `<option value="${html(key)}"${key === state.longitudinalExerciseKey ? " selected" : ""}>${html(key.replaceAll("_", " "))}</option>`).join("")}</select></label></div>${longitudinalMarkup(timeline)}`;
+  container.querySelector("[data-clinical-longitudinal-exercise]")?.addEventListener("change", (event) => {
+    state.longitudinalExerciseKey = event.target.value || null;
+    renderLongitudinal();
+  });
+}
+
+async function loadLongitudinalSessions({ preserveExercise = false } = {}) {
+  const container = document.querySelector("[data-clinical-longitudinal]");
+  if (!state.selectedPatientId) {
+    state.biomechanicsSessions = [];
+    if (!preserveExercise) state.longitudinalExerciseKey = null;
+    renderLongitudinal();
+    return;
+  }
+  if (container) container.innerHTML = `<p class="clinical-eval-note">Loading longitudinal movement history…</p>`;
+  try {
+    state.biomechanicsSessions = await listPatientBiomechanicsSessions(state.selectedPatientId, { limit: 120 });
+    if (!preserveExercise) state.longitudinalExerciseKey = null;
+    renderLongitudinal();
+  } catch {
+    state.biomechanicsSessions = [];
+    if (container) container.innerHTML = `<p class="clinical-eval-note">Longitudinal movement history could not load.</p>`;
   }
 }
 
@@ -383,24 +512,26 @@ function buildPanel() {
   panel.className = "therapist-panel clinical-evaluation-panel";
   panel.dataset.clinicalEvaluationsPanel = "true";
   panel.innerHTML = `
-    <div class="clinical-eval-head"><div><span class="section-kicker">CLINICAL EVALUATIONS</span><h2>Standardized screens + full-body movement profile</h2><p>Run functional and balance evaluations alongside Axion's bilateral kinematics. Standard test outcomes remain distinct from experimental camera-derived sway and asymmetry features.</p></div><label class="clinical-eval-patient-label">Patient<select data-clinical-patient><option value="">Loading patients…</option></select></label></div>
+    <div class="clinical-eval-head"><div><span class="section-kicker">CLINICAL EVALUATIONS</span><h2>Functional screens + kinetic-chain movement intelligence</h2><p>Run standardized functional and balance screens alongside paired bilateral kinematics, capture-quality gates, and same-exercise longitudinal compensation review.</p></div><label class="clinical-eval-patient-label">Patient<select data-clinical-patient><option value="">Loading patients…</option></select></label></div>
     <div class="clinical-eval-grid">${listClinicalEvaluations().map(evaluationCard).join("")}</div>
     <div class="clinical-eval-workspace">
       <section class="clinical-eval-runner" data-clinical-eval-runner></section>
       <aside class="clinical-eval-results" data-clinical-eval-results><h3>Evaluation result</h3><p class="clinical-eval-note">Run an evaluation to see standardized outcomes and Axion movement descriptors here.</p></aside>
+      <section class="clinical-longitudinal"><h3>Longitudinal kinetic-chain review</h3><div data-clinical-longitudinal><p class="clinical-eval-note">Select an active patient to review longitudinal kinetic-chain changes.</p></div></section>
       <section class="clinical-eval-history"><h3>Saved evaluations</h3><div data-clinical-history><p class="clinical-eval-note">Select an active patient to view saved evaluations.</p></div></section>
-      <section class="clinical-eval-boundary"><b>Measurement boundary</b><p>Axion's camera can quantify joint motion, bilateral differences, trunk/pelvis motion, rep timing, and normalized sway. It does not measure ground-reaction force, joint loading, muscle activation, or force-platform center of pressure, and it does not diagnose the cause of an asymmetry.</p></section>
+      <section class="clinical-eval-boundary"><b>Measurement boundary</b><p>Axion can describe joint motion, paired bilateral differences, trunk/pelvis strategy, rep timing, and base-relative camera sway. It does not directly measure ground-reaction force, tissue loading, muscle activation, or force-platform center of pressure. Cross-chain changes are clinician-review signals, not proof of causation, diagnosis, clinical significance, or future injury.</p></section>
     </div>`;
   panel.querySelector("[data-clinical-patient]")?.addEventListener("change", async (event) => {
     state.selectedPatientId = event.target.value || null;
     if (state.lastResult) renderResult(state.lastResult);
-    await renderHistory();
+    await Promise.all([renderHistory(), loadLongitudinalSessions()]);
   });
   panel.querySelectorAll("[data-clinical-eval-select]").forEach((button) => button.addEventListener("click", () => {
     state.selected = button.dataset.clinicalEvalSelect;
     panel.querySelectorAll(".clinical-eval-card").forEach((card) => card.classList.toggle("active", card.dataset.clinicalEvalSelect === state.selected));
     renderRunner();
     renderResult(null);
+    renderLongitudinal();
   }));
   return panel;
 }
@@ -424,7 +555,7 @@ export function syncClinicalEvaluationWorkspace() {
   if (!page.querySelector("[data-clinical-evaluations-panel]")) {
     page.append(buildPanel());
     renderRunner();
-    void loadPatients().then(renderHistory);
+    void loadPatients().then(() => Promise.all([renderHistory(), loadLongitudinalSessions()]));
   }
 }
 
