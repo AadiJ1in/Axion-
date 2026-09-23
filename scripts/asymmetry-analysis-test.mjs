@@ -66,10 +66,10 @@ const summary = summarizeSessionAsymmetry([
 assert.equal(summary.bilateral.kneeFlexion.consistentGreaterSide, 'left');
 assert.equal(summary.bilateral.kneeFlexion.repSamples, 3);
 assert.equal(summary.bilateral.kneeFlexion.pairedCoverage, 1);
-assert.ok(summary.bilateral.kneeFlexion.absoluteDelta <= 1, 'mean knee behavior can look nearly symmetric');
-assert.ok(summary.bilateral.kneePeakFlexion.absoluteDelta >= 13, 'peak knee behavior preserves a repeatable larger side difference');
-assert.equal(summary.bilateral.kneePeakFlexion.phase, 'max');
-assert.equal(summary.bilateral.kneePeakFlexion.consistentGreaterSide, 'left');
+assert.ok(summary.bilateral.kneeFlexion.absoluteDelta >= 13, 'primary knee metric preserves repeatable peak-side difference');
+assert.equal(summary.bilateral.kneeFlexion.phase, 'max');
+assert.ok(summary.bilateral.kneeMeanFlexion.absoluteDelta <= 1, 'mean knee behavior remains available and can look nearly symmetric');
+assert.equal(summary.bilateral.kneeMeanFlexion.phase, 'mean');
 assert.equal(summary.quality.grade, 'high');
 assert.equal(summary.quality.usable, true);
 assert.equal(summary.bilateral.frontalKneeProjection.repSamples, 3);
@@ -85,17 +85,17 @@ assert.equal(sparse.quality.usable, false);
 assert.equal(sparse.quality.grade, 'limited');
 
 const mixed = summarizeSessionAsymmetry([rep(60,45), rep(42,52), rep(55,48)]);
-assert.equal(mixed.bilateral.kneeFlexion.consistentGreaterSide, 'mixed');
-assert.ok(mixed.bilateral.kneeFlexion.directionConsistency < .8);
+assert.equal(mixed.bilateral.kneeMeanFlexion.consistentGreaterSide, 'mixed');
+assert.ok(mixed.bilateral.kneeMeanFlexion.directionConsistency < .8);
 
 const baseline = summarizeSessionAsymmetry([rep(50,47), rep(49,47), rep(51,48)]);
 const comparison = compareAsymmetryToBaseline(summary, baseline);
-assert.ok(Number.isFinite(comparison.change.kneePeakFlexion.delta));
 assert.ok(Number.isFinite(comparison.change.kneeFlexion.delta));
+assert.ok(Number.isFinite(comparison.change.kneeMeanFlexion.delta));
 assert.match(comparison.interpretationGuardrail, /not tests of statistical or clinical significance/i);
 
 const nearlySame = summarizeSessionAsymmetry([rep(51,48), rep(50,48), rep(52,49)]);
 const nearComparison = compareAsymmetryToBaseline(nearlySame, baseline);
-assert.equal(nearComparison.change.kneeFlexion.state, 'within_measurement_variability');
+assert.equal(nearComparison.change.kneeMeanFlexion.state, 'within_measurement_variability');
 
-console.log('Asymmetry analysis passed: peak-vs-mean behavior, same-rep pairing, robust direction, frontal-plane descriptors, quality gating, and baseline variability guards are preserved.');
+console.log('Asymmetry analysis passed: peak-primary flexion, preserved mean behavior, same-rep pairing, robust direction, frontal-plane descriptors, quality gating, and baseline variability guards are preserved.');
