@@ -1,21 +1,24 @@
-// Axion Compensation Migration signals v1
+// Axion Compensation Migration signals v2
 //
-// This module compares repeated sessions of the SAME exercise for the SAME person.
-// It reports descriptive within-person mechanical shifts only. It does not infer
-// injury, tissue load, diagnosis, causation, or treatment recommendations.
+// Compares repeated quality-gated sessions of the SAME exercise for the SAME person.
+// It surfaces descriptive within-person redistribution candidates only. It does not
+// infer injury, tissue load, diagnosis, causation, treatment response, or injury risk.
 
-export const COMPENSATION_MIGRATION_SCHEMA_VERSION = 1;
+export const COMPENSATION_MIGRATION_SCHEMA_VERSION = 2;
 
 const FEATURE_DEFINITIONS = Object.freeze({
   knee_flexion_asymmetry_deg: { family: "knee", label: "Knee flexion asymmetry", unit: "°", floor: 2.5, magnitude: true },
+  frontal_knee_projection_asymmetry_deg: { family: "knee", label: "2D frontal knee projection asymmetry", unit: "°", floor: 2.0, magnitude: true, requiresFrontalPlane: true },
   hip_flexion_asymmetry_deg: { family: "hip", label: "Hip flexion asymmetry", unit: "°", floor: 2.5, magnitude: true },
+  thigh_frontal_inclination_asymmetry_deg: { family: "hip", label: "Frontal thigh inclination asymmetry", unit: "°", floor: 2.0, magnitude: true, requiresFrontalPlane: true },
   ankle_angle_asymmetry_deg: { family: "ankle", label: "Ankle-angle asymmetry", unit: "°", floor: 2.5, magnitude: true },
-  pelvis_line_tilt_deg: { family: "pelvis", label: "Pelvis line tilt", unit: "°", floor: 2.0, magnitude: true },
-  trunk_image_tilt_deg: { family: "trunk", label: "Image-plane trunk tilt", unit: "°", floor: 2.0, magnitude: true },
-  trunk_3d_tilt_deg: { family: "trunk", label: "3D trunk tilt", unit: "°", floor: 2.0, magnitude: true },
-  left_knee_path_offset_pct: { family: "knee_path", label: "Left knee path offset", unit: "% torso", floor: 4.0, magnitude: true },
-  right_knee_path_offset_pct: { family: "knee_path", label: "Right knee path offset", unit: "% torso", floor: 4.0, magnitude: true },
-  pelvis_depth_asymmetry_pct: { family: "pelvis", label: "Pelvis depth asymmetry", unit: "% torso", floor: 4.0, magnitude: true },
+  pelvis_line_tilt_deg: { family: "pelvis", label: "Pelvis line tilt", unit: "°", floor: 2.0, magnitude: true, requiresFrontalPlane: true },
+  pelvis_depth_asymmetry_pct: { family: "pelvis", label: "Pelvis depth asymmetry", unit: "% torso", floor: 4.0, magnitude: true, requiresWorld: true },
+  trunk_image_tilt_deg: { family: "trunk", label: "Image-plane trunk tilt", unit: "°", floor: 2.0, magnitude: true, requiresFrontalPlane: true },
+  trunk_3d_tilt_deg: { family: "trunk", label: "3D trunk tilt", unit: "°", floor: 2.0, magnitude: true, requiresWorld: true },
+  shoulder_pelvis_counter_tilt_deg: { family: "trunk", label: "Shoulder-pelvis counter-tilt", unit: "°", floor: 2.0, magnitude: true, requiresFrontalPlane: true },
+  left_knee_path_offset_pct: { family: "knee_path", label: "Left knee path offset", unit: "% torso", floor: 4.0, magnitude: true, requiresFrontalPlane: true },
+  right_knee_path_offset_pct: { family: "knee_path", label: "Right knee path offset", unit: "% torso", floor: 4.0, magnitude: true, requiresFrontalPlane: true },
 });
 
 const finite = (value) => value === null || value === undefined || value === ""
@@ -44,6 +47,11 @@ const mad = (values, center = median(values)) => {
   }));
 };
 
+const mean = (values) => {
+  const usable = values.map(finite).filter(Number.isFinite);
+  return usable.length ? usable.reduce((sum, value) => sum + value, 0) / usable.length : null;
+};
+
 const safeDateMs = (session) => {
   const raw = session?.completed_at || session?.created_at || session?.started_at;
   if (!raw) return null;
@@ -52,7 +60,9 @@ const safeDateMs = (session) => {
 };
 
 function biomechanicsSummary(session) {
-  return session?.movement_summary?.biomechanics_v1 || null;
+  return session?.movement_summary?.biomechanics_v2
+    || session?.movement_summary?.biomechanics_v1
+    || null;
 }
 
 function featureValue(session, featureName) {
@@ -60,7 +70,25 @@ function featureValue(session, featureName) {
   return finite(entry?.mean ?? entry);
 }
 
+function featureCaptureSupported(session, featureName) {
+  const definition = FEATURE_DEFINITIONS[featureName];
+  const summary = biomechanicsSummary(session);
+  if (!definition || !summary) return false;
+  if (definition.requiresFrontalPlane) {
+    const coverage = finite(summary.averageFrontalPlaneCoverage);
+    // Legacy summaries did not store this field. A present feature remains readable,
+    // but v2 summaries fail closed when explicit frontal coverage is too low.
+    if (summary.schemaVersion >= 2 && (!Number.isFinite(coverage) || coverage < 0.55)) return false;
+  }
+  if (definition.requiresWorld) {
+    const coverage = finite(summary.averageWorldLandmarkCoverage);
+    if (summary.schemaVersion >= 2 && (!Number.isFinite(coverage) || coverage < 0.55)) return false;
+  }
+  return true;
+}
+
 function normalizedFeatureValue(session, featureName) {
+  if (!featureCaptureSupported(session, featureName)) return null;
   const definition = FEATURE_DEFINITIONS[featureName];
   const value = featureValue(session, featureName);
   if (value === null) return null;
@@ -69,15 +97,19 @@ function normalizedFeatureValue(session, featureName) {
 
 function sessionQuality(session) {
   const summary = biomechanicsSummary(session);
-  if (!summary) return { usable: false, coverage: null, visibility: null };
+  if (!summary) return { usable: false, coverage: null, visibility: null, frontalPlaneCoverage: null, worldLandmarkCoverage: null };
   const coverage = finite(summary.averageCoverage);
   const visibility = finite(summary.averageVisibility);
+  const frontalPlaneCoverage = finite(summary.averageFrontalPlaneCoverage);
+  const worldLandmarkCoverage = finite(summary.averageWorldLandmarkCoverage);
   return {
-    // Longitudinal inference fails closed when capture-quality metadata is absent.
     usable: Number.isFinite(coverage) && coverage >= 0.55
       && Number.isFinite(visibility) && visibility >= 0.55,
     coverage,
     visibility,
+    frontalPlaneCoverage,
+    worldLandmarkCoverage,
+    biomechanicsSchemaVersion: finite(summary.schemaVersion),
   };
 }
 
@@ -103,15 +135,19 @@ function shiftAgainstBaseline(baseline, recent) {
 }
 
 function persistenceDirection(sessions, featureName, baseline) {
-  if (!baseline || sessions.length < 2) return { persistent: false, direction: 0 };
+  if (!baseline || sessions.length < 2) return { persistent: false, direction: 0, supportingSamples: 0 };
   const values = sessions.map((session) => normalizedFeatureValue(session, featureName)).filter(Number.isFinite);
-  if (values.length < 2) return { persistent: false, direction: 0 };
+  if (values.length < 2) return { persistent: false, direction: 0, supportingSamples: values.length };
   const deltas = values.map((value) => value - baseline.median);
   const nonZero = deltas.filter((value) => Math.abs(value) >= baseline.robustScale * 0.5);
-  if (nonZero.length < 2) return { persistent: false, direction: 0 };
+  if (nonZero.length < 2) return { persistent: false, direction: 0, supportingSamples: nonZero.length };
   const positive = nonZero.every((value) => value > 0);
   const negative = nonZero.every((value) => value < 0);
-  return { persistent: positive || negative, direction: positive ? 1 : negative ? -1 : 0 };
+  return {
+    persistent: positive || negative,
+    direction: positive ? 1 : negative ? -1 : 0,
+    supportingSamples: nonZero.length,
+  };
 }
 
 function featureShift({ featureName, baselineSessions, recentSessions, minimumFeatureSamples }) {
@@ -134,12 +170,17 @@ function featureShift({ featureName, baselineSessions, recentSessions, minimumFe
     standardizedShift: round(shift.standardized),
     persistent: persistence.persistent,
     direction: persistence.direction,
+    persistenceSamples: persistence.supportingSamples,
     baselineSamples: baseline.samples,
     recentSamples: recent.samples,
     supportFraction: round(Math.min(
       baseline.samples / baselineSessions.length,
       recent.samples / recentSessions.length,
     )),
+    measurementRequirements: {
+      frontalPlane: Boolean(definition.requiresFrontalPlane),
+      worldLandmarks: Boolean(definition.requiresWorld),
+    },
   };
 }
 
@@ -199,6 +240,8 @@ function redistributionCandidates(families) {
         increasingFamily: higher.family,
         decreasingShift: lower.standardizedShift,
         increasingShift: higher.standardizedShift,
+        decreasingFeature: lower.strongestFeature,
+        increasingFeature: higher.strongestFeature,
         description: `${lower.family} deviation magnitude decreased relative to the early-session reference while ${higher.family} deviation magnitude increased during the same repeated exercise.`,
       });
     }
@@ -210,14 +253,15 @@ function redistributionCandidates(families) {
 function qualitySummary(sessions) {
   const quality = sessions.map(sessionQuality);
   const usable = quality.filter((item) => item.usable).length;
-  const coverages = quality.map((item) => item.coverage).filter(Number.isFinite);
-  const visibilities = quality.map((item) => item.visibility).filter(Number.isFinite);
   return {
     sessions: sessions.length,
     usableSessions: usable,
     usableFraction: sessions.length ? round(usable / sessions.length) : null,
-    averageCoverage: coverages.length ? round(coverages.reduce((sum, value) => sum + value, 0) / coverages.length) : null,
-    averageVisibility: visibilities.length ? round(visibilities.reduce((sum, value) => sum + value, 0) / visibilities.length) : null,
+    averageCoverage: round(mean(quality.map((item) => item.coverage))),
+    averageVisibility: round(mean(quality.map((item) => item.visibility))),
+    averageFrontalPlaneCoverage: round(mean(quality.map((item) => item.frontalPlaneCoverage))),
+    averageWorldLandmarkCoverage: round(mean(quality.map((item) => item.worldLandmarkCoverage))),
+    biomechanicsSchemaVersions: [...new Set(quality.map((item) => item.biomechanicsSchemaVersion).filter(Number.isFinite))],
   };
 }
 
@@ -267,7 +311,8 @@ function comparisonContext(sessions) {
 
 /**
  * Compare one repeated exercise across one person's chronological sessions.
- * A single anomalous recording cannot produce a persistent redistribution candidate.
+ * Early and recent windows are always non-overlapping. A single anomalous recording
+ * cannot produce a persistent redistribution candidate.
  */
 export function analyzeExerciseCompensationMigration(sessions = [], {
   baselineWindow = 3,
@@ -327,10 +372,7 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     seenIds.add(session.id);
   }
 
-  const exclusions = {
-    invalidTimestamp: 0,
-    lowOrMissingQuality: 0,
-  };
+  const exclusions = { invalidTimestamp: 0, lowOrMissingQuality: 0 };
   const ordered = candidateSessions
     .filter((session) => {
       const hasTimestamp = safeDateMs(session) !== null;
@@ -368,12 +410,7 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
   const baselineSessions = ordered.slice(0, baselineWindow);
   const recentSessions = ordered.slice(-recentWindow);
   const shifts = Object.keys(FEATURE_DEFINITIONS)
-    .map((featureName) => featureShift({
-      featureName,
-      baselineSessions,
-      recentSessions,
-      minimumFeatureSamples,
-    }))
+    .map((featureName) => featureShift({ featureName, baselineSessions, recentSessions, minimumFeatureSamples }))
     .filter(Boolean);
   const families = aggregateFamilies(shifts);
   const candidates = redistributionCandidates(families);
@@ -385,12 +422,8 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     .sort((a, b) => a.standardizedShift - b.standardizedShift)[0] || null;
 
   const limitations = [];
-  if (!context.cameraView) {
-    limitations.push("Camera-view metadata was not recorded. Consistent capture position should be verified before interpreting longitudinal changes.");
-  }
-  if (!context.prescribedSide) {
-    limitations.push("Prescribed-side metadata was not recorded for this comparison.");
-  }
+  if (!context.cameraView) limitations.push("Camera-view metadata was not recorded. Consistent capture position should be verified before interpreting longitudinal changes.");
+  if (!context.prescribedSide) limitations.push("Prescribed-side metadata was not recorded for this comparison.");
 
   return {
     schemaVersion: COMPENSATION_MIGRATION_SCHEMA_VERSION,
@@ -423,7 +456,7 @@ export function analyzeExerciseCompensationMigration(sessions = [], {
     strongestIncreaseFromEarlyReference: strongestIncrease,
     strongestDecreaseFromEarlyReference: strongestDecrease,
     interpretation: candidates.length
-      ? "A repeated same-exercise pattern shows one movement-feature family decreasing while another increases relative to the person's early-session reference. This inverse longitudinal pattern is for therapist review only; it does not establish mechanical load transfer, causation, injury migration, or injury risk."
+      ? "A repeated same-exercise pattern shows one movement-feature family decreasing while another increases relative to the person's early-session reference. This inverse longitudinal pattern is for therapist review only; it does not establish mechanical load transfer, causation, injury migration, clinical significance, or injury risk."
       : "No persistent, directionally consistent cross-family inverse-change pattern met the current within-person descriptive threshold.",
   };
 }
