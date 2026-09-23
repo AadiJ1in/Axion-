@@ -1,7 +1,13 @@
 import { createMovementTracker } from "./pose.js";
+import { extractBiomechanicsFrame } from "./biomechanics.js";
 import { listClinicalEvaluations, getClinicalEvaluation } from "./clinical-evaluations.js";
 import { createBalanceAccumulator, extractBalanceFrame } from "./balance-analysis.js";
-import { summarizeSessionAsymmetry } from "./asymmetry-analysis.js";
+import { analyzeFrameAsymmetry, summarizeSessionAsymmetry } from "./asymmetry-analysis.js";
+import {
+  listAuthorizedEvaluationPatients,
+  listClinicalEvaluationResults,
+  saveClinicalEvaluationResult,
+} from "./clinical-evaluation-data.js";
 
 const state = {
   selected: "chair_stand_30s",
@@ -13,6 +19,9 @@ const state = {
   tugStartedAt: null,
   tugTimer: null,
   lastResult: null,
+  selectedPatientId: null,
+  patients: [],
+  captureContext: {},
 };
 
 const html = (value = "") => String(value).replace(/[&<>"']/g, (character) => ({
@@ -29,24 +38,22 @@ function isBalanceEvaluation(id = state.selected) {
 
 function trackerConfig(id, side) {
   switch (id) {
-    case "chair_stand_30s":
-      return { exerciseKey: "sit_to_stand", trackingMode: "pose_reps", prescribedSide: "either", durationSeconds: 30 };
-    case "four_stage_balance":
-      return { exerciseKey: "clinical_balance_hold", trackingMode: "timed_hold", prescribedSide: "either", durationSeconds: 10 };
-    case "single_leg_stance":
-      return { exerciseKey: "single_leg_balance", trackingMode: "timed_hold", prescribedSide: side, durationSeconds: null };
-    case "single_leg_squat":
-      return { exerciseKey: "bodyweight_squat", trackingMode: "pose_reps", prescribedSide: side, durationSeconds: null };
-    default:
-      return null;
+    case "chair_stand_30s": return { exerciseKey: "sit_to_stand", trackingMode: "pose_reps", prescribedSide: "either", durationSeconds: 30 };
+    case "four_stage_balance": return { exerciseKey: "clinical_balance_hold", trackingMode: "timed_hold", prescribedSide: "either", durationSeconds: 10 };
+    case "single_leg_stance": return { exerciseKey: "single_leg_balance", trackingMode: "timed_hold", prescribedSide: side, durationSeconds: null };
+    case "single_leg_squat": return { exerciseKey: "bodyweight_squat", trackingMode: "pose_reps", prescribedSide: side, durationSeconds: null };
+    default: return null;
   }
 }
 
 function stopTimers() {
   if (state.timer) clearInterval(state.timer);
   if (state.stopTimer) clearTimeout(state.stopTimer);
+  if (state.tugTimer) clearInterval(state.tugTimer);
   state.timer = null;
   state.stopTimer = null;
+  state.tugTimer = null;
+  state.tugStartedAt = null;
 }
 
 function stopTracker({ render = true } = {}) {
@@ -57,11 +64,17 @@ function stopTracker({ render = true } = {}) {
   let metrics = null;
   try { metrics = active.getMetrics?.() || null; } catch { metrics = null; }
   try { active.destroy?.(); } catch { try { active.stop?.(); } catch { /* cleanup */ } }
-
   const balance = state.balance?.finish?.(performance.now()) || null;
   state.balance = null;
   const asymmetry = metrics?.reps?.length ? summarizeSessionAsymmetry(metrics.reps) : null;
-  state.lastResult = { id: state.selected, metrics, balance, asymmetry, completedAt: new Date().toISOString() };
+  state.lastResult = {
+    id: state.selected,
+    metrics,
+    balance,
+    asymmetry,
+    captureContext: { ...state.captureContext },
+    completedAt: new Date().toISOString(),
+  };
   document.querySelector("[data-clinical-eval-camera]")?.classList.remove("active");
   if (render) renderResult(state.lastResult);
 }
@@ -71,14 +84,19 @@ function setStatus(message) {
   if (target) target.textContent = message || "";
 }
 
-function setLive({ reps = null, angle = null, time = null } = {}) {
-  const set = (selector, value) => {
+function setLive({ reps = null, angle = null, time = null, leftKnee = null, rightKnee = null, kneeDelta = null } = {}) {
+  const values = [
+    ["[data-clinical-live-reps]", reps],
+    ["[data-clinical-live-angle]", angle],
+    ["[data-clinical-live-time]", time],
+    ["[data-clinical-live-left-knee]", leftKnee],
+    ["[data-clinical-live-right-knee]", rightKnee],
+    ["[data-clinical-live-knee-delta]", kneeDelta],
+  ];
+  values.forEach(([selector, value]) => {
     const target = document.querySelector(selector);
     if (target && value !== null && value !== undefined) target.textContent = value;
-  };
-  set("[data-clinical-live-reps]", reps);
-  set("[data-clinical-live-angle]", angle);
-  set("[data-clinical-live-time]", time);
+  });
 }
 
 function formatNumber(value, suffix = "") {
@@ -90,11 +108,7 @@ function asymmetryMarkup(summary) {
   if (!summary?.bilateral || !Object.keys(summary.bilateral).length) {
     return `<div class="clinical-eval-asymmetry"><h4>Full-body asymmetry</h4><p class="clinical-eval-note">No bilateral rep profile is available for this trial.</p></div>`;
   }
-  const labels = {
-    kneeFlexion: "Knee bend",
-    hipFlexion: "Hip bend",
-    ankleAngle: "Ankle angle",
-  };
+  const labels = { kneeFlexion: "Knee bend", hipFlexion: "Hip bend", ankleAngle: "Ankle angle" };
   const rows = Object.entries(summary.bilateral).map(([key, metric]) => `
     <div class="clinical-eval-row">
       <span>${html(labels[key] || metric.label || key)}</span>
@@ -110,10 +124,64 @@ function asymmetryMarkup(summary) {
     <div class="clinical-eval-result-grid">
       <div class="clinical-eval-metric"><small>Trunk tilt</small><strong>${formatNumber(compensation.trunkImageTiltDeg, "°")}</strong></div>
       <div class="clinical-eval-metric"><small>Pelvis tilt</small><strong>${formatNumber(compensation.pelvisTiltDeg, "°")}</strong></div>
-      ${compensation.kneePathMagnitude ? `<div class="clinical-eval-metric"><small>Knee-path difference</small><strong>${formatNumber(compensation.kneePathMagnitude.absoluteDelta, "%")}</strong></div>` : ""}
+      ${compensation.kneePathMagnitude ? `<div class="clinical-eval-metric"><small>Knee-path difference</small><strong>${formatNumber(compensation.kneePathMagnitude.absoluteDelta, "% torso")}</strong></div>` : ""}
     </div>
     <p class="clinical-eval-note">${html(summary.interpretationGuardrail || "Side-to-side camera measurements are descriptive kinematics and require standardized repeated capture for longitudinal interpretation.")}</p>
   </div>`;
+}
+
+function storageResult(result) {
+  const metrics = result?.metrics || {};
+  return {
+    standardizedOutcome: result?.id === "tug"
+      ? { completionTimeSeconds: Number(result.tugSeconds?.toFixed?.(2) ?? result.tugSeconds) }
+      : result?.id === "chair_stand_30s"
+        ? { completedStands: metrics.repetitions ?? 0 }
+        : isBalanceEvaluation(result?.id)
+          ? { holdTimeSeconds: result?.balance?.holdSeconds ?? null }
+          : { capturedRepetitions: metrics.repetitions ?? 0 },
+    movement: {
+      repetitions: metrics.repetitions ?? null,
+      durationSeconds: metrics.durationSeconds ?? null,
+      jointAngle: metrics.jointAngle ?? null,
+      movementRangeDegrees: metrics.movementRangeDegrees ?? null,
+      symmetryDelta: metrics.symmetryDelta ?? null,
+      measurementSide: metrics.measurementSide ?? null,
+      angleLabel: metrics.angleLabel ?? null,
+      measurementUnit: metrics.measurementUnit ?? null,
+    },
+    balance: result?.balance || null,
+    asymmetry: result?.asymmetry || null,
+    measurementStatus: "descriptive_unvalidated_camera_features",
+  };
+}
+
+async function saveCurrentResult() {
+  if (!state.lastResult || !state.selectedPatientId) {
+    setStatus("Choose an active patient before saving this evaluation.");
+    return;
+  }
+  const button = document.querySelector("[data-clinical-save]");
+  if (button) button.disabled = true;
+  try {
+    await saveClinicalEvaluationResult({
+      patientId: state.selectedPatientId,
+      evaluationType: state.lastResult.id,
+      result: storageResult(state.lastResult),
+      captureContext: {
+        ...state.lastResult.captureContext,
+        source: "axion_therapist_evaluation_workspace",
+        cameraDerived: state.lastResult.id !== "tug",
+      },
+      completedAt: state.lastResult.completedAt,
+    });
+    setStatus("Evaluation saved to the patient record.");
+    if (button) button.textContent = "Saved";
+    await renderHistory();
+  } catch (error) {
+    setStatus(error?.message || "Evaluation could not be saved.");
+    if (button) button.disabled = false;
+  }
 }
 
 function renderResult(result) {
@@ -127,21 +195,18 @@ function renderResult(result) {
   const metrics = result.metrics || {};
   const balance = result.balance;
   let primary = "";
-  if (result.id === "chair_stand_30s") {
-    primary = `<div class="clinical-eval-metric"><small>30-second chair stand</small><strong>${metrics.repetitions ?? 0} completed stands</strong></div>`;
-  } else if (result.id === "four_stage_balance" || result.id === "single_leg_stance") {
-    primary = `<div class="clinical-eval-metric"><small>Observed hold time</small><strong>${formatNumber(balance?.holdSeconds, " s")}</strong></div>`;
-  } else if (result.id === "single_leg_squat") {
-    primary = `<div class="clinical-eval-metric"><small>Captured repetitions</small><strong>${metrics.repetitions ?? 0}</strong></div>`;
-  } else if (result.id === "tug") {
-    primary = `<div class="clinical-eval-metric"><small>Timed Up & Go</small><strong>${formatNumber(result.tugSeconds, " s")}</strong></div>`;
-  }
+  if (result.id === "chair_stand_30s") primary = `<div class="clinical-eval-metric"><small>30-second chair stand</small><strong>${metrics.repetitions ?? 0} completed stands</strong></div>`;
+  else if (result.id === "four_stage_balance" || result.id === "single_leg_stance") primary = `<div class="clinical-eval-metric"><small>Observed hold time</small><strong>${formatNumber(balance?.holdSeconds, " s")}</strong></div>`;
+  else if (result.id === "single_leg_squat") primary = `<div class="clinical-eval-metric"><small>Captured repetitions</small><strong>${metrics.repetitions ?? 0}</strong></div>`;
+  else if (result.id === "tug") primary = `<div class="clinical-eval-metric"><small>Timed Up & Go</small><strong>${formatNumber(result.tugSeconds, " s")}</strong></div>`;
   const balanceDetails = balance ? `<div class="clinical-eval-result-grid">
     <div class="clinical-eval-metric"><small>Hip ML sway range</small><strong>${formatNumber(balance.sway?.hipMedialLateralRangeTorso, " torso")}</strong></div>
     <div class="clinical-eval-metric"><small>Trunk sway SD</small><strong>${formatNumber(balance.sway?.trunkTiltSdDeg, "°")}</strong></div>
     <div class="clinical-eval-metric"><small>Capture coverage</small><strong>${formatNumber((balance.coverage || 0) * 100, "%")}</strong></div>
   </div><p class="clinical-eval-note">${html(balance.interpretationGuardrail)}</p>` : "";
-  container.innerHTML = `<h3>${html(evaluation?.shortName || "Evaluation")} result</h3>${primary}${balanceDetails}${asymmetryMarkup(result.asymmetry)}<p class="clinical-eval-note"><b>Clinical boundary:</b> ${html(evaluation?.interpretation || "Review in clinical context.")}</p>`;
+  const saveDisabled = state.selectedPatientId ? "" : " disabled";
+  container.innerHTML = `<h3>${html(evaluation?.shortName || "Evaluation")} result</h3>${primary}${balanceDetails}${asymmetryMarkup(result.asymmetry)}<p class="clinical-eval-note"><b>Clinical boundary:</b> ${html(evaluation?.interpretation || "Review in clinical context.")}</p><button class="button button--primary" type="button" data-clinical-save${saveDisabled}>Save to patient record</button>${state.selectedPatientId ? "" : `<p class="clinical-eval-note">Select a patient above to save this result.</p>`}`;
+  container.querySelector("[data-clinical-save]")?.addEventListener("click", saveCurrentResult);
 }
 
 function renderRunner() {
@@ -161,7 +226,7 @@ function renderRunner() {
       ${evaluation.id === "single_leg_stance" ? `<label>Trial limit (sec)<input data-clinical-duration type="number" min="5" max="60" value="30" /></label>` : ""}
       ${tug ? `<button class="button button--primary" type="button" data-clinical-tug-start>Start TUG timer</button><button class="button button--ghost" type="button" data-clinical-tug-stop disabled>Stop</button>` : `<button class="button button--primary" type="button" data-clinical-eval-start>Start camera evaluation</button><button class="button button--ghost" type="button" data-clinical-eval-stop disabled>Stop</button>`}
     </div>
-    ${tug ? `<div class="clinical-eval-tug-clock" data-clinical-tug-clock>0.0 s</div><p class="clinical-eval-note">Axion times the standardized sequence, but the clinician must verify the chair, 3 m / 10 ft course, turn point, assistive-device use, and safety.</p>` : `<div class="clinical-eval-camera" data-clinical-eval-camera><video data-clinical-eval-video muted playsinline></video><canvas data-clinical-eval-canvas></canvas></div><div class="clinical-eval-live"><div><small>Time</small><strong data-clinical-live-time>0.0 s</strong></div><div><small>Reps</small><strong data-clinical-live-reps>0</strong></div><div><small>Movement</small><strong data-clinical-live-angle>—</strong></div></div>`}
+    ${tug ? `<div class="clinical-eval-tug-clock" data-clinical-tug-clock>0.0 s</div><p class="clinical-eval-note">Axion times the standardized sequence, but the clinician must verify the chair, 3 m / 10 ft course, turn point, assistive-device use, and safety.</p>` : `<div class="clinical-eval-camera" data-clinical-eval-camera><video data-clinical-eval-video muted playsinline></video><canvas data-clinical-eval-canvas></canvas></div><div class="clinical-eval-live"><div><small>Time</small><strong data-clinical-live-time>0.0 s</strong></div><div><small>Reps</small><strong data-clinical-live-reps>0</strong></div><div><small>Movement</small><strong data-clinical-live-angle>—</strong></div><div><small>Left knee bend</small><strong data-clinical-live-left-knee>—</strong></div><div><small>Right knee bend</small><strong data-clinical-live-right-knee>—</strong></div><div><small>Knee difference</small><strong data-clinical-live-knee-delta>—</strong></div></div>`}
     <p class="clinical-eval-status" data-clinical-eval-status>${html(evaluation.safety)}</p>
   `;
   bindRunnerEvents();
@@ -176,9 +241,8 @@ async function startCameraEvaluation() {
   const video = document.querySelector("[data-clinical-eval-video]");
   const canvas = document.querySelector("[data-clinical-eval-canvas]");
   if (!video || !canvas) return;
-
-  const stance = document.querySelector("[data-clinical-balance-stage]")?.value
-    || (evaluation.id === "single_leg_stance" ? "single_leg" : "unspecified");
+  const stance = document.querySelector("[data-clinical-balance-stage]")?.value || (evaluation.id === "single_leg_stance" ? "single_leg" : "unspecified");
+  state.captureContext = { stance, side, exerciseKey: config.exerciseKey, trackingMode: config.trackingMode };
   state.balance = isBalanceEvaluation(evaluation.id) ? createBalanceAccumulator({ stance, side }) : null;
   state.startedAt = performance.now();
   state.lastResult = null;
@@ -194,7 +258,12 @@ async function startCameraEvaluation() {
     trackingMode: config.trackingMode,
     prescribedSide: config.prescribedSide,
     onPose: (landmarks) => {
-      if (state.balance) state.balance.push(extractBalanceFrame({ imageLandmarks: landmarks, timestampMs: performance.now() }));
+      const now = performance.now();
+      if (state.balance) state.balance.push(extractBalanceFrame({ imageLandmarks: landmarks, timestampMs: now }));
+      const frame = extractBiomechanicsFrame({ imageLandmarks: landmarks, timestampMs: now });
+      const asymmetry = analyzeFrameAsymmetry(frame);
+      const knee = asymmetry?.bilateral?.kneeFlexion;
+      if (knee) setLive({ leftKnee: formatNumber(knee.left, "°"), rightKnee: formatNumber(knee.right, "°"), kneeDelta: formatNumber(knee.absoluteDelta, "°") });
     },
     onUpdate: (update) => {
       const angle = Number.isFinite(update?.jointAngle) ? `${Math.round(update.jointAngle)}°` : update?.stage || "—";
@@ -215,12 +284,10 @@ async function startCameraEvaluation() {
     stopTracker({ render: false });
     return;
   }
-
   state.timer = setInterval(() => {
     const elapsed = state.startedAt ? (performance.now() - state.startedAt) / 1000 : 0;
     setLive({ time: `${elapsed.toFixed(1)} s` });
   }, 100);
-
   let duration = config.durationSeconds;
   if (evaluation.id === "single_leg_stance") {
     const requested = Number(document.querySelector("[data-clinical-duration]")?.value);
@@ -230,6 +297,8 @@ async function startCameraEvaluation() {
 }
 
 function startTug() {
+  stopTimers();
+  state.captureContext = { protocol: "3m_10ft_standardized_course", cameraDerived: false };
   state.tugStartedAt = performance.now();
   document.querySelector("[data-clinical-tug-start]")?.setAttribute("disabled", "");
   document.querySelector("[data-clinical-tug-stop]")?.removeAttribute("disabled");
@@ -242,12 +311,12 @@ function startTug() {
 function stopTug() {
   if (!state.tugStartedAt) return;
   const seconds = (performance.now() - state.tugStartedAt) / 1000;
-  clearInterval(state.tugTimer);
+  if (state.tugTimer) clearInterval(state.tugTimer);
   state.tugTimer = null;
   state.tugStartedAt = null;
   document.querySelector("[data-clinical-tug-stop]")?.setAttribute("disabled", "");
   document.querySelector("[data-clinical-tug-start]")?.removeAttribute("disabled");
-  state.lastResult = { id: "tug", tugSeconds: seconds, completedAt: new Date().toISOString() };
+  state.lastResult = { id: "tug", tugSeconds: seconds, captureContext: { ...state.captureContext }, completedAt: new Date().toISOString() };
   renderResult(state.lastResult);
 }
 
@@ -269,18 +338,64 @@ function evaluationCard(evaluation) {
   return `<button type="button" class="clinical-eval-card${state.selected === evaluation.id ? " active" : ""}" data-clinical-eval-select="${evaluation.id}"><small>${html(evaluation.domain)}</small><b>${html(evaluation.shortName)}</b><span>${html(evaluation.primaryOutcome.replaceAll("_", " "))}</span></button>`;
 }
 
+function historySummary(row) {
+  const outcome = row?.result?.standardizedOutcome || {};
+  if (row.evaluation_type === "tug") return `${formatNumber(outcome.completionTimeSeconds, " s")}`;
+  if (row.evaluation_type === "chair_stand_30s") return `${outcome.completedStands ?? "—"} stands`;
+  if (row.evaluation_type === "four_stage_balance" || row.evaluation_type === "single_leg_stance") return `${formatNumber(outcome.holdTimeSeconds, " s")}`;
+  return `${outcome.capturedRepetitions ?? "—"} reps`;
+}
+
+async function renderHistory() {
+  const container = document.querySelector("[data-clinical-history]");
+  if (!container) return;
+  if (!state.selectedPatientId) {
+    container.innerHTML = `<p class="clinical-eval-note">Select an active patient to view saved evaluations.</p>`;
+    return;
+  }
+  container.innerHTML = `<p class="clinical-eval-note">Loading evaluation history…</p>`;
+  try {
+    const rows = await listClinicalEvaluationResults(state.selectedPatientId, { limit: 8 });
+    container.innerHTML = rows.length ? rows.map((row) => {
+      const evaluation = getClinicalEvaluation(row.evaluation_type);
+      const date = row.completed_at ? new Date(row.completed_at).toLocaleDateString() : "";
+      return `<div class="clinical-eval-history-row"><span><b>${html(evaluation?.shortName || row.evaluation_type)}</b><small>${html(date)}</small></span><strong>${html(historySummary(row))}</strong></div>`;
+    }).join("") : `<p class="clinical-eval-note">No saved clinical evaluations yet.</p>`;
+  } catch (error) {
+    container.innerHTML = `<p class="clinical-eval-note">Evaluation history could not load.</p>`;
+  }
+}
+
+async function loadPatients() {
+  const select = document.querySelector("[data-clinical-patient]");
+  if (!select) return;
+  try {
+    state.patients = await listAuthorizedEvaluationPatients();
+    select.innerHTML = `<option value="">Select patient</option>${state.patients.map((patient) => `<option value="${html(patient.id)}">${html(patient.displayName)}</option>`).join("")}`;
+    if (state.selectedPatientId && state.patients.some((patient) => patient.id === state.selectedPatientId)) select.value = state.selectedPatientId;
+  } catch {
+    select.innerHTML = `<option value="">Patient list unavailable</option>`;
+  }
+}
+
 function buildPanel() {
   const panel = document.createElement("div");
   panel.className = "therapist-panel clinical-evaluation-panel";
   panel.dataset.clinicalEvaluationsPanel = "true";
   panel.innerHTML = `
-    <div class="clinical-eval-head"><div><span class="section-kicker">CLINICAL EVALUATIONS</span><h2>Standardized screens + full-body movement profile</h2><p>Run functional and balance evaluations alongside Axion's bilateral kinematics. Standard test outcomes remain distinct from experimental camera-derived sway and asymmetry features.</p></div></div>
+    <div class="clinical-eval-head"><div><span class="section-kicker">CLINICAL EVALUATIONS</span><h2>Standardized screens + full-body movement profile</h2><p>Run functional and balance evaluations alongside Axion's bilateral kinematics. Standard test outcomes remain distinct from experimental camera-derived sway and asymmetry features.</p></div><label class="clinical-eval-patient-label">Patient<select data-clinical-patient><option value="">Loading patients…</option></select></label></div>
     <div class="clinical-eval-grid">${listClinicalEvaluations().map(evaluationCard).join("")}</div>
     <div class="clinical-eval-workspace">
       <section class="clinical-eval-runner" data-clinical-eval-runner></section>
       <aside class="clinical-eval-results" data-clinical-eval-results><h3>Evaluation result</h3><p class="clinical-eval-note">Run an evaluation to see standardized outcomes and Axion movement descriptors here.</p></aside>
+      <section class="clinical-eval-history"><h3>Saved evaluations</h3><div data-clinical-history><p class="clinical-eval-note">Select an active patient to view saved evaluations.</p></div></section>
       <section class="clinical-eval-boundary"><b>Measurement boundary</b><p>Axion's camera can quantify joint motion, bilateral differences, trunk/pelvis motion, rep timing, and normalized sway. It does not measure ground-reaction force, joint loading, muscle activation, or force-platform center of pressure, and it does not diagnose the cause of an asymmetry.</p></section>
     </div>`;
+  panel.querySelector("[data-clinical-patient]")?.addEventListener("change", async (event) => {
+    state.selectedPatientId = event.target.value || null;
+    if (state.lastResult) renderResult(state.lastResult);
+    await renderHistory();
+  });
   panel.querySelectorAll("[data-clinical-eval-select]").forEach((button) => button.addEventListener("click", () => {
     state.selected = button.dataset.clinicalEvalSelect;
     panel.querySelectorAll(".clinical-eval-card").forEach((card) => card.classList.toggle("active", card.dataset.clinicalEvalSelect === state.selected));
@@ -309,6 +424,7 @@ export function syncClinicalEvaluationWorkspace() {
   if (!page.querySelector("[data-clinical-evaluations-panel]")) {
     page.append(buildPanel());
     renderRunner();
+    void loadPatients().then(renderHistory);
   }
 }
 
