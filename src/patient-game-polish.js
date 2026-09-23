@@ -42,12 +42,26 @@ function restVisible(overlay) {
   return Boolean(overlay && !overlay.classList.contains('hidden'));
 }
 
+let clinicalEvaluationModulePromise = null;
+function syncTherapistClinicalEvaluations() {
+  // The evaluation runner brings camera/pose-analysis code that patients do not
+  // need on normal authenticated boot. Load it only after therapist UI exists.
+  if (!document.querySelector('.therapist-page')) return;
+  if (!clinicalEvaluationModulePromise) {
+    clinicalEvaluationModulePromise = import('./clinical-evaluation-ui.js');
+  }
+  void clinicalEvaluationModulePromise
+    .then((module) => module.syncClinicalEvaluationWorkspace?.())
+    .catch(() => { clinicalEvaluationModulePromise = null; });
+}
+
 function syncLateClinicPresentation() {
   // clinic-readiness can finish async after the main presentation pass. These
   // helpers are tiny and idempotent: they only map the visible Today entry,
   // normalize one therapist heading, and re-apply the late patient presentation.
   syncTodayRoadmapEntry();
   syncTherapistReviewCopy();
+  syncTherapistClinicalEvaluations();
   syncUiRestoration();
 }
 
