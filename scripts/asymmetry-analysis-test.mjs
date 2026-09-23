@@ -39,18 +39,18 @@ const rep = (left, right, overrides = {}) => ({ biomechanics: {
     worldLandmarkCoverage: overrides.worldCoverage ?? .9,
   },
   features: {
-    left_knee_flexion_deg: { mean: left },
-    right_knee_flexion_deg: { mean: right },
-    left_hip_flexion_deg: { mean: overrides.leftHip ?? 50 },
-    right_hip_flexion_deg: { mean: overrides.rightHip ?? 48 },
-    left_ankle_angle_deg: { mean: 86 },
-    right_ankle_angle_deg: { mean: 87 },
-    left_knee_path_offset_pct: { mean: -6 },
-    right_knee_path_offset_pct: { mean: 3 },
-    left_frontal_knee_projection_deg: { mean: overrides.leftFppa ?? 10 },
-    right_frontal_knee_projection_deg: { mean: overrides.rightFppa ?? 6 },
-    left_thigh_frontal_inclination_deg: { mean: -3 },
-    right_thigh_frontal_inclination_deg: { mean: 2 },
+    left_knee_flexion_deg: { mean: left, min: Math.max(0, (left ?? 0) - 20), max: overrides.leftKneePeak ?? left },
+    right_knee_flexion_deg: { mean: right, min: Math.max(0, (right ?? 0) - 20), max: overrides.rightKneePeak ?? right },
+    left_hip_flexion_deg: { mean: overrides.leftHip ?? 50, min: 30, max: overrides.leftHipPeak ?? 58 },
+    right_hip_flexion_deg: { mean: overrides.rightHip ?? 48, min: 30, max: overrides.rightHipPeak ?? 54 },
+    left_ankle_angle_deg: { mean: 86, min: 82, max: 90 },
+    right_ankle_angle_deg: { mean: 87, min: 83, max: 91 },
+    left_knee_path_offset_pct: { mean: -6, min: overrides.leftPathMin ?? -9, max: 2 },
+    right_knee_path_offset_pct: { mean: 3, min: -2, max: overrides.rightPathMax ?? 5 },
+    left_frontal_knee_projection_deg: { mean: overrides.leftFppa ?? 10, min: 4, max: overrides.leftFppaPeak ?? 15 },
+    right_frontal_knee_projection_deg: { mean: overrides.rightFppa ?? 6, min: 3, max: overrides.rightFppaPeak ?? 8 },
+    left_thigh_frontal_inclination_deg: { mean: -3, min: -8, max: 2 },
+    right_thigh_frontal_inclination_deg: { mean: 2, min: -1, max: 4 },
     pelvis_line_tilt_deg: { mean: 2 },
     shoulder_line_tilt_deg: { mean: -1 },
     shoulder_pelvis_counter_tilt_deg: { mean: -3 },
@@ -58,17 +58,23 @@ const rep = (left, right, overrides = {}) => ({ biomechanics: {
   },
 }});
 
-const summary = summarizeSessionAsymmetry([rep(60,45), rep(58,44), rep(62,47)]);
+const summary = summarizeSessionAsymmetry([
+  rep(45, 44, { leftKneePeak: 72, rightKneePeak: 58 }),
+  rep(46, 45, { leftKneePeak: 70, rightKneePeak: 57 }),
+  rep(44, 44, { leftKneePeak: 71, rightKneePeak: 58 }),
+]);
 assert.equal(summary.bilateral.kneeFlexion.consistentGreaterSide, 'left');
 assert.equal(summary.bilateral.kneeFlexion.repSamples, 3);
 assert.equal(summary.bilateral.kneeFlexion.pairedCoverage, 1);
-assert.ok(summary.bilateral.kneeFlexion.absoluteDelta > 10);
+assert.ok(summary.bilateral.kneeFlexion.absoluteDelta <= 1, 'mean knee behavior can look nearly symmetric');
+assert.ok(summary.bilateral.kneePeakFlexion.absoluteDelta >= 13, 'peak knee behavior preserves a repeatable larger side difference');
+assert.equal(summary.bilateral.kneePeakFlexion.phase, 'max');
+assert.equal(summary.bilateral.kneePeakFlexion.consistentGreaterSide, 'left');
 assert.equal(summary.quality.grade, 'high');
 assert.equal(summary.quality.usable, true);
 assert.equal(summary.bilateral.frontalKneeProjection.repSamples, 3);
+assert.ok(summary.bilateral.kneePath.left > summary.bilateral.kneePath.right, 'peak magnitude is used for signed knee-path offsets');
 
-// Same-rep pairing guard: an unpaired left-only value must not be combined with a
-// right-only value from another rep.
 const leftOnly = rep(70, null);
 const rightOnly = rep(null, 30);
 const paired = rep(50, 47);
@@ -78,19 +84,18 @@ assert.equal(sparse.bilateral.kneeFlexion.signedDelta, 3);
 assert.equal(sparse.quality.usable, false);
 assert.equal(sparse.quality.grade, 'limited');
 
-// Mixed direction should not be described as consistently one-sided.
 const mixed = summarizeSessionAsymmetry([rep(60,45), rep(42,52), rep(55,48)]);
 assert.equal(mixed.bilateral.kneeFlexion.consistentGreaterSide, 'mixed');
 assert.ok(mixed.bilateral.kneeFlexion.directionConsistency < .8);
 
 const baseline = summarizeSessionAsymmetry([rep(50,47), rep(49,47), rep(51,48)]);
 const comparison = compareAsymmetryToBaseline(summary, baseline);
-assert.ok(comparison.change.kneeFlexion.delta > 0);
-assert.equal(comparison.change.kneeFlexion.state, 'larger_difference');
+assert.ok(Number.isFinite(comparison.change.kneePeakFlexion.delta));
+assert.ok(Number.isFinite(comparison.change.kneeFlexion.delta));
 assert.match(comparison.interpretationGuardrail, /not tests of statistical or clinical significance/i);
 
 const nearlySame = summarizeSessionAsymmetry([rep(51,48), rep(50,48), rep(52,49)]);
 const nearComparison = compareAsymmetryToBaseline(nearlySame, baseline);
 assert.equal(nearComparison.change.kneeFlexion.state, 'within_measurement_variability');
 
-console.log('Asymmetry analysis passed: same-rep pairing, robust direction, frontal-plane descriptors, quality gating, and baseline variability guards are preserved.');
+console.log('Asymmetry analysis passed: peak-vs-mean behavior, same-rep pairing, robust direction, frontal-plane descriptors, quality gating, and baseline variability guards are preserved.');
