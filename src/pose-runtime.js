@@ -1,6 +1,6 @@
 import { DrawingUtils, FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { chooseMediapipeDelegate, resolveMediapipeConfig } from "./mediapipe-config.js";
-import { createWorkerPoseRuntime, supportsPoseWorker } from "./pose-worker-runtime.js";
+import { createWorkerPoseRuntime, supportsPoseWorker, syncPoseCanvasSize } from "./pose-worker-runtime.js";
 
 const verifiedModelUrls = new Map();
 
@@ -123,9 +123,8 @@ export function createDirectPoseRuntime({
       return !forceCpu && delegate !== "CPU";
     },
     draw(canvas, video, result) {
+      syncPoseCanvasSize(canvas, video);
       const ctx = canvas.getContext("2d");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (!result.landmarks?.length) return;
       const drawing = new DrawingUtils(ctx);

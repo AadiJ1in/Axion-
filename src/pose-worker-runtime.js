@@ -6,11 +6,22 @@ export function supportsPoseWorker() {
     && typeof URL === "function";
 }
 
+export function syncPoseCanvasSize(canvas, video) {
+  const width = Math.max(1, Number(video?.videoWidth) || Number(canvas?.width) || 1);
+  const height = Math.max(1, Number(video?.videoHeight) || Number(canvas?.height) || 1);
+  if (canvas.width === width && canvas.height === height) return false;
+  canvas.width = width;
+  canvas.height = height;
+  return true;
+}
+
 export function createWorkerPoseRuntime({
   mediapipe = {},
   onState = () => {},
   workerFactory = () => new Worker(new URL("./pose-worker.js", import.meta.url), { type: "module", name: "axion-pose" }),
   imageBitmapFactory = (source) => createImageBitmap(source),
+  inferenceTimeoutMs = 1400,
+  controlTimeoutMs = 12000,
 } = {}) {
   const config = resolveMediapipeConfig(mediapipe);
   let worker = null;
@@ -21,19 +32,39 @@ export function createWorkerPoseRuntime({
   let closed = false;
   const pending = new Map();
 
+  const boundedTimeout = (value, fallback, minimum) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(minimum, number) : fallback;
+  };
+  const inferTimeout = boundedTimeout(inferenceTimeoutMs, 1400, 250);
+  const controlTimeout = boundedTimeout(controlTimeoutMs, 12000, 1000);
+
   function rejectPending(error) {
-    for (const { reject } of pending.values()) reject(error);
+    for (const entry of pending.values()) {
+      clearTimeout(entry.timer);
+      entry.reject(error);
+    }
     pending.clear();
   }
 
   function request(type, payload = {}, transfer = []) {
     if (!worker || closed) return Promise.reject(new Error("Pose worker is unavailable."));
     const id = ++sequence;
+    const timeoutMs = type === "infer" ? inferTimeout : controlTimeout;
     return new Promise((resolve, reject) => {
-      pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        const entry = pending.get(id);
+        if (!entry) return;
+        pending.delete(id);
+        entry.reject(new Error(type === "infer"
+          ? "Pose worker inference timed out."
+          : "Pose worker request timed out."));
+      }, timeoutMs);
+      pending.set(id, { resolve, reject, timer });
       try {
         worker.postMessage({ id, type, ...payload }, transfer);
       } catch (error) {
+        clearTimeout(timer);
         pending.delete(id);
         reject(error);
       }
@@ -47,6 +78,7 @@ export function createWorkerPoseRuntime({
       const message = event.data || {};
       const entry = pending.get(message.id);
       if (!entry) return;
+      clearTimeout(entry.timer);
       pending.delete(message.id);
       if (!message.ok) entry.reject(new Error(message.error || "Pose worker failed."));
       else entry.resolve(message);
@@ -100,9 +132,8 @@ export function createWorkerPoseRuntime({
       return !forceCpu && delegate !== "CPU";
     },
     draw(canvas, video, result) {
+      syncPoseCanvasSize(canvas, video);
       const ctx = canvas.getContext("2d");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const points = result?.landmarks?.[0];
       if (!points?.length) return;
@@ -141,7 +172,7 @@ export function createWorkerPoseRuntime({
       worker = null;
     },
     getState() {
-      return Object.freeze({ delegate, forceCpu, initialized, worker: true });
+      return Object.freeze({ delegate, forceCpu, initialized, worker: true, pendingRequests: pending.size });
     },
   });
 }
