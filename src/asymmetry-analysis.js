@@ -226,11 +226,13 @@ export function summarizeSessionAsymmetry(reps = []) {
   const usable = reps.filter((rep) => rep?.biomechanics?.features);
   if (!usable.length) return null;
 
+  // The primary knee/hip metric is peak flexion because it answers the clinical
+  // question "did one side bend farther?" Mean flexion is retained separately.
   const pairDefinitions = {
-    kneePeakFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Peak knee flexion", "deg", (v) => v, 0.5, "max"],
-    kneeFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Mean knee flexion", "deg", (v) => v, 0.5, "mean"],
-    hipPeakFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Peak hip flexion", "deg", (v) => v, 0.5, "max"],
-    hipFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Mean hip flexion", "deg", (v) => v, 0.5, "mean"],
+    kneeFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Peak knee flexion", "deg", (v) => v, 0.5, "max"],
+    kneeMeanFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Mean knee flexion", "deg", (v) => v, 0.5, "mean"],
+    hipFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Peak hip flexion", "deg", (v) => v, 0.5, "max"],
+    hipMeanFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Mean hip flexion", "deg", (v) => v, 0.5, "mean"],
     ankleAngle: ["left_ankle_angle_deg", "right_ankle_angle_deg", "Mean ankle angle", "deg", (v) => v, 0.5, "mean"],
     kneePath: ["left_knee_path_offset_pct", "right_knee_path_offset_pct", "Peak knee-path deviation magnitude", "% torso", Math.abs, 1, "peak_magnitude"],
     frontalKneeProjection: ["left_frontal_knee_projection_deg", "right_frontal_knee_projection_deg", "Peak 2D frontal knee projection", "deg", (v) => v, 0.5, "max"],
@@ -246,9 +248,8 @@ export function summarizeSessionAsymmetry(reps = []) {
   });
 
   const meanFeature = (key) => mean(usable.map((rep) => extractRepStat(rep, key, "mean")));
-  const primaryPairs = bilateral.kneePeakFlexion?.repSamples
-    || bilateral.kneeFlexion?.repSamples
-    || bilateral.hipPeakFlexion?.repSamples
+  const primaryPairs = bilateral.kneeFlexion?.repSamples
+    || bilateral.hipFlexion?.repSamples
     || bilateral.ankleAngle?.repSamples
     || 0;
   const captureQuality = sessionCaptureQuality(usable, primaryPairs);
@@ -273,10 +274,10 @@ export function summarizeSessionAsymmetry(reps = []) {
 }
 
 const RESOLUTION_FLOORS = Object.freeze({
-  kneePeakFlexion: 1,
   kneeFlexion: 1,
-  hipPeakFlexion: 1,
+  kneeMeanFlexion: 1,
   hipFlexion: 1,
+  hipMeanFlexion: 1,
   ankleAngle: 1,
   kneePath: 1,
   frontalKneeProjection: 1,
