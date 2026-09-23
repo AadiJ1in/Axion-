@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   BIOMECHANICS_SCHEMA_VERSION,
+  DESCRIPTIVE_FEATURES_V2,
   MODEL_FEATURES_V1,
   angleDegrees,
   buildModelFeatureVector,
@@ -43,11 +44,23 @@ const standingFrame = extractBiomechanicsFrame({
   timestampMs: 100,
 });
 assert.equal(standingFrame.schemaVersion, BIOMECHANICS_SCHEMA_VERSION);
+assert.equal(BIOMECHANICS_SCHEMA_VERSION, 2);
 close(standingFrame.features.left_knee_flexion_deg, 0, 0.001, "extended left knee");
 close(standingFrame.features.right_knee_flexion_deg, 0, 0.001, "extended right knee");
 close(standingFrame.features.pelvis_line_tilt_deg, 0, 0.001, "level pelvis");
+close(standingFrame.features.shoulder_line_tilt_deg, 0, 0.001, "level shoulders");
+close(standingFrame.features.shoulder_pelvis_counter_tilt_deg, 0, 0.001, "matched shoulder/pelvis lines");
 close(standingFrame.features.trunk_image_tilt_deg, 0, 0.001, "upright trunk");
 assert.equal(standingFrame.quality.usable, true);
+assert.equal(standingFrame.quality.frontalPlaneUsable, true);
+assert.equal(standingFrame.quality.worldLandmarksAvailable, true);
+assert.equal(standingFrame.quality.angleSpace, "mediapipe_world");
+
+const imageOnly = extractBiomechanicsFrame({ imageLandmarks: standing, timestampMs: 110 });
+assert.equal(imageOnly.quality.worldLandmarksAvailable, false);
+assert.equal(imageOnly.quality.angleSpace, "image_fallback");
+assert.equal(imageOnly.features.trunk_3d_tilt_deg, null, "3D trunk tilt is withheld without world landmarks");
+assert.equal(imageOnly.features.pelvis_depth_asymmetry_pct, null, "pelvis depth asymmetry is withheld without world landmarks");
 
 const bent = skeleton();
 bent[25] = { x: 0.34, y: 0.68, z: 0, visibility: 1 };
@@ -66,6 +79,14 @@ assert(
   Math.abs(bentFrame.features.left_knee_path_offset_pct) > 10,
   "lateral knee path change is captured as a descriptive image-plane offset",
 );
+assert(
+  bentFrame.features.left_frontal_knee_projection_deg > bentFrame.features.right_frontal_knee_projection_deg,
+  "2D frontal knee projection distinguishes the deliberately displaced side",
+);
+assert(
+  Math.abs(bentFrame.features.left_thigh_frontal_inclination_deg) > Math.abs(bentFrame.features.right_thigh_frontal_inclination_deg),
+  "frontal thigh inclination captures side-specific image-plane strategy",
+);
 
 const tilted = skeleton();
 tilted[24] = { ...tilted[24], y: 0.55 };
@@ -74,11 +95,14 @@ tilted[12] = { ...tilted[12], x: 0.62 };
 const tiltedFrame = extractBiomechanicsFrame({ imageLandmarks: tilted, worldLandmarks: tilted });
 assert(tiltedFrame.features.pelvis_line_tilt_deg > 10, "pelvis line tilt is detected");
 assert(tiltedFrame.features.trunk_image_tilt_deg > 5, "image-plane trunk tilt is detected");
+assert(Number.isFinite(tiltedFrame.features.shoulder_pelvis_counter_tilt_deg), "shoulder/pelvis counter-tilt is retained");
 
 const occluded = skeleton();
 occluded[25] = { ...occluded[25], visibility: 0.1 };
 const occludedFrame = extractBiomechanicsFrame({ imageLandmarks: occluded, worldLandmarks: occluded });
 assert.equal(occludedFrame.features.left_knee_flexion_deg, null, "occluded joints are not fabricated");
+assert.equal(occludedFrame.quality.lowerBodyComplete, false);
+assert.equal(occludedFrame.quality.usable, false);
 assert(occludedFrame.quality.minVisibility < 0.55, "low landmark visibility is retained in quality metadata");
 
 const accumulator = createRepBiomechanicsAccumulator();
@@ -91,6 +115,8 @@ assert.equal(repSummary.usableFrames, 2);
 assert.equal(repSummary.features.left_knee_flexion_deg.samples, 2);
 assert(repSummary.features.left_knee_flexion_deg.range > 45);
 assert.equal(repSummary.durationMs, 200);
+assert.equal(repSummary.quality.frontalPlaneCoverage, 1);
+assert.equal(repSummary.quality.worldLandmarkCoverage, 1);
 
 const secondAccumulator = createRepBiomechanicsAccumulator();
 secondAccumulator.start(400);
@@ -108,14 +134,18 @@ const session = summarizeSessionBiomechanics([
   { biomechanics: repSummary },
   { biomechanics: repSummary2 },
 ]);
-assert.equal(session.schemaVersion, 1);
+assert.equal(session.schemaVersion, BIOMECHANICS_SCHEMA_VERSION);
 assert.equal(session.source, "mediapipe_pose_derived_features");
 assert.equal(session.clinicalStatus, "descriptive_unvalidated");
 assert.equal(session.repsWithBiomechanics, 2);
+assert.equal(session.averageFrontalPlaneCoverage, 1);
+assert.equal(session.averageWorldLandmarkCoverage, 1);
 assert(Number.isFinite(session.features.left_knee_flexion_deg.slope_per_rep));
 
+// Adding descriptive v2 features must not silently alter the existing model vector.
+assert(DESCRIPTIVE_FEATURES_V2.length > MODEL_FEATURES_V1.length);
 const vector = buildModelFeatureVector(repSummary);
 assert.equal(vector.length, MODEL_FEATURES_V1.length);
 assert(vector.some(Number.isFinite), "model vector exposes numeric biomechanics features without raw landmarks");
 
-console.log("Biomechanics: geometry, visibility gating, rep aggregation, session trends and ML vector passed.");
+console.log("Biomechanics v2: geometry, frontal-plane descriptors, visibility gating, world/image provenance, rep aggregation, session trends and stable ML vector passed.");
