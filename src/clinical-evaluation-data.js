@@ -79,6 +79,11 @@ export async function saveClinicalEvaluationResult({ patientId, evaluationType, 
     .select("id,patient_id,therapist_id,evaluation_type,protocol_version,result,capture_context,completed_at,created_at")
     .single();
   if (error) throw error;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("axion:clinical-evaluation-saved", {
+      detail: { patientId, evaluationType, resultId: data?.id || null },
+    }));
+  }
   return data;
 }
 
