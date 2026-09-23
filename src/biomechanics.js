@@ -1,11 +1,13 @@
-// Axion Biomechanics Feature Engine v1
+// Axion Biomechanics Feature Engine v2
 //
 // Pure, deterministic geometry built on top of pose landmarks. These features are
-// descriptive movement measurements, not diagnoses, injury predictions, or clinical
-// thresholds. Raw landmarks are intentionally not retained by this module.
+// descriptive movement measurements, not diagnoses, injury predictions, tissue-load
+// estimates, or clinical thresholds. Raw landmarks are intentionally not retained.
 
-export const BIOMECHANICS_SCHEMA_VERSION = 1;
+export const BIOMECHANICS_SCHEMA_VERSION = 2;
 
+// Preserve the original model contract. Existing models must not silently receive
+// a longer feature vector when the descriptive biomechanics schema evolves.
 export const MODEL_FEATURES_V1 = Object.freeze([
   "left_knee_flexion_deg",
   "right_knee_flexion_deg",
@@ -23,6 +25,18 @@ export const MODEL_FEATURES_V1 = Object.freeze([
   "right_knee_path_offset_pct",
   "ankle_separation_pct",
   "pelvis_depth_asymmetry_pct",
+]);
+
+export const DESCRIPTIVE_FEATURES_V2 = Object.freeze([
+  ...MODEL_FEATURES_V1,
+  "left_frontal_knee_projection_deg",
+  "right_frontal_knee_projection_deg",
+  "frontal_knee_projection_asymmetry_deg",
+  "left_thigh_frontal_inclination_deg",
+  "right_thigh_frontal_inclination_deg",
+  "thigh_frontal_inclination_asymmetry_deg",
+  "shoulder_line_tilt_deg",
+  "shoulder_pelvis_counter_tilt_deg",
 ]);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -83,6 +97,18 @@ export function angleDegrees(a, b, c) {
   return Math.acos(clamp(dot / magnitude, -1, 1)) * 180 / Math.PI;
 }
 
+function angleDegrees2d(a, b, c) {
+  if (!a || !b || !c) return null;
+  const bax = (a.x ?? 0) - (b.x ?? 0);
+  const bay = (a.y ?? 0) - (b.y ?? 0);
+  const bcx = (c.x ?? 0) - (b.x ?? 0);
+  const bcy = (c.y ?? 0) - (b.y ?? 0);
+  const dot = bax * bcx + bay * bcy;
+  const magnitude = Math.hypot(bax, bay) * Math.hypot(bcx, bcy);
+  if (!magnitude) return null;
+  return Math.acos(clamp(dot / magnitude, -1, 1)) * 180 / Math.PI;
+}
+
 function jointAngle(landmarks, indices, minimumVisibility) {
   if (!visible(landmarks, indices, minimumVisibility)) return null;
   return angleDegrees(
@@ -95,6 +121,26 @@ function jointAngle(landmarks, indices, minimumVisibility) {
 function flexionAngle(landmarks, indices, minimumVisibility) {
   const internal = jointAngle(landmarks, indices, minimumVisibility);
   return internal === null ? null : clamp(180 - internal, 0, 180);
+}
+
+function frontalKneeProjectionAngle(landmarks, indices, minimumVisibility) {
+  if (!visible(landmarks, indices, minimumVisibility)) return null;
+  const internal = angleDegrees2d(
+    point(landmarks, indices[0]),
+    point(landmarks, indices[1]),
+    point(landmarks, indices[2]),
+  );
+  return internal === null ? null : clamp(180 - internal, 0, 180);
+}
+
+function thighFrontalInclination(landmarks, hipIndex, kneeIndex, minimumVisibility) {
+  if (!visible(landmarks, [hipIndex, kneeIndex], minimumVisibility)) return null;
+  const hip = point(landmarks, hipIndex);
+  const knee = point(landmarks, kneeIndex);
+  const dx = (knee.x ?? 0) - (hip.x ?? 0);
+  const downward = (knee.y ?? 0) - (hip.y ?? 0);
+  if (!dx && !downward) return null;
+  return Math.atan2(dx, downward) * 180 / Math.PI;
 }
 
 function torsoScale(landmarks, minimumVisibility) {
@@ -155,9 +201,9 @@ function asymmetry(left, right) {
 
 /**
  * Extract a compact set of descriptive biomechanics features from one pose frame.
- *
- * imageLandmarks: normalized image-space MediaPipe landmarks.
- * worldLandmarks: optional world-space MediaPipe landmarks; preferred for joint angles.
+ * World-space landmarks are preferred for flexion angles. Frontal-plane projection
+ * descriptors deliberately use image-space geometry because they represent a 2D
+ * camera screen, not 3D joint angles.
  */
 export function extractBiomechanicsFrame({
   imageLandmarks,
@@ -165,11 +211,10 @@ export function extractBiomechanicsFrame({
   timestampMs = null,
   minimumVisibility = 0.55,
 } = {}) {
-  if (!Array.isArray(imageLandmarks) || imageLandmarks.length < 29) return null;
+  if (!Array.isArray(imageLandmarks) || imageLandmarks.length < 33) return null;
 
-  const angleLandmarks = Array.isArray(worldLandmarks) && worldLandmarks.length >= 29
-    ? worldLandmarks
-    : imageLandmarks;
+  const worldAvailable = Array.isArray(worldLandmarks) && worldLandmarks.length >= 33;
+  const angleLandmarks = worldAvailable ? worldLandmarks : imageLandmarks;
   const imageScale = torsoScale(imageLandmarks, minimumVisibility);
   const worldScale = torsoScale(angleLandmarks, minimumVisibility);
 
@@ -179,6 +224,11 @@ export function extractBiomechanicsFrame({
   const rightHipFlexion = flexionAngle(angleLandmarks, [12, 24, 26], minimumVisibility);
   const leftAnkle = jointAngle(angleLandmarks, [25, 27, 31], minimumVisibility);
   const rightAnkle = jointAngle(angleLandmarks, [26, 28, 32], minimumVisibility);
+
+  const leftFrontalKneeProjection = frontalKneeProjectionAngle(imageLandmarks, [23, 25, 27], minimumVisibility);
+  const rightFrontalKneeProjection = frontalKneeProjectionAngle(imageLandmarks, [24, 26, 28], minimumVisibility);
+  const leftThighInclination = thighFrontalInclination(imageLandmarks, 23, 25, minimumVisibility);
+  const rightThighInclination = thighFrontalInclination(imageLandmarks, 24, 26, minimumVisibility);
 
   const hasTorsoImage = visible(imageLandmarks, [11, 12, 23, 24], minimumVisibility);
   const imageShoulderMid = hasTorsoImage ? midpoint(point(imageLandmarks, 11), point(imageLandmarks, 12)) : null;
@@ -191,18 +241,26 @@ export function extractBiomechanicsFrame({
   const pelvisLineTilt = visible(imageLandmarks, [23, 24], minimumVisibility)
     ? signedLineAngleFromHorizontal(point(imageLandmarks, 23), point(imageLandmarks, 24))
     : null;
+  const shoulderLineTilt = visible(imageLandmarks, [11, 12], minimumVisibility)
+    ? signedLineAngleFromHorizontal(point(imageLandmarks, 11), point(imageLandmarks, 12))
+    : null;
   const trunkImageTilt = signedTrunkTiltFromImageVertical(imageHipMid, imageShoulderMid);
-  const trunk3dTilt = trunkTilt3d(worldHipMid, worldShoulderMid);
+  const trunk3dTilt = worldAvailable ? trunkTilt3d(worldHipMid, worldShoulderMid) : null;
 
   const ankleSeparation = imageScale && visible(imageLandmarks, [27, 28], minimumVisibility)
     ? Math.abs((point(imageLandmarks, 27).x ?? 0) - (point(imageLandmarks, 28).x ?? 0)) / imageScale * 100
     : null;
 
-  const pelvisDepthAsymmetry = worldScale && visible(angleLandmarks, [23, 24], minimumVisibility)
+  const pelvisDepthAsymmetry = worldAvailable && worldScale && visible(angleLandmarks, [23, 24], minimumVisibility)
     ? Math.abs((point(angleLandmarks, 23).z ?? 0) - (point(angleLandmarks, 24).z ?? 0)) / worldScale * 100
     : null;
 
-  const quality = visibilitySummary(imageLandmarks, [11, 12, 23, 24, 25, 26, 27, 28, 31, 32]);
+  const lowerBodyIndices = [23, 24, 25, 26, 27, 28, 31, 32];
+  const quality = visibilitySummary(imageLandmarks, [11, 12, ...lowerBodyIndices]);
+  const lowerBodyComplete = visible(imageLandmarks, lowerBodyIndices, minimumVisibility);
+  const torsoComplete = visible(imageLandmarks, [11, 12, 23, 24], minimumVisibility);
+  const frontalPlaneUsable = Boolean(lowerBodyComplete && torsoComplete && imageScale);
+
   const features = {
     left_knee_flexion_deg: leftKneeFlexion,
     right_knee_flexion_deg: rightKneeFlexion,
@@ -220,6 +278,16 @@ export function extractBiomechanicsFrame({
     right_knee_path_offset_pct: kneePathOffsetPct(imageLandmarks, 24, 26, 28, imageScale, minimumVisibility),
     ankle_separation_pct: ankleSeparation,
     pelvis_depth_asymmetry_pct: pelvisDepthAsymmetry,
+    left_frontal_knee_projection_deg: leftFrontalKneeProjection,
+    right_frontal_knee_projection_deg: rightFrontalKneeProjection,
+    frontal_knee_projection_asymmetry_deg: asymmetry(leftFrontalKneeProjection, rightFrontalKneeProjection),
+    left_thigh_frontal_inclination_deg: leftThighInclination,
+    right_thigh_frontal_inclination_deg: rightThighInclination,
+    thigh_frontal_inclination_asymmetry_deg: asymmetry(leftThighInclination, rightThighInclination),
+    shoulder_line_tilt_deg: shoulderLineTilt,
+    shoulder_pelvis_counter_tilt_deg: Number.isFinite(shoulderLineTilt) && Number.isFinite(pelvisLineTilt)
+      ? shoulderLineTilt - pelvisLineTilt
+      : null,
   };
 
   return {
@@ -228,7 +296,12 @@ export function extractBiomechanicsFrame({
     quality: {
       meanVisibility: round(quality.meanVisibility),
       minVisibility: round(quality.minVisibility),
-      usable: Number.isFinite(quality.meanVisibility) && quality.meanVisibility >= minimumVisibility,
+      usable: Number.isFinite(quality.meanVisibility) && quality.meanVisibility >= minimumVisibility && lowerBodyComplete,
+      lowerBodyComplete,
+      torsoComplete,
+      frontalPlaneUsable,
+      worldLandmarksAvailable: worldAvailable,
+      angleSpace: worldAvailable ? "mediapipe_world" : "image_fallback",
     },
     features: Object.fromEntries(
       Object.entries(features).map(([key, value]) => [key, round(value)]),
@@ -277,6 +350,8 @@ export function createRepBiomechanicsAccumulator() {
   let endedAt = null;
   let totalFrames = 0;
   let usableFrames = 0;
+  let frontalFrames = 0;
+  let worldFrames = 0;
   let visibilitySum = 0;
   let visibilityCount = 0;
   let minVisibility = Infinity;
@@ -287,6 +362,8 @@ export function createRepBiomechanicsAccumulator() {
     endedAt = null;
     totalFrames = 0;
     usableFrames = 0;
+    frontalFrames = 0;
+    worldFrames = 0;
     visibilitySum = 0;
     visibilityCount = 0;
     minVisibility = Infinity;
@@ -302,13 +379,13 @@ export function createRepBiomechanicsAccumulator() {
       if (!frame) return;
       totalFrames += 1;
       if (frame.quality?.usable) usableFrames += 1;
+      if (frame.quality?.frontalPlaneUsable) frontalFrames += 1;
+      if (frame.quality?.worldLandmarksAvailable) worldFrames += 1;
       if (Number.isFinite(frame.quality?.meanVisibility)) {
         visibilitySum += frame.quality.meanVisibility;
         visibilityCount += 1;
       }
-      if (Number.isFinite(frame.quality?.minVisibility)) {
-        minVisibility = Math.min(minVisibility, frame.quality.minVisibility);
-      }
+      if (Number.isFinite(frame.quality?.minVisibility)) minVisibility = Math.min(minVisibility, frame.quality.minVisibility);
       Object.entries(frame.features || {}).forEach(([key, value]) => {
         if (!Number.isFinite(value)) return;
         if (!stats.has(key)) stats.set(key, createRunningStat());
@@ -335,6 +412,8 @@ export function createRepBiomechanicsAccumulator() {
         quality: {
           meanVisibility: visibilityCount ? round(visibilitySum / visibilityCount) : null,
           minVisibility: Number.isFinite(minVisibility) ? round(minVisibility) : null,
+          frontalPlaneCoverage: totalFrames ? round(frontalFrames / totalFrames) : null,
+          worldLandmarkCoverage: totalFrames ? round(worldFrames / totalFrames) : null,
         },
         features,
       };
@@ -388,6 +467,8 @@ export function summarizeSessionBiomechanics(reps = []) {
 
   const coverages = usable.map((rep) => finite(rep.biomechanics?.coverage)).filter(Number.isFinite);
   const visibilities = usable.map((rep) => finite(rep.biomechanics?.quality?.meanVisibility)).filter(Number.isFinite);
+  const frontalCoverage = usable.map((rep) => finite(rep.biomechanics?.quality?.frontalPlaneCoverage)).filter(Number.isFinite);
+  const worldCoverage = usable.map((rep) => finite(rep.biomechanics?.quality?.worldLandmarkCoverage)).filter(Number.isFinite);
 
   return {
     schemaVersion: BIOMECHANICS_SCHEMA_VERSION,
@@ -396,6 +477,8 @@ export function summarizeSessionBiomechanics(reps = []) {
     repsWithBiomechanics: usable.length,
     averageCoverage: coverages.length ? round(coverages.reduce((sum, value) => sum + value, 0) / coverages.length) : null,
     averageVisibility: visibilities.length ? round(visibilities.reduce((sum, value) => sum + value, 0) / visibilities.length) : null,
+    averageFrontalPlaneCoverage: frontalCoverage.length ? round(frontalCoverage.reduce((sum, value) => sum + value, 0) / frontalCoverage.length) : null,
+    averageWorldLandmarkCoverage: worldCoverage.length ? round(worldCoverage.reduce((sum, value) => sum + value, 0) / worldCoverage.length) : null,
     features,
   };
 }
