@@ -12,6 +12,10 @@ function format(value, suffix = "", digits = 2) {
   return `${Math.round(number * factor) / factor}${suffix}`;
 }
 
+function selectedPatientId() {
+  return document.querySelector("[data-clinical-patient]")?.value || null;
+}
+
 function section() {
   const existing = document.querySelector("[data-clinical-bilateral-balance]");
   if (existing) return existing;
@@ -91,7 +95,18 @@ function sync() {
   bind();
 }
 
+function handleSavedEvaluation(event) {
+  if (event?.detail?.evaluationType !== "single_leg_stance") return;
+  const patientId = selectedPatientId();
+  if (!patientId || event?.detail?.patientId !== patientId) return;
+  void refresh(patientId);
+}
+
 const observer = new MutationObserver(sync);
 observer.observe(document.documentElement, { childList: true, subtree: true });
+window.addEventListener("axion:clinical-evaluation-saved", handleSavedEvaluation);
 sync();
-window.addEventListener("pagehide", () => observer.disconnect(), { once: true });
+window.addEventListener("pagehide", () => {
+  observer.disconnect();
+  window.removeEventListener("axion:clinical-evaluation-saved", handleSavedEvaluation);
+}, { once: true });
