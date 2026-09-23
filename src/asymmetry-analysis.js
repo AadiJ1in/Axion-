@@ -78,7 +78,7 @@ function bilateralMetric(left, right, { unit, label } = {}) {
   });
 }
 
-function pairedMetric(pairs, { unit, label, directionTolerance = 0.5 } = {}) {
+function pairedMetric(pairs, { unit, label, directionTolerance = 0.5, phase = "mean" } = {}) {
   if (!pairs.length) return null;
   const left = median(pairs.map((pair) => pair.left));
   const right = median(pairs.map((pair) => pair.right));
@@ -101,9 +101,9 @@ function pairedMetric(pairs, { unit, label, directionTolerance = 0.5 } = {}) {
   return Object.freeze({
     label,
     unit,
+    phase,
     left: round(left),
     right: round(right),
-    // Use the median SAME-REP delta instead of subtracting independent side means.
     signedDelta: round(signedDelta),
     absoluteDelta: round(Math.abs(signedDelta)),
     medianAbsoluteRepDelta: round(median(absoluteDeltas)),
@@ -117,10 +117,7 @@ function pairedMetric(pairs, { unit, label, directionTolerance = 0.5 } = {}) {
   });
 }
 
-/**
- * Analyze a single derived biomechanics frame.
- * A positive signedDelta means the left-side value is greater than the right.
- */
+/** Analyze a single derived biomechanics frame. */
 export function analyzeFrameAsymmetry(frame) {
   if (!frame) return null;
   const f = frame?.features || frame || {};
@@ -166,14 +163,24 @@ export function analyzeFrameAsymmetry(frame) {
   });
 }
 
-function extractRepMean(rep, featureName) {
-  return finite(rep?.biomechanics?.features?.[featureName]?.mean);
+function extractRepStat(rep, featureName, stat = "mean") {
+  const entry = rep?.biomechanics?.features?.[featureName];
+  if (!entry) return null;
+  if (stat === "peak_magnitude") {
+    const min = finite(entry.min);
+    const max = finite(entry.max);
+    if (min === null && max === null) return null;
+    if (min === null) return max;
+    if (max === null) return min;
+    return Math.abs(min) > Math.abs(max) ? min : max;
+  }
+  return finite(entry?.[stat] ?? entry?.mean ?? entry);
 }
 
-function pairedRepValues(reps, leftKey, rightKey, transform = (value) => value) {
+function pairedRepValues(reps, leftKey, rightKey, transform = (value) => value, stat = "mean") {
   return reps.map((rep) => {
-    const left = extractRepMean(rep, leftKey);
-    const right = extractRepMean(rep, rightKey);
+    const left = extractRepStat(rep, leftKey, stat);
+    const right = extractRepStat(rep, rightKey, stat);
     if (left === null || right === null) return null;
     return { left: transform(left), right: transform(right) };
   }).filter(Boolean);
@@ -214,35 +221,34 @@ function sessionCaptureQuality(reps, primaryPairedSamples) {
   });
 }
 
-/**
- * Build a session-level bilateral profile from rep summaries. Every side-to-side
- * delta is derived from left/right values present in the SAME rep so missing data
- * on opposite sides cannot create a false asymmetry.
- */
+/** Build a same-rep session-level bilateral profile. */
 export function summarizeSessionAsymmetry(reps = []) {
   const usable = reps.filter((rep) => rep?.biomechanics?.features);
   if (!usable.length) return null;
 
   const pairDefinitions = {
-    kneeFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Knee flexion", "deg", (v) => v, 0.5],
-    hipFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Hip flexion", "deg", (v) => v, 0.5],
-    ankleAngle: ["left_ankle_angle_deg", "right_ankle_angle_deg", "Ankle angle", "deg", (v) => v, 0.5],
-    kneePath: ["left_knee_path_offset_pct", "right_knee_path_offset_pct", "Knee-path deviation magnitude", "% torso", Math.abs, 1],
-    frontalKneeProjection: ["left_frontal_knee_projection_deg", "right_frontal_knee_projection_deg", "2D frontal knee projection", "deg", (v) => v, 0.5],
-    thighInclination: ["left_thigh_frontal_inclination_deg", "right_thigh_frontal_inclination_deg", "Frontal thigh inclination", "deg", (v) => v, 0.5],
+    kneePeakFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Peak knee flexion", "deg", (v) => v, 0.5, "max"],
+    kneeFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Mean knee flexion", "deg", (v) => v, 0.5, "mean"],
+    hipPeakFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Peak hip flexion", "deg", (v) => v, 0.5, "max"],
+    hipFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Mean hip flexion", "deg", (v) => v, 0.5, "mean"],
+    ankleAngle: ["left_ankle_angle_deg", "right_ankle_angle_deg", "Mean ankle angle", "deg", (v) => v, 0.5, "mean"],
+    kneePath: ["left_knee_path_offset_pct", "right_knee_path_offset_pct", "Peak knee-path deviation magnitude", "% torso", Math.abs, 1, "peak_magnitude"],
+    frontalKneeProjection: ["left_frontal_knee_projection_deg", "right_frontal_knee_projection_deg", "Peak 2D frontal knee projection", "deg", (v) => v, 0.5, "max"],
+    thighInclination: ["left_thigh_frontal_inclination_deg", "right_thigh_frontal_inclination_deg", "Peak frontal thigh inclination magnitude", "deg", Math.abs, 0.5, "peak_magnitude"],
   };
 
   const bilateral = {};
-  Object.entries(pairDefinitions).forEach(([key, [leftKey, rightKey, label, unit, transform, tolerance]]) => {
-    const pairs = pairedRepValues(usable, leftKey, rightKey, transform);
-    const metric = pairedMetric(pairs, { label, unit, directionTolerance: tolerance });
+  Object.entries(pairDefinitions).forEach(([key, [leftKey, rightKey, label, unit, transform, tolerance, stat]]) => {
+    const pairs = pairedRepValues(usable, leftKey, rightKey, transform, stat);
+    const metric = pairedMetric(pairs, { label, unit, directionTolerance: tolerance, phase: stat });
     if (!metric) return;
     bilateral[key] = Object.freeze({ ...metric, pairedCoverage: round(pairs.length / usable.length, 3) });
   });
 
-  const meanFeature = (key) => mean(usable.map((rep) => extractRepMean(rep, key)));
-  const primaryPairs = bilateral.kneeFlexion?.repSamples
-    || bilateral.hipFlexion?.repSamples
+  const meanFeature = (key) => mean(usable.map((rep) => extractRepStat(rep, key, "mean")));
+  const primaryPairs = bilateral.kneePeakFlexion?.repSamples
+    || bilateral.kneeFlexion?.repSamples
+    || bilateral.hipPeakFlexion?.repSamples
     || bilateral.ankleAngle?.repSamples
     || 0;
   const captureQuality = sessionCaptureQuality(usable, primaryPairs);
@@ -262,12 +268,14 @@ export function summarizeSessionAsymmetry(reps = []) {
       pelvisDepthAsymmetryPct: round(meanFeature("pelvis_depth_asymmetry_pct")),
       kneePathMagnitude: bilateral.kneePath || null,
     }),
-    interpretationGuardrail: "Side-to-side camera differences are descriptive kinematics. Measurement quality describes capture support, not clinical severity. Compare standardized repeated sessions; do not infer force, tissue load, diagnosis, clinical significance, or injury risk from this profile alone.",
+    interpretationGuardrail: "Peak and mean side-to-side camera differences are descriptive kinematics. Peak values are derived from within-rep feature extrema, not force or joint loading. Measurement quality describes capture support, not clinical severity. Compare standardized repeated sessions; do not infer force, tissue load, diagnosis, clinical significance, or injury risk from this profile alone.",
   });
 }
 
 const RESOLUTION_FLOORS = Object.freeze({
+  kneePeakFlexion: 1,
   kneeFlexion: 1,
+  hipPeakFlexion: 1,
   hipFlexion: 1,
   ankleAngle: 1,
   kneePath: 1,
@@ -277,7 +285,7 @@ const RESOLUTION_FLOORS = Object.freeze({
 
 export function compareAsymmetryToBaseline(current, baseline) {
   if (!current || !baseline) return null;
-  const keys = ["kneeFlexion", "hipFlexion", "ankleAngle", "kneePath", "frontalKneeProjection", "thighInclination"];
+  const keys = Object.keys(RESOLUTION_FLOORS);
   const change = {};
   keys.forEach((key) => {
     const now = finite(current.bilateral?.[key]?.absoluteDelta);
@@ -286,7 +294,6 @@ export function compareAsymmetryToBaseline(current, baseline) {
     const delta = now - prior;
     const currentIqr = finite(current.bilateral?.[key]?.absoluteDeltaIqr) ?? 0;
     const baselineIqr = finite(baseline.bilateral?.[key]?.absoluteDeltaIqr) ?? 0;
-    // Engineering measurement-resolution guard only; not a clinical MCID/threshold.
     const variabilityBand = Math.max(RESOLUTION_FLOORS[key] || 1, currentIqr, baselineIqr);
     const state = Math.abs(delta) <= variabilityBand
       ? "within_measurement_variability"
