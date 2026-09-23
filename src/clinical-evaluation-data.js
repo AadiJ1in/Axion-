@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import "./bilateral-balance-comparison-ui.js";
 
 const FORBIDDEN_RESULT_KEYS = /(^|_)(raw|video|image|frame|landmark|bitmap|blob|base64|data_url)($|_)/i;
 
