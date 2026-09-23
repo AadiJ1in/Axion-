@@ -1,12 +1,15 @@
-// Axion bilateral asymmetry / compensation analysis.
+// Axion bilateral asymmetry / compensation analysis v2.
 //
 // This module turns already-derived biomechanics into side-to-side descriptive
-// features. It does not infer tissue loading, muscle force, pathology, or injury
-// probability. Longitudinal interpretation should prefer within-person change.
+// features. It does not infer tissue loading, muscle force, pathology, diagnosis,
+// clinical significance, or injury probability. Longitudinal interpretation should
+// prefer standardized within-person change.
 
-export const ASYMMETRY_SCHEMA_VERSION = 1;
+export const ASYMMETRY_SCHEMA_VERSION = 2;
 
-const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = (value) => value === null || value === undefined || value === ""
+  ? null
+  : (Number.isFinite(Number(value)) ? Number(value) : null);
 const round = (value, digits = 2) => {
   const n = finite(value);
   if (n === null) return null;
@@ -14,12 +17,47 @@ const round = (value, digits = 2) => {
   return Math.round(n * factor) / factor;
 };
 
+function median(values) {
+  const usable = values.map(finite).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!usable.length) return null;
+  const middle = Math.floor(usable.length / 2);
+  return usable.length % 2 ? usable[middle] : (usable[middle - 1] + usable[middle]) / 2;
+}
+
+function percentile(values, ratio) {
+  const usable = values.map(finite).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!usable.length) return null;
+  const index = (usable.length - 1) * ratio;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return usable[lower];
+  const weight = index - lower;
+  return usable[lower] * (1 - weight) + usable[upper] * weight;
+}
+
+function iqr(values) {
+  const q1 = percentile(values, 0.25);
+  const q3 = percentile(values, 0.75);
+  return Number.isFinite(q1) && Number.isFinite(q3) ? q3 - q1 : null;
+}
+
+function mean(values) {
+  const usable = values.map(finite).filter(Number.isFinite);
+  return usable.length ? usable.reduce((sum, value) => sum + value, 0) / usable.length : null;
+}
+
 function relativeDifference(left, right) {
   const l = finite(left);
   const r = finite(right);
   if (l === null || r === null) return null;
   const denominator = (Math.abs(l) + Math.abs(r)) / 2;
   return denominator > 1e-6 ? Math.abs(l - r) / denominator * 100 : 0;
+}
+
+function greaterSideFromDelta(delta, tolerance = 0.01) {
+  const d = finite(delta);
+  if (d === null || Math.abs(d) < tolerance) return "similar";
+  return d > 0 ? "left" : "right";
 }
 
 function bilateralMetric(left, right, { unit, label } = {}) {
@@ -36,7 +74,46 @@ function bilateralMetric(left, right, { unit, label } = {}) {
     signedDelta: round(signedDelta),
     absoluteDelta: round(absoluteDelta),
     relativeDifferencePct: round(relativeDifference(l, r)),
-    greaterSide: absoluteDelta < 0.01 ? "similar" : signedDelta > 0 ? "left" : "right",
+    greaterSide: greaterSideFromDelta(signedDelta),
+  });
+}
+
+function pairedMetric(pairs, { unit, label, directionTolerance = 0.5 } = {}) {
+  if (!pairs.length) return null;
+  const left = median(pairs.map((pair) => pair.left));
+  const right = median(pairs.map((pair) => pair.right));
+  const signedDeltas = pairs.map((pair) => pair.left - pair.right);
+  const absoluteDeltas = signedDeltas.map(Math.abs);
+  const signedDelta = median(signedDeltas);
+  const informativeDirections = signedDeltas.filter((value) => Math.abs(value) >= directionTolerance);
+  const leftGreater = informativeDirections.filter((value) => value > 0).length;
+  const rightGreater = informativeDirections.filter((value) => value < 0).length;
+  const directionSamples = informativeDirections.length;
+  const directionConsistency = directionSamples
+    ? Math.max(leftGreater, rightGreater) / directionSamples
+    : null;
+  const consistentGreaterSide = !directionSamples
+    ? "similar_or_below_resolution"
+    : directionConsistency >= 0.8
+      ? (leftGreater > rightGreater ? "left" : "right")
+      : "mixed";
+
+  return Object.freeze({
+    label,
+    unit,
+    left: round(left),
+    right: round(right),
+    // Use the median SAME-REP delta instead of subtracting independent side means.
+    signedDelta: round(signedDelta),
+    absoluteDelta: round(Math.abs(signedDelta)),
+    medianAbsoluteRepDelta: round(median(absoluteDeltas)),
+    absoluteDeltaIqr: round(iqr(absoluteDeltas)),
+    relativeDifferencePct: round(median(pairs.map((pair) => relativeDifference(pair.left, pair.right)))),
+    greaterSide: greaterSideFromDelta(signedDelta, directionTolerance),
+    repSamples: pairs.length,
+    directionSamples,
+    directionConsistency: round(directionConsistency, 3),
+    consistentGreaterSide,
   });
 }
 
@@ -45,23 +122,43 @@ function bilateralMetric(left, right, { unit, label } = {}) {
  * A positive signedDelta means the left-side value is greater than the right.
  */
 export function analyzeFrameAsymmetry(frame) {
+  if (!frame) return null;
   const f = frame?.features || frame || {};
   const knee = bilateralMetric(f.left_knee_flexion_deg, f.right_knee_flexion_deg, { unit: "deg", label: "Knee flexion" });
   const hip = bilateralMetric(f.left_hip_flexion_deg, f.right_hip_flexion_deg, { unit: "deg", label: "Hip flexion" });
   const ankle = bilateralMetric(f.left_ankle_angle_deg, f.right_ankle_angle_deg, { unit: "deg", label: "Ankle angle" });
   const kneePath = bilateralMetric(
-    Math.abs(finite(f.left_knee_path_offset_pct) ?? 0),
-    Math.abs(finite(f.right_knee_path_offset_pct) ?? 0),
+    finite(f.left_knee_path_offset_pct) === null ? null : Math.abs(finite(f.left_knee_path_offset_pct)),
+    finite(f.right_knee_path_offset_pct) === null ? null : Math.abs(finite(f.right_knee_path_offset_pct)),
     { unit: "% torso", label: "Knee-path deviation magnitude" },
+  );
+  const frontalKneeProjection = bilateralMetric(
+    f.left_frontal_knee_projection_deg,
+    f.right_frontal_knee_projection_deg,
+    { unit: "deg", label: "2D frontal knee projection" },
+  );
+  const thighInclination = bilateralMetric(
+    f.left_thigh_frontal_inclination_deg,
+    f.right_thigh_frontal_inclination_deg,
+    { unit: "deg", label: "Frontal thigh inclination" },
   );
 
   return Object.freeze({
     schemaVersion: ASYMMETRY_SCHEMA_VERSION,
     timestampMs: finite(frame?.timestampMs),
-    coverage: frame?.quality?.usable === false ? "low" : "usable",
-    bilateral: Object.freeze({ kneeFlexion: knee, hipFlexion: hip, ankleAngle: ankle, kneePath }),
+    quality: Object.freeze({
+      usable: frame?.quality?.usable !== false,
+      meanVisibility: round(frame?.quality?.meanVisibility, 3),
+      minVisibility: round(frame?.quality?.minVisibility, 3),
+      frontalPlaneUsable: Boolean(frame?.quality?.frontalPlaneUsable),
+      worldLandmarksAvailable: Boolean(frame?.quality?.worldLandmarksAvailable),
+      angleSpace: frame?.quality?.angleSpace || null,
+    }),
+    bilateral: Object.freeze({ kneeFlexion: knee, hipFlexion: hip, ankleAngle: ankle, kneePath, frontalKneeProjection, thighInclination }),
     compensation: Object.freeze({
       pelvisTiltDeg: round(f.pelvis_line_tilt_deg),
+      shoulderTiltDeg: round(f.shoulder_line_tilt_deg),
+      shoulderPelvisCounterTiltDeg: round(f.shoulder_pelvis_counter_tilt_deg),
       trunkImageTiltDeg: round(f.trunk_image_tilt_deg),
       trunk3dTiltDeg: round(f.trunk_3d_tilt_deg),
       pelvisDepthAsymmetryPct: round(f.pelvis_depth_asymmetry_pct),
@@ -69,86 +166,142 @@ export function analyzeFrameAsymmetry(frame) {
   });
 }
 
-function mean(values) {
-  const usable = values.map(finite).filter((value) => value !== null);
-  return usable.length ? usable.reduce((sum, value) => sum + value, 0) / usable.length : null;
-}
-
 function extractRepMean(rep, featureName) {
   return finite(rep?.biomechanics?.features?.[featureName]?.mean);
 }
 
+function pairedRepValues(reps, leftKey, rightKey, transform = (value) => value) {
+  return reps.map((rep) => {
+    const left = extractRepMean(rep, leftKey);
+    const right = extractRepMean(rep, rightKey);
+    if (left === null || right === null) return null;
+    return { left: transform(left), right: transform(right) };
+  }).filter(Boolean);
+}
+
+function sessionCaptureQuality(reps, primaryPairedSamples) {
+  const coverages = reps.map((rep) => finite(rep?.biomechanics?.coverage)).filter(Number.isFinite);
+  const visibilities = reps.map((rep) => finite(rep?.biomechanics?.quality?.meanVisibility)).filter(Number.isFinite);
+  const frontalCoverages = reps.map((rep) => finite(rep?.biomechanics?.quality?.frontalPlaneCoverage)).filter(Number.isFinite);
+  const worldCoverages = reps.map((rep) => finite(rep?.biomechanics?.quality?.worldLandmarkCoverage)).filter(Number.isFinite);
+  const averageCoverage = mean(coverages);
+  const averageVisibility = mean(visibilities);
+  const pairedCoverage = reps.length ? primaryPairedSamples / reps.length : null;
+  const reasons = [];
+  if (!Number.isFinite(averageCoverage) || averageCoverage < 0.55) reasons.push("low_rep_frame_coverage");
+  if (!Number.isFinite(averageVisibility) || averageVisibility < 0.55) reasons.push("low_landmark_visibility");
+  if (!Number.isFinite(pairedCoverage) || pairedCoverage < 0.6) reasons.push("insufficient_bilateral_pairing");
+  if (primaryPairedSamples < 2) reasons.push("too_few_paired_reps");
+
+  const high = primaryPairedSamples >= 3
+    && averageCoverage >= 0.75
+    && averageVisibility >= 0.7
+    && pairedCoverage >= 0.8;
+  const moderate = primaryPairedSamples >= 2
+    && averageCoverage >= 0.55
+    && averageVisibility >= 0.55
+    && pairedCoverage >= 0.6;
+
+  return Object.freeze({
+    grade: high ? "high" : moderate ? "moderate" : "limited",
+    usable: moderate,
+    averageCoverage: round(averageCoverage, 3),
+    averageVisibility: round(averageVisibility, 3),
+    pairedRepCoverage: round(pairedCoverage, 3),
+    averageFrontalPlaneCoverage: round(mean(frontalCoverages), 3),
+    averageWorldLandmarkCoverage: round(mean(worldCoverages), 3),
+    reasons: Object.freeze(reasons),
+  });
+}
+
 /**
- * Build a session-level bilateral profile from rep summaries. This is intended
- * for therapist longitudinal review: it reports what side differed and by how
- * much, plus persistence across reps. It intentionally does not label a side as
- * abnormal/injured.
+ * Build a session-level bilateral profile from rep summaries. Every side-to-side
+ * delta is derived from left/right values present in the SAME rep so missing data
+ * on opposite sides cannot create a false asymmetry.
  */
 export function summarizeSessionAsymmetry(reps = []) {
   const usable = reps.filter((rep) => rep?.biomechanics?.features);
   if (!usable.length) return null;
 
-  const pairs = {
-    kneeFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Knee flexion", "deg"],
-    hipFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Hip flexion", "deg"],
-    ankleAngle: ["left_ankle_angle_deg", "right_ankle_angle_deg", "Ankle angle", "deg"],
+  const pairDefinitions = {
+    kneeFlexion: ["left_knee_flexion_deg", "right_knee_flexion_deg", "Knee flexion", "deg", (v) => v, 0.5],
+    hipFlexion: ["left_hip_flexion_deg", "right_hip_flexion_deg", "Hip flexion", "deg", (v) => v, 0.5],
+    ankleAngle: ["left_ankle_angle_deg", "right_ankle_angle_deg", "Ankle angle", "deg", (v) => v, 0.5],
+    kneePath: ["left_knee_path_offset_pct", "right_knee_path_offset_pct", "Knee-path deviation magnitude", "% torso", Math.abs, 1],
+    frontalKneeProjection: ["left_frontal_knee_projection_deg", "right_frontal_knee_projection_deg", "2D frontal knee projection", "deg", (v) => v, 0.5],
+    thighInclination: ["left_thigh_frontal_inclination_deg", "right_thigh_frontal_inclination_deg", "Frontal thigh inclination", "deg", (v) => v, 0.5],
   };
 
   const bilateral = {};
-  Object.entries(pairs).forEach(([key, [leftKey, rightKey, label, unit]]) => {
-    const leftValues = usable.map((rep) => extractRepMean(rep, leftKey)).filter((v) => v !== null);
-    const rightValues = usable.map((rep) => extractRepMean(rep, rightKey)).filter((v) => v !== null);
-    const pairCount = Math.min(leftValues.length, rightValues.length);
-    if (!pairCount) return;
-    const metric = bilateralMetric(mean(leftValues), mean(rightValues), { label, unit });
-    const signedRepDeltas = usable
-      .map((rep) => {
-        const left = extractRepMean(rep, leftKey);
-        const right = extractRepMean(rep, rightKey);
-        return left === null || right === null ? null : left - right;
-      })
-      .filter((v) => v !== null);
-    const leftGreater = signedRepDeltas.filter((v) => v > 0).length;
-    const rightGreater = signedRepDeltas.filter((v) => v < 0).length;
-    const consistentSide = signedRepDeltas.length
-      ? (leftGreater === signedRepDeltas.length ? "left" : rightGreater === signedRepDeltas.length ? "right" : "mixed")
-      : "unknown";
-    bilateral[key] = Object.freeze({ ...metric, repSamples: signedRepDeltas.length, consistentGreaterSide: consistentSide });
+  Object.entries(pairDefinitions).forEach(([key, [leftKey, rightKey, label, unit, transform, tolerance]]) => {
+    const pairs = pairedRepValues(usable, leftKey, rightKey, transform);
+    const metric = pairedMetric(pairs, { label, unit, directionTolerance: tolerance });
+    if (!metric) return;
+    bilateral[key] = Object.freeze({ ...metric, pairedCoverage: round(pairs.length / usable.length, 3) });
   });
 
   const meanFeature = (key) => mean(usable.map((rep) => extractRepMean(rep, key)));
-  const kneePathLeft = meanFeature("left_knee_path_offset_pct");
-  const kneePathRight = meanFeature("right_knee_path_offset_pct");
+  const primaryPairs = bilateral.kneeFlexion?.repSamples
+    || bilateral.hipFlexion?.repSamples
+    || bilateral.ankleAngle?.repSamples
+    || 0;
+  const captureQuality = sessionCaptureQuality(usable, primaryPairs);
 
   return Object.freeze({
     schemaVersion: ASYMMETRY_SCHEMA_VERSION,
     repCount: reps.length,
     usableRepCount: usable.length,
+    quality: captureQuality,
     bilateral: Object.freeze(bilateral),
     compensation: Object.freeze({
       pelvisTiltDeg: round(meanFeature("pelvis_line_tilt_deg")),
+      shoulderTiltDeg: round(meanFeature("shoulder_line_tilt_deg")),
+      shoulderPelvisCounterTiltDeg: round(meanFeature("shoulder_pelvis_counter_tilt_deg")),
       trunkImageTiltDeg: round(meanFeature("trunk_image_tilt_deg")),
       trunk3dTiltDeg: round(meanFeature("trunk_3d_tilt_deg")),
       pelvisDepthAsymmetryPct: round(meanFeature("pelvis_depth_asymmetry_pct")),
-      kneePathMagnitude: bilateralMetric(
-        kneePathLeft === null ? null : Math.abs(kneePathLeft),
-        kneePathRight === null ? null : Math.abs(kneePathRight),
-        { unit: "% torso", label: "Knee-path deviation magnitude" },
-      ),
+      kneePathMagnitude: bilateral.kneePath || null,
     }),
-    interpretationGuardrail: "Side-to-side camera differences are descriptive kinematics. Compare standardized repeated sessions; do not infer force, tissue load, diagnosis, or injury risk from this profile alone.",
+    interpretationGuardrail: "Side-to-side camera differences are descriptive kinematics. Measurement quality describes capture support, not clinical severity. Compare standardized repeated sessions; do not infer force, tissue load, diagnosis, clinical significance, or injury risk from this profile alone.",
   });
 }
 
+const RESOLUTION_FLOORS = Object.freeze({
+  kneeFlexion: 1,
+  hipFlexion: 1,
+  ankleAngle: 1,
+  kneePath: 1,
+  frontalKneeProjection: 1,
+  thighInclination: 1,
+});
+
 export function compareAsymmetryToBaseline(current, baseline) {
   if (!current || !baseline) return null;
-  const keys = ["kneeFlexion", "hipFlexion", "ankleAngle"];
+  const keys = ["kneeFlexion", "hipFlexion", "ankleAngle", "kneePath", "frontalKneeProjection", "thighInclination"];
   const change = {};
   keys.forEach((key) => {
     const now = finite(current.bilateral?.[key]?.absoluteDelta);
     const prior = finite(baseline.bilateral?.[key]?.absoluteDelta);
     if (now === null || prior === null) return;
-    change[key] = Object.freeze({ current: round(now), baseline: round(prior), delta: round(now - prior) });
+    const delta = now - prior;
+    const currentIqr = finite(current.bilateral?.[key]?.absoluteDeltaIqr) ?? 0;
+    const baselineIqr = finite(baseline.bilateral?.[key]?.absoluteDeltaIqr) ?? 0;
+    // Engineering measurement-resolution guard only; not a clinical MCID/threshold.
+    const variabilityBand = Math.max(RESOLUTION_FLOORS[key] || 1, currentIqr, baselineIqr);
+    const state = Math.abs(delta) <= variabilityBand
+      ? "within_measurement_variability"
+      : delta > 0 ? "larger_difference" : "smaller_difference";
+    change[key] = Object.freeze({
+      current: round(now),
+      baseline: round(prior),
+      delta: round(delta),
+      variabilityBand: round(variabilityBand),
+      state,
+    });
   });
-  return Object.freeze({ schemaVersion: ASYMMETRY_SCHEMA_VERSION, change: Object.freeze(change) });
+  return Object.freeze({
+    schemaVersion: ASYMMETRY_SCHEMA_VERSION,
+    change: Object.freeze(change),
+    interpretationGuardrail: "Change states are measurement-level descriptors relative to within-session variability and an engineering resolution floor; they are not tests of statistical or clinical significance.",
+  });
 }
