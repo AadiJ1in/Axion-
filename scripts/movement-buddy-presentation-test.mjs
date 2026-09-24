@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const runtime = await readFile(new URL("../src/movement-buddy-runtime.js", import.meta.url), "utf8");
+const adventure = await readFile(new URL("../src/adventure-scene.js", import.meta.url), "utf8");
 const display = await readFile(new URL("../src/movement-lab-display.css", import.meta.url), "utf8");
 const polish = await readFile(new URL("../src/patient-game-polish.js", import.meta.url), "utf8");
 const restoration = await readFile(new URL("../src/ui-restoration-progress.css", import.meta.url), "utf8");
@@ -35,6 +36,21 @@ assert.doesNotMatch(runtime, /\bMOVEMENT_EVENT\b/, "presentation buddy must not 
 assert.doesNotMatch(runtime, /\bsupabase\b/i, "presentation buddy must not read or write Supabase directly");
 assert.doesNotMatch(runtime, /\.from\s*\(/, "presentation buddy must not query persistence tables");
 
+// The game scene and the Movement Buddy used to race each other on the same canvas.
+// movement-buddy-runtime.js is now the sole writer to #exercise-buddy.
+assert.doesNotMatch(adventure, /querySelector\(['"]#exercise-buddy['"]\)/,
+  "adventure scene must never acquire the dedicated Movement Buddy canvas");
+assert.doesNotMatch(adventure, /\bbuddyCtx\b/,
+  "adventure scene must never render into the Movement Buddy canvas");
+assert.doesNotMatch(adventure, /\blastBuddyDraw\b/,
+  "adventure scene must not run a second Buddy animation clock");
+assert.doesNotMatch(adventure, /clearRect\(0\s*,\s*0\s*,\s*320\s*,\s*210\s*\)/,
+  "legacy fixed-size partial Buddy clear must stay removed");
+assert.doesNotMatch(adventure, /drawExplorer/,
+  "adventure scene must not import or invoke the Buddy explorer renderer");
+assert.match(adventure, /dedicated #exercise-buddy canvas is owned exclusively by movement-buddy-runtime\.js/,
+  "single-writer canvas ownership should stay explicit in source");
+
 assert.match(display, /\.camera-pane canvas[\s\S]*background:transparent!important/);
 assert.match(display, /\.motion-stage:has\(\.buddy-pane\)[\s\S]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)!important/,
   "desktop Motion Tracking Lab must preserve camera + Movement Twin + Buddy");
@@ -51,4 +67,4 @@ assert.match(display, /@media\(max-width:900px\)[\s\S]*\.twin-pane\{display:none
 assert.match(restoration, /@import\s+"\.\/movement-lab-display\.css"/);
 assert.match(polish, /import\s+"\.\/movement-buddy-runtime\.js"/);
 
-console.log("Movement buddy boundary: version-105 Motion Tracking Lab preserved, right-side Buddy retained, duplicate game avatar forbidden, and clinical isolation passed.");
+console.log("Movement buddy boundary: one canvas owner, version-105 Motion Tracking Lab preserved, right-side Buddy retained, duplicate game avatar forbidden, and clinical isolation passed.");
