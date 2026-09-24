@@ -76,6 +76,13 @@ class FakeWorker {
 globalThis.Worker = FakeWorker;
 globalThis.createImageBitmap = async () => ({ close() {} });
 
+// Even when the browser supports background workers, production defaults to the
+// sequential direct runtime so an old worker result cannot masquerade as a new
+// camera frame. Worker inference remains an explicit opt-in below.
+const defaultRuntime = createPoseRuntime({ worker: { workerFactory: () => new FakeWorker() } });
+assert.equal(defaultRuntime.getState().worker, false, 'live movement tracking defaults to the stable direct runtime');
+defaultRuntime.close();
+
 const states = [];
 const runtime = createPoseRuntime({
   mediapipe: { worker: 'auto', minTrackingConfidence: .61, numPoses: 1 },
@@ -84,7 +91,7 @@ const runtime = createPoseRuntime({
 });
 
 await runtime.initialize();
-assert.equal(runtime.getState().worker, true, 'modern browsers select background pose inference');
+assert.equal(runtime.getState().worker, true, 'explicit worker mode still selects background pose inference');
 assert.equal(runtime.getState().initialized, true);
 assert.equal(initConfig.vision.minTrackingConfidence, .61, 'worker receives the same centralized confidence profile');
 assert.equal(initConfig.vision.numPoses, 1, 'worker receives configured pose-count limit');
@@ -128,4 +135,4 @@ stalledRuntime.close();
 if (originalWorker === undefined) delete globalThis.Worker; else globalThis.Worker = originalWorker;
 if (originalCreateImageBitmap === undefined) delete globalThis.createImageBitmap; else globalThis.createImageBitmap = originalCreateImageBitmap;
 
-console.log('Pose worker runtime passed: stable canvas backing store, configurable vision tuning, bounded inference backlog, worker timeout recovery, and teardown.');
+console.log('Pose runtime passed: stable direct default, stable canvas backing store, configurable vision tuning, bounded worker backlog, timeout recovery, and teardown.');
