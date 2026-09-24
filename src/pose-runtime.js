@@ -152,8 +152,13 @@ export function createPoseRuntime({
   onState = () => {},
   worker = {},
 } = {}) {
-  const workerPreference = mediapipe.worker ?? "auto";
-  const workerAllowed = workerPreference !== false && workerPreference !== "off";
+  // Reliability-first default for live rehabilitation sessions: direct inference is
+  // sequential with the video-frame loop and therefore cannot replay an old worker
+  // result as though it belonged to a new camera frame. Background inference remains
+  // available as an explicit opt-in (`worker: true` or `worker: "auto"`) while its
+  // asynchronous buffering path continues to be tested independently.
+  const workerPreference = mediapipe.worker ?? "off";
+  const workerAllowed = workerPreference === true || workerPreference === "auto" || workerPreference === "on";
   const canUseWorker = workerAllowed && supportsPoseWorker();
   const localRuntime = createDirectPoseRuntime({ mediapipe, onState });
   let workerRuntime = canUseWorker ? createWorkerPoseRuntime({ mediapipe, onState, ...worker }) : null;
