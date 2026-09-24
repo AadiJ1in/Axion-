@@ -3,6 +3,7 @@ import { drawExplorer } from "./ruins-runner.js";
 // Presentation-only movement companion. This module reads the existing game state
 // but never calls consume(), never creates clinical reps, and never persists data.
 const clamp = (value, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, Number(value) || 0));
+const PAINT_INTERVAL_MS = 80;
 let frame = 0;
 let lastPaint = 0;
 let landscape = null;
@@ -15,7 +16,9 @@ function resizeCanvas(canvas) {
   if (!canvas) return null;
   const rect = canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
-  const dpr = Math.min(1.4, window.devicePixelRatio || 1);
+  // Keep the presentation layer intentionally cheaper than pose inference. The
+  // buddy is visual feedback, not the source of clinical measurements.
+  const dpr = Math.min(1.15, window.devicePixelRatio || 1);
   const width = Math.max(1, Math.round(rect.width * dpr));
   const height = Math.max(1, Math.round(rect.height * dpr));
   if (canvas.width !== width) canvas.width = width;
@@ -213,7 +216,7 @@ function loop(now) {
     frame = window.requestAnimationFrame(loop);
     return;
   }
-  if (now - lastPaint >= 50) {
+  if (now - lastPaint >= PAINT_INTERVAL_MS) {
     lastPaint = now;
     syncMovementBuddy();
   }
