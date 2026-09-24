@@ -55,9 +55,9 @@ assert.equal(fired, 2);
 
 assert.deepEqual(resolveCameraVideoConstraints(), {
   facingMode: "user",
-  width: { ideal: 960 },
-  height: { ideal: 720 },
-  frameRate: { ideal: 30, max: 30 },
+  width: { ideal: 720 },
+  height: { ideal: 540 },
+  frameRate: { ideal: 24, max: 24 },
 });
 assert.deepEqual(resolveCameraVideoConstraints({ width: 4000, height: 100, frameRate: 120, facingMode: "environment" }), {
   facingMode: "environment",
@@ -66,4 +66,4 @@ assert.deepEqual(resolveCameraVideoConstraints({ width: 4000, height: 100, frame
   frameRate: { ideal: 60, max: 60 },
 });
 
-console.log("Video frame scheduler: camera-frame pacing, RAF fallback, cancellation and configurable constraints passed.");
+console.log("Video frame scheduler: camera-frame pacing, RAF fallback, cancellation and stability-focused configurable constraints passed.");
