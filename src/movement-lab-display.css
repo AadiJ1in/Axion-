@@ -1,7 +1,7 @@
 /* Movement Lab optical/gameplay correction.
    Keep the surrounding patient UI warm/light, but the camera + movement surfaces
-   need a dark, high-contrast stage so the patient, pose overlay, and buddy remain
-   visible. This file is presentation-only and does not alter tracking logic. */
+   need a dark, high-contrast stage so the patient, pose overlay, movement twin, and
+   right-side Buddy remain visible. Presentation-only: no tracking logic changes. */
 
 .lab-page .capture-panel>.motion-stage{
   width:100%!important;
@@ -17,11 +17,14 @@
 .lab-page .camera-pane,
 .lab-page .twin-pane,
 .lab-page .buddy-pane{
+  min-width:0!important;
+  overflow:hidden!important;
+  contain:paint!important;
+  isolation:isolate!important;
   background:#08120f!important;
 }
 
-/* The pose canvas sits above the video. It must stay transparent or it visually
-   replaces the patient's live image with a pale/white rectangle. */
+/* Pose landmarks are drawn over the video, so the overlay must remain transparent. */
 .lab-page .camera-pane video{
   background:#050a08!important;
   opacity:1!important;
@@ -38,7 +41,6 @@
   pointer-events:none!important;
 }
 .lab-page .camera-pane.camera-on video{opacity:1!important}
-
 .lab-page .camera-placeholder{
   color:#9eb3aa!important;
   background:
@@ -47,7 +49,7 @@
 }
 .lab-page .camera-placeholder b{color:#d7e7df!important}
 
-/* Restore the live movement twin instead of hiding it for camera-squat mode. */
+/* Keep the Movement Twin visible on desktop, matching the useful version-105 lab. */
 .camera-squat-lab .twin-pane,
 .lab-page .twin-pane{
   display:block!important;
@@ -58,10 +60,7 @@
     linear-gradient(180deg,#0c1915,#07100f)!important;
   background-size:28px 28px,28px 28px,auto,auto!important;
 }
-.lab-page .twin-pane .movement-twin{
-  opacity:1!important;
-  filter:none!important;
-}
+.lab-page .twin-pane .movement-twin{opacity:1!important;filter:none!important}
 .lab-page .twin-pane .twin-bone{
   stroke-width:8!important;
   filter:drop-shadow(0 0 8px rgba(110,240,177,.48))!important;
@@ -70,18 +69,29 @@
   filter:drop-shadow(0 0 9px rgba(110,240,177,.82))!important;
 }
 
-/* The existing markup already contains a buddy canvas for the squat mission.
-   The restoration layer hid it; show it again and give it a readable game stage. */
+/* Desktop squat sessions show the three useful Motion Tracking Lab surfaces:
+   self + Movement Twin + dedicated right-side Workout Buddy. */
 .lab-page .motion-stage:has(.buddy-pane){
   grid-template-columns:repeat(3,minmax(0,1fr))!important;
   height:clamp(300px,30vw,430px)!important;
+  overflow:hidden!important;
 }
+.lab-page .motion-stage:has(.buddy-pane) .camera-pane,
+.lab-page .motion-stage:has(.buddy-pane) .twin-pane,
 .lab-page .motion-stage:has(.buddy-pane) .buddy-pane{
-  display:block!important;
   min-width:0!important;
   min-height:300px!important;
-  position:relative!important;
   overflow:hidden!important;
+  contain:paint!important;
+  isolation:isolate!important;
+  clip-path:inset(0)!important;
+}
+.lab-page .motion-stage:has(.buddy-pane) .camera-pane{display:block!important;grid-column:1!important}
+.lab-page .motion-stage:has(.buddy-pane) .twin-pane{display:block!important;grid-column:2!important}
+.lab-page .motion-stage:has(.buddy-pane) .buddy-pane{
+  display:block!important;
+  grid-column:3!important;
+  position:relative!important;
   border-left:1px solid rgba(183,216,199,.14)!important;
   background:
     radial-gradient(circle at 50% 38%,rgba(110,240,177,.13),transparent 34%),
@@ -91,6 +101,7 @@
   display:block!important;
   width:100%!important;
   height:100%!important;
+  max-width:100%!important;
   background:transparent!important;
 }
 .lab-page .buddy-pane .pane-label{font-size:0!important}
@@ -116,8 +127,7 @@
   font-size:.58rem!important;
 }
 
-/* Do not collapse the reference stage to 1px once the camera is live. The user
-   explicitly needs to see both themselves and the buddy while exercising. */
+/* Keep the reference stage visible once a squat session is active. */
 .camera-squat-lab .adventure-card:has(.movement-game-stage.active).camera-live + .motion-stage{
   position:relative!important;
   width:100%!important;
@@ -137,37 +147,34 @@
 .lab-page .target-label{color:#9bb0a6!important}
 .lab-page .target-label i{border-color:#a797ff!important}
 
-/* Game avatar overlay: the game remains entertainment-only, while a small camera
-   picture-in-picture keeps the patient visible during play. */
-.lab-page .adventure-viewport{position:relative!important}
-.lab-page .axion-avatar-game-layer{
-  position:absolute!important;
-  inset:0!important;
-  width:100%!important;
-  height:100%!important;
-  z-index:3!important;
-  pointer-events:none!important;
-}
+/* The normal rehab game keeps its own renderer. Never inject a second game-avatar
+   canvas over it; that duplicate layer caused the explorer/background pop-in glitch. */
+.lab-page .adventure-viewport{position:relative!important;overflow:hidden!important}
 .lab-page .game-mode-badge,
 .lab-page .game-feedback,
-.lab-page .game-completion{
-  z-index:6!important;
-}
+.lab-page .game-completion{z-index:6!important}
 
 @media(max-width:900px){
   .lab-page .capture-panel>.motion-stage{max-width:760px!important}
   .lab-page .motion-stage:has(.buddy-pane){
-    grid-template-columns:1fr 1fr!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
     height:auto!important;
   }
-  /* On smaller screens preserve the two things the patient must see: self + buddy. */
+  /* On smaller screens prioritize self + Buddy; Movement Twin remains available on desktop. */
   .lab-page .motion-stage:has(.buddy-pane) .twin-pane{display:none!important}
-  .lab-page .motion-stage:has(.buddy-pane) .camera-pane,
-  .lab-page .motion-stage:has(.buddy-pane) .buddy-pane{min-height:300px!important}
+  .lab-page .motion-stage:has(.buddy-pane) .camera-pane{grid-column:1!important;min-height:300px!important}
+  .lab-page .motion-stage:has(.buddy-pane) .buddy-pane{grid-column:2!important;min-height:300px!important}
 }
 
 @media(max-width:620px){
-  .lab-page .motion-stage:has(.buddy-pane){grid-template-columns:1fr!important}
+  .lab-page .motion-stage:has(.buddy-pane){grid-template-columns:minmax(0,1fr)!important}
   .lab-page .motion-stage:has(.buddy-pane) .camera-pane,
-  .lab-page .motion-stage:has(.buddy-pane) .buddy-pane{min-height:290px!important}
+  .lab-page .motion-stage:has(.buddy-pane) .buddy-pane{
+    grid-column:1!important;
+    min-height:290px!important;
+  }
+  .lab-page .motion-stage:has(.buddy-pane) .buddy-pane{
+    border-left:0!important;
+    border-top:1px solid rgba(183,216,199,.14)!important;
+  }
 }
