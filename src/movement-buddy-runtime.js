@@ -1,3 +1,4 @@
+import "./tracking-visibility-guard.js";
 import { drawExplorer } from "./ruins-runner.js";
 
 // Presentation-only movement companion. This module reads the existing game state
@@ -16,8 +17,6 @@ function resizeCanvas(canvas) {
   if (!canvas) return null;
   const rect = canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
-  // Keep the presentation layer intentionally cheaper than pose inference. The
-  // buddy is visual feedback, not the source of clinical measurements.
   const dpr = Math.min(1.15, window.devicePixelRatio || 1);
   const width = Math.max(1, Math.round(rect.width * dpr));
   const height = Math.max(1, Math.round(rect.height * dpr));
@@ -123,7 +122,7 @@ function drawStatus(ctx, width, height, state) {
   if (state?.paused) copy = "Paused · your game position is preserved";
   else if (state?.camera && !state.camera.ready) copy = "Adjust camera · the explorer is waiting for tracking";
   else if (state?.lastOutcome === "complete") copy = "Mission complete";
-  else if (/collision/.test(String(state?.lastOutcome || ""))) copy = "Gate touched · keep your prescribed pace";
+  else if (/collision|touch/i.test(String(state?.lastOutcome || ""))) copy = "Gate touched · keep your prescribed pace";
   ctx.fillStyle = "rgba(4,14,10,.78)";
   ctx.fillRect(width * .04, height * .055, width * .43, height * .09);
   ctx.fillStyle = "#e8f8ef";
