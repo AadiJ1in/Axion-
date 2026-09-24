@@ -47,9 +47,13 @@ const finiteNumber = (value, fallback) => Number.isFinite(Number(value)) ? Numbe
 const bounded = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function resolveCameraVideoConstraints(overrides = {}) {
-  const width = bounded(finiteNumber(overrides.width, 960), 320, 1920);
-  const height = bounded(finiteNumber(overrides.height, 720), 240, 1080);
-  const frameRate = bounded(finiteNumber(overrides.frameRate, 30), 15, 60);
+  // 720x540 @ 24 fps leaves substantially more inference/render headroom than the
+  // previous 960x720 @ 30 fps default while preserving enough spatial detail for
+  // the Lite pose model and the full-body movement UI. Callers can still override
+  // these values when a protocol specifically needs a different capture profile.
+  const width = bounded(finiteNumber(overrides.width, 720), 320, 1920);
+  const height = bounded(finiteNumber(overrides.height, 540), 240, 1080);
+  const frameRate = bounded(finiteNumber(overrides.frameRate, 24), 15, 60);
   const facingMode = typeof overrides.facingMode === "string" && overrides.facingMode.trim()
     ? overrides.facingMode.trim()
     : "user";
