@@ -1,4 +1,4 @@
-import { drawRuinsRunner, drawExplorer } from './ruins-runner.js';
+import { drawRuinsRunner } from './ruins-runner.js';
 import { drawSquatCameraScene } from './squat-camera-scene.js';
 import { clamp01, gameTarget } from './adventure-definitions.js';
 import { PERFORMANCE_DIAGNOSTICS_ENABLED, performanceDiagnostics } from './performance-diagnostics.js';
@@ -124,16 +124,15 @@ function drawBeaconRestoration(ctx, story, w, h, sessionProgress, reduced) {
 }
 
 // Canvas renders entertainment only; it cannot write clinical repetitions.
+// The dedicated #exercise-buddy canvas is owned exclusively by movement-buddy-runtime.js.
 export function createAdventureScene(canvas, definition, { video = null } = {}) {
   const ctx=canvas.getContext('2d');
   if(!ctx)return {draw(){},destroy(){},async toggleSound(){return false;}};
   const landscape=new Image();landscape.src='/journey/landscape.webp';
-  const buddy=document.querySelector('#exercise-buddy');
-  const buddyCtx=buddy?.getContext('2d') || null;
   const backgrounds=new Image(), sprites=new Image();
   backgrounds.src='/adventure/environments.webp';sprites.src='/adventure/sprites.webp';
   let destroyed=false, time=0, last=performance.now(), mean=0, frames=0, sound=false, audio=null, outcome=null;
-  let lastDraw=0, lastBuddyDraw=0, lastDiagnostics=0, lastTraceId=null;
+  let lastDraw=0, lastDiagnostics=0, lastTraceId=null;
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const renderQuality=createAdaptiveRenderQuality();
   let frameInterval=renderQuality.snapshot().frameInterval;
@@ -200,7 +199,6 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
         drawRuinsRunner(ctx,state,w,h,landscape,reduced||effects==='low'||effects==='minimal');
         if(effects!=='minimal')drawBeaconRestoration(ctx,definition.story,w,h,state.progress,reduced||effects==='low');
         if(PERFORMANCE_DIAGNOSTICS_ENABLED){canvas.dataset.movement=state.runner.movement.toFixed(3);canvas.dataset.obstacle=state.runner.x.toFixed(3);}
-        if(buddyCtx && effects!=='minimal' && now-lastBuddyDraw>=(effects==='full'?66:140)){buddyCtx.clearRect(0,0,320,210);const p=state.paused?0:(1-Math.cos(now/6000*Math.PI*2))/2;drawExplorer(buddyCtx,160,185,140,p,'#88a997');lastBuddyDraw=now;}
         finishFrame(start,now,state);return;
       }
       if(state.camera){
