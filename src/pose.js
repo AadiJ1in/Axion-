@@ -124,6 +124,11 @@ export async function createMovementTracker(options) {
   let stream;
   let running = false;
   let cameraGeneration = 0;
+  let frameGeneration = 0;
+  let lastFrameAt = 0;
+  let stalled = false;
+  let cameraRecoveries = 0;
+  let processingErrors = 0;
   const frameScheduler = createVideoFrameScheduler(video);
   let lastVideoTime = -1;
   let stage = "up";
@@ -217,6 +222,10 @@ export async function createMovementTracker(options) {
   }
 
   function pauseMeasurement(message) {
+    if (!calibrated) {
+      calibrationStart = null;
+      calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = [];
+    }
     repCycle.cancelPending();
     stage = calibrated ? "positioning" : "calibrating";
     repStart = null;
@@ -275,8 +284,8 @@ export async function createMovementTracker(options) {
       return;
     }
 
-    if (metrics.value === null) {
-      onUpdate({ reps, stage, angle: null, jointAngle: null, angleLabel: profile.label, measurementUnit: profile.unit, movementRange: null, symmetryDelta: null, message: profile.cameraHint });
+    if (!Number.isFinite(metrics.value)) {
+      pauseMeasurement(profile.cameraHint);
       return;
     }
 
@@ -367,17 +376,69 @@ export async function createMovementTracker(options) {
 
   async function frame() {
     if (!running) return;
+    const generation = frameGeneration;
+    try {
+      await processFrame(generation);
+      processingErrors = 0;
+    } catch (error) {
+      if (!running || generation !== frameGeneration) return;
+      // UI/measurement exceptions used to skip scheduling forever. Fail closed
+      // for this frame, then retry; persistent failures get an actionable restart.
+      processingErrors += 1;
+      try {
+        pauseMeasurement("Tracking interrupted. Hold your starting position while tracking recovers.");
+      } catch { /* A broken view must not prevent cancellation of the partial rep. */ }
+      try {
+        onTrackingState({ code: "tracking_interrupted", label: "Recovering movement tracking", quality: null });
+      } catch { /* Recovery still proceeds if the status view also failed. */ }
+      if (processingErrors >= 3) {
+        stop();
+        try {
+          onTrackingState({ code: "model_error", label: "Movement tracking needs a restart", quality: null });
+        } catch { /* Try the independent error view below. */ }
+        try {
+          onError("Tracking could not recover. Restart the camera scan; your completed reps are preserved.");
+        } catch { /* Tracking is stopped even when the view cannot render. */ }
+      }
+    } finally {
+      if (running && generation === frameGeneration) scheduleNextFrame();
+    }
+  }
+
+  async function processFrame(generation) {
+    const frameNow = performance.now();
+    if (frameNow - lastFrameAt > 750 && !stalled) {
+      stalled = true;
+      pauseMeasurement("Camera interrupted. Counting is paused while the camera recovers.");
+      onTrackingState({ code: "tracking_interrupted", label: "Waiting for fresh camera frames", quality: null });
+      if (video.paused) void video.play().catch(() => {});
+    }
+    if ((video.currentTime === lastVideoTime || video.readyState < 2) && frameNow - lastFrameAt > 3000) {
+      if (cameraRecoveries < 1) {
+        cameraRecoveries += 1;
+        await start({ recovery: true });
+      } else {
+        stop();
+        onTrackingState({ code: "camera_timeout", label: "Camera stopped delivering frames", quality: null });
+        onError("The camera stopped delivering frames. Restart the scan; your completed reps are preserved.");
+      }
+      return;
+    }
     if (video.currentTime !== lastVideoTime && video.readyState >= 2) {
       lastVideoTime = video.currentTime;
+      lastFrameAt = frameNow;
+      stalled = false;
       const cameraFrameAt = performance.now();
       const now = cameraFrameAt;
       let result;
       let poseAt = cameraFrameAt;
       try {
-        result = poseRuntime.infer(video, now);
+        result = await poseRuntime.infer(video, now);
+        if (!running || generation !== frameGeneration) return;
         poseAt = performance.now();
-        draw(result);
       } catch (inferenceError) {
+        if (!running || generation !== frameGeneration) return;
+        pauseMeasurement("Movement model interrupted. Counting is paused during recovery.");
         // Some laptops can initialize GPU inference successfully and then lose
         // the graphics context on a real camera frame. The runtime owns that
         // backend-specific recovery so movement state remains backend-agnostic.
@@ -385,9 +446,8 @@ export async function createMovementTracker(options) {
           const recoveryGeneration = cameraGeneration;
           try {
             await poseRuntime.switchToCpu();
-            if (!running || recoveryGeneration !== cameraGeneration) return;
+            if (!running || recoveryGeneration !== cameraGeneration || generation !== frameGeneration) return;
             lastVideoTime = -1;
-            scheduleNextFrame();
             return;
           } catch {
             // If compatibility mode also fails, use the normal recoverable
@@ -401,10 +461,10 @@ export async function createMovementTracker(options) {
         onError("The movement model stopped responding. Restart the camera scan to continue; your completed reps are preserved.");
         return;
       }
+      draw(result);
       if ((result.landmarks?.length ?? 0) > 1) {
         onTrackingState({ code: "multiple_people", label: "Multiple people detected", quality: "Low" });
         pauseMeasurement("Only one person should be visible during the session. Rep counting is paused.");
-        scheduleNextFrame();
         return;
       }
       const landmarks = result.landmarks?.[0];
@@ -420,7 +480,7 @@ export async function createMovementTracker(options) {
       if (landmarks) onPose(landmarks);
       if (!landmarks || !acceptsTrackingQuality(quality?.score)) {
         pauseMeasurement(landmarks ? `Reposition for a clearer ${profile.label.toLowerCase()} view. Rep counting is paused.` : `Return to frame. ${profile.cameraHint}`);
-        scheduleNextFrame(); return;
+        return;
       }
       const worldLandmarks = result.worldLandmarks?.[0] || null;
       const measurementLandmarks = worldLandmarks || landmarks;
@@ -434,11 +494,12 @@ export async function createMovementTracker(options) {
       onTiming({ id: ++timingSequence, cameraFrameAt, poseAt, movementAt });
       updateState(metrics, now, latestBiomechanicsFrame);
     }
-    scheduleNextFrame();
   }
 
-  async function start() {
+  async function start({ recovery = false } = {}) {
     stop();
+    if (!recovery) cameraRecoveries = 0;
+    processingErrors = 0;
     const generation = cameraGeneration;
     repCycle.cancelPending();
     try {
@@ -466,10 +527,10 @@ export async function createMovementTracker(options) {
       );
       if (generation !== cameraGeneration) { stopMediaStream(openedStream); return; }
       stream = openedStream; video.srcObject = stream;
-      stream.getVideoTracks().forEach((track) => { track.addEventListener("ended", () => { if (generation !== cameraGeneration) return; running = false; onTrackingState({ code: "camera_disconnected", label: "Camera disconnected", quality: null }); onError("Camera disconnected. Reconnect it and restart the camera scan."); }, { once: true }); });
+      stream.getVideoTracks().forEach((track) => { track.addEventListener("ended", () => { if (generation !== cameraGeneration) return; stop(); pauseMeasurement("Camera disconnected. Your completed reps are preserved."); onTrackingState({ code: "camera_disconnected", label: "Camera disconnected", quality: null }); onError("Camera disconnected. Reconnect it and restart the camera scan."); }, { once: true }); });
       await video.play();
       if (generation !== cameraGeneration) return;
-      lastVideoTime = -1; running = true; sessionStart = performance.now(); calibrationStart = null; calibrated = false; baselineAngle = null; baselineLeft = null; baselineRight = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; scheduleNextFrame();
+      lastVideoTime = -1; lastFrameAt = performance.now(); stalled = false; running = true; sessionStart = performance.now(); calibrationStart = null; calibrated = false; baselineAngle = null; baselineLeft = null; baselineRight = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; scheduleNextFrame();
     } catch (error) {
       if (generation !== cameraGeneration) return;
       const secureContext = typeof window === "undefined" || window.isSecureContext !== false;
@@ -486,6 +547,7 @@ export async function createMovementTracker(options) {
   }
   function stop() {
     cameraGeneration++;
+    frameGeneration++;
     running = false;
     frameScheduler.cancel();
     stream?.getTracks().forEach((track) => track.stop());
@@ -499,8 +561,8 @@ export async function createMovementTracker(options) {
     poseRuntime.close();
     repCycle.cancelPending();
   }
-  function pause() { if (!running) return; running = false; frameScheduler.cancel(); repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
-  function resume() { if (running || !stream?.active) return; running = true; lastVideoTime = -1; scheduleNextFrame(); }
+  function pause() { if (!running) return; frameGeneration++; running = false; frameScheduler.cancel(); repCycle.cancelPending(); pauseMeasurement("Session paused. Your completed repetitions are preserved."); }
+  function resume() { if (running || !stream?.active) return; frameGeneration++; lastFrameAt = performance.now(); stalled = false; running = true; lastVideoTime = -1; scheduleNextFrame(); }
 
   return { prepare: initialize, start, stop, destroy, pause, resume, reset, resetHold: () => { holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; }, getReps: () => reps, getMetrics: () => ({ repetitions: reps, reps: [...repHistory], durationSeconds: sessionStart ? Math.round((performance.now() - sessionStart) / 1000) : 0, calibrated, baselineAngle: baselineAngle ? Math.round(baselineAngle) : null, jointAngle: latestAngle === null ? null : Math.round(latestAngle), movementRangeDegrees: latestMovementRange === null ? null : Math.round(latestMovementRange), symmetryDelta: latestSymmetryDelta === null ? null : Number(latestSymmetryDelta.toFixed(1)), measurementSide: latestMeasurementSide, angleLabel: profile.label, measurementUnit: profile.unit, exerciseKey: profile.exerciseKey, trackingSignal: profile.signal, holdSeconds: Math.round(holdElapsedMs / 1000), cameraHint: profile.cameraHint, biomechanicsFrame: latestBiomechanicsFrame ? { ...latestBiomechanicsFrame, features: { ...latestBiomechanicsFrame.features }, quality: { ...latestBiomechanicsFrame.quality } } : null }) };
 }

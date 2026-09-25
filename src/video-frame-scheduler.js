@@ -1,11 +1,20 @@
 export function createVideoFrameScheduler(video, {
   requestAnimation = (callback) => requestAnimationFrame(callback),
   cancelAnimation = (handle) => cancelAnimationFrame(handle),
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+  frameTimeoutMs = 500,
 } = {}) {
   let handle = null;
   let mode = null;
+  let watchdog = null;
+  let generation = 0;
+  let useAnimationFallback = false;
 
   function cancel() {
+    generation += 1;
+    if (watchdog !== null) clearTimer(watchdog);
+    watchdog = null;
     if (handle === null) return;
     if (mode === "video" && typeof video?.cancelVideoFrameCallback === "function") {
       video.cancelVideoFrameCallback(handle);
@@ -19,20 +28,28 @@ export function createVideoFrameScheduler(video, {
   return Object.freeze({
     schedule(callback) {
       cancel();
-      if (typeof video?.requestVideoFrameCallback === "function") {
+      const scheduledGeneration = generation;
+      const deliver = (now, metadata) => {
+        if (scheduledGeneration !== generation) return;
+        // Whichever source wins cancels the other. A late video callback cannot
+        // start a second inference loop after the watchdog has fired.
+        cancel();
+        return callback(now, metadata);
+      };
+      if (!useAnimationFallback && typeof video?.requestVideoFrameCallback === "function") {
         mode = "video";
-        handle = video.requestVideoFrameCallback((now, metadata) => {
-          handle = null;
-          mode = null;
-          return callback(now, metadata);
-        });
+        handle = video.requestVideoFrameCallback(deliver);
+        watchdog = setTimer(() => {
+          if (scheduledGeneration !== generation) return;
+          // Some browsers stop video callbacks when the preview is offscreen.
+          // Continue at display cadence, not one inference per watchdog period;
+          // the tracker still rejects duplicate video.currentTime values.
+          useAnimationFallback = true;
+          return deliver(performance.now(), null);
+        }, frameTimeoutMs);
       } else {
         mode = "animation";
-        handle = requestAnimation((now) => {
-          handle = null;
-          mode = null;
-          return callback(now, null);
-        });
+        handle = requestAnimation((now) => deliver(now, null));
       }
       return handle;
     },
