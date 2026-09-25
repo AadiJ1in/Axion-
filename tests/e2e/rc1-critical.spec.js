@@ -530,3 +530,59 @@ test("schema mismatch fails closed before patient or therapist workspace is show
   await expect(page.getByRole("heading", { name: "Axion update in progress" })).toBeVisible();
   await expect(page.locator("[data-start-assignment]")).toHaveCount(0);
 });
+
+
+test("signed-in legacy standard squat has a visible runner that follows movement", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await boot(page);
+  await seedPlan(page, { targetReps: 3 });
+  await page.evaluate(() => { window.__AXION_E2E_CONTROL__.db.exercise_plans[0].game_enabled = true; });
+  await signInPatientA(page);
+  await startAssignment(page);
+  await expect(page.locator("#adventure-canvas")).toBeVisible();
+  await expect(page.locator("#movement-game-stage")).toHaveClass(/active/);
+  const standing = await page.evaluate(() => window.__axionMovementGameController.getState().runner.geometry.head);
+  await page.evaluate(() => {
+    for (let i = 0; i < 40; i++) window.__AXION_E2E_TRACKER_CONTROL__.emitMovement({ movementRange: 40, stage: "down" });
+  });
+  const down = await page.evaluate(() => window.__axionMovementGameController.getState());
+  expect(down.runner.movement).toBeGreaterThan(.5);
+  expect(down.runner.geometry.head).toBeGreaterThan(standing);
+  expect(down.completed).toBe(0);
+  await expect.poll(() => page.locator("#exercise-buddy").getAttribute("data-buddy-movement")).not.toBe("0.000");
+  await page.evaluate(() => {
+    for (let i = 0; i < 100; i++) window.__AXION_E2E_TRACKER_CONTROL__.emitMovement({ movementRange: 0, stage: "up" });
+  });
+  expect(await page.evaluate(() => window.__axionMovementGameController.getState().runner.movement)).toBeLessThan(.15);
+  await page.locator('[data-movement-mode="standard"]').click();
+  await expect(page.locator("#movement-game-stage")).not.toHaveClass(/active/);
+  await page.locator('[data-movement-mode="game"]').click();
+  await expect(page.locator("#adventure-canvas")).toBeVisible();
+  expect((await snapshot(page)).exercise_sessions).toHaveLength(0);
+  expect(errors).toEqual([]);
+});
+
+test("therapist-disabled games remain standard", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await signInPatientA(page);
+  await startAssignment(page);
+  await expect(page.locator("#adventure-canvas")).toHaveCount(0);
+});
+
+test("signed-in timed exercise game completes at the prescribed hold count", async ({ page }) => {
+  await boot(page);
+  await seedPlan(page);
+  await page.evaluate(() => {
+    const db = window.__AXION_E2E_CONTROL__.db;
+    db.exercise_plans[0].game_enabled = true;
+    Object.assign(db.exercise_assignments[0], { exercise_key: 'abdominal_bracing', display_name: 'Abdominal Bracing', tracking_mode: 'timed_hold', target_sets: 1, target_repetitions: null, duration_seconds: 10 });
+  });
+  await signInPatientA(page);
+  await startAssignment(page);
+  await expect(page.locator('#adventure-canvas')).toBeVisible();
+  expect(await page.evaluate(() => window.__axionMovementGameController.getState().clinicalTarget)).toBe(1);
+  await page.evaluate(() => window.__AXION_E2E_TRACKER_CONTROL__.emitRep({holdSeconds:10}));
+  expect(await page.evaluate(() => window.__axionMovementGameController.getState().lastOutcome)).toBe('complete');
+});

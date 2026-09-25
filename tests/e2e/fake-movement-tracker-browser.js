@@ -36,6 +36,10 @@
       });
       return rep;
     },
+    emitMovement(payload = {}) {
+      if (!active) throw new Error("No active E2E tracker");
+      active.onUpdate({ reps: active.reps.length, jointAngle: 150, angleLabel: "Knee bend", measurementUnit: "°", movementRange: 0, symmetryDelta: 0, measurementSide: "left", stage: "up", ...payload });
+    },
     emitTrackingState(payload = {}) {
       if (!active) throw new Error("No active E2E tracker");
       active.onTrackingState({ code: "out_of_frame", label: "Full body is not visible", quality: "Low", confidence: 30, ...payload });

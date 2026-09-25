@@ -872,10 +872,10 @@ function labView() {
   const patientName = currentProfile?.display_name || "Patient";
   const therapistName = patientWorkspace?.therapist?.display_name || "your physical therapist";
   const repsPerSet = assignment.target_repetitions || 10;
-  const targetReps = demoScriptActive ? 5 : Math.max(1, assignment.target_sets || 1) * repsPerSet;
+  const targetReps = demoScriptActive ? 5 : doseProgress(assignment).total;
   const timedExercise = assignment.tracking_mode === "timed_hold";
   const movementProfile = getMovementProfile(assignment.exercise_key, assignment.tracking_mode);
-  const gameMapping = patientWorkspace?.plan?.game_enabled === false || assignment.exercise_mode !== "movement_game" ? null : getMovementGameMapping(assignment.exercise_key);
+  const gameMapping = patientWorkspace?.plan?.game_enabled === false ? null : getMovementGameMapping(assignment.exercise_key);
   const jointLabel = movementProfile.label;
   const dosageLabel = timedExercise
     ? `${assignment.target_sets || 1} set${assignment.target_sets === 1 ? "" : "s"} · ${assignment.duration_seconds || 30} second hold`
@@ -2067,10 +2067,10 @@ async function initializeLab() {
   const activeProfile = getMovementProfile(currentAssignment.exercise_key, currentAssignment.tracking_mode);
   movementGameController = createMovementGameController({
     exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
-    targetReps: demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10),
+    targetReps: demoScriptActive ? 5 : doseProgress(currentAssignment).total,
     targetHoldSeconds: currentAssignment?.tracking_mode === "timed_hold" ? (currentAssignment?.duration_seconds || 30) : 0,
     liveCamera: true,
-    runnerMode: Boolean(currentSession?.demo),
+    runnerMode: true,
     onState: renderMovementGameState,
   });
   setText("#calibration-copy", activeProfile.cameraHint);
@@ -2175,7 +2175,7 @@ async function initializeLab() {
       movementGameController.consume({ type: MOVEMENT_EVENT.PAUSE });
     }
   }));
-  if (currentAssignment?.exercise_mode === "movement_game") movementGameController.setMode("game");
+  if (document.querySelector("#adventure-canvas")) movementGameController.setMode("game");
   const gameCanvas = document.querySelector("#adventure-canvas");
   if (gameCanvas) {
     const { createAdventureScene } = await import("./adventure-scene.js");
@@ -2293,12 +2293,15 @@ function handleTrackingState({ code, label, quality, confidence }) {
   const bodyState = document.querySelector("#body-state");
   const qualityState = document.querySelector("#quality-state");
   if (bodyState) {
-    bodyState.className = code === "body_detected" ? "detected" : code.startsWith("model_") || code.includes("loading") || code.includes("starting") ? "loading" : "warning";
-    bodyState.innerHTML = code === "body_detected" ? `<i></i> Body detected ✓` : `<i></i> ${escapeHtml(label)}`;
+    const bodyClass = code === "body_detected" ? "detected" : code.startsWith("model_") || code.includes("loading") || code.includes("starting") ? "loading" : "warning";
+    if (bodyState.className !== bodyClass) bodyState.className = bodyClass;
+    const bodyHtml = code === "body_detected" ? `<i></i> Body detected ✓` : `<i></i> ${escapeHtml(label)}`;
+    if (bodyState.innerHTML !== bodyHtml) bodyState.innerHTML = bodyHtml;
   }
   if (qualityState) {
-    qualityState.className = quality ? quality.toLowerCase() : "";
-    qualityState.textContent = quality ? `Tracking quality: ${quality}${confidence ? ` · ${confidence}%` : ""}` : "Tracking quality: —";
+    const qualityClass = quality ? quality.toLowerCase() : "";
+    if (qualityState.className !== qualityClass) qualityState.className = qualityClass;
+    setText("#quality-state", quality ? `Tracking quality: ${quality}${confidence ? ` · ${confidence}%` : ""}` : "Tracking quality: —");
   }
   setText("#game-quality", quality ? `${quality}${confidence ? ` · ${confidence}%` : ""}` : "Waiting for camera");
 
@@ -2564,7 +2567,7 @@ function updateLiveSession() {
   setText("#live-depth", angleValue === null ? "—" : `${Math.round(angleValue)}${unit}`);
   setText("#live-tempo", last?.movementRangeDegrees == null ? "—" : `${last.movementRangeDegrees}${unit}`);
   setText("#live-symmetry", last?.symmetryDelta == null ? "—" : `${last.symmetryDelta}${unit}`);
-  const targetReps = demoScriptActive ? 5 : Math.max(1, currentAssignment?.target_sets || 1) * (currentAssignment?.target_repetitions || 10);
+  const targetReps = demoScriptActive ? 5 : doseProgress(currentAssignment).total;
   setText("#energy-value", `${Math.min(100, Math.round((sessionReps.length / targetReps) * 100))}%`);
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
@@ -3152,7 +3155,13 @@ function safeOperationalMessage(error, fallback) {
   return fallback;
 }
 
-function setText(selector, text) { const element = document.querySelector(selector); if (element) element.textContent = text; }
+function setText(selector, text) {
+  const element = document.querySelector(selector);
+  const value = text == null ? "" : String(text);
+  // Live tracking updates many labels per frame. Replacing identical text nodes
+  // wakes every subtree observer and can starve camera/game rendering.
+  if (element && element.textContent !== value) element.textContent = value;
+}
 
 function movementProfileIdentity(assignment) {
   if (!assignment?.exercise_key || !assignment?.tracking_mode) throw new SessionContextError(SESSION_CONTEXT_ERROR.MISSING);

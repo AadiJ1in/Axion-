@@ -39,7 +39,7 @@ assert.equal(scheduler.getState().scheduled, false);
 
 scheduler.schedule(() => {});
 scheduler.cancel();
-assert.deepEqual(cancelledVideo, [2]);
+assert.deepEqual(cancelledVideo, [1, 2]);
 assert.equal(fallbackCancelled, 0);
 
 const animationOnlyVideo = {};
@@ -67,3 +67,24 @@ assert.deepEqual(resolveCameraVideoConstraints({ width: 4000, height: 100, frame
 });
 
 console.log("Video frame scheduler: camera-frame pacing, RAF fallback, cancellation and stability-focused configurable constraints passed.");
+// Deterministic watchdog: missing video delivery must not strand the loop.
+let timerCallback;
+const recoveryScheduler = createVideoFrameScheduler(video, {
+  requestAnimation(fn) { timerCallback = fn; return 7; },
+  cancelAnimation() {},
+  setTimer(fn) { timerCallback = fn; return 1; },
+  clearTimer() {},
+});
+let recovered = 0;
+recoveryScheduler.schedule(() => { recovered++; });
+const lateVideoCallback = videoCallbacks.get(nextVideo);
+timerCallback();
+assert.equal(recovered, 1, 'watchdog delivers when the browser drops a video callback');
+lateVideoCallback(100, {});
+assert.equal(recovered, 1, 'late camera callback cannot duplicate watchdog delivery');
+recoveryScheduler.schedule(() => { recovered++; });
+assert.equal(recoveryScheduler.getState().mode,"animation","stalled video delivery switches to display cadence instead of remaining at watchdog cadence");
+const cancelledTimer = timerCallback;
+recoveryScheduler.cancel();
+cancelledTimer();
+assert.equal(recovered, 1, 'cancel invalidates late timers as well as video callbacks');

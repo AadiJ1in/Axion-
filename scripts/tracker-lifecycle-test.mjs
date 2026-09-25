@@ -2,6 +2,7 @@
 // These tests do not claim to evaluate the neural model's real-world accuracy.
 import assert from 'node:assert/strict';
 import { FilesetResolver, PoseLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
+import { exerciseCatalog } from '../src/exercise-catalog.js';
 import { createMovementTracker } from '../src/pose.js';
 import { chooseMediapipeDelegate, resolveMediapipeConfig } from '../src/mediapipe-config.js';
 
@@ -30,6 +31,7 @@ const customHash='a'.repeat(64);
 const customConfig=resolveMediapipeConfig({modelUrl:'/models/custom.task',modelSha256:customHash},{});
 assert.equal(customConfig.model.url,'/models/custom.task');
 assert.equal(customConfig.model.sha256,customHash);
+let throwPose = false;
 let now = 100, nextFrame = 0, failInference = false, closed = 0;
 const frames = new Map(), streams = [], states = [], errors = [], calibrations = [];
 Object.defineProperty(globalThis, 'performance', {value:{now:()=>now},configurable:true});
@@ -55,7 +57,7 @@ let open = async()=>newStream();
 Object.defineProperty(globalThis,'navigator',{value:{mediaDevices:{getUserMedia:()=>open()}},configurable:true});
 const video={currentTime:0,readyState:2,videoWidth:640,videoHeight:480,srcObject:null,play:async()=>{}};
 const canvas={width:640,height:480,getContext:()=>({clearRect(){}})};
-const tracker=await createMovementTracker({video,canvas,onTrackingState:s=>states.push(s.code),onError:e=>errors.push(e),onCalibration:c=>calibrations.push(c)});
+const tracker=await createMovementTracker({video,canvas,onPose:()=>{if(throwPose){throwPose=false;throw Error("temporary render failure");}},onTrackingState:s=>states.push(s.code),onError:e=>errors.push(e),onCalibration:c=>calibrations.push(c)});
 async function step(ms=100){now+=ms;video.currentTime+=ms/1000;const callbacks=[...frames.values()];frames.clear();for(const fn of callbacks)await fn();}
 await Promise.all([tracker.prepare(), tracker.prepare()]);
 assert.equal(delegates.length,1,'concurrent pose prewarm calls initialize one model instance');
@@ -74,6 +76,20 @@ tracker.reset();assert.equal(tracker.getMetrics().calibrated,false,'reset invali
 assert.equal(calibrations.at(-1).progress,0);
 tracker.resume();for(let i=0;i<35;i++)await step();
 assert.equal(tracker.getMetrics().calibrated,true,'reset then resume can calibrate again');
+throwPose=true;await step();
+assert.equal(frames.size,1,'a presentation exception must not kill the next tracking frame');
+assert.equal(states.at(-1),'tracking_interrupted');
+await step();assert.equal(states.at(-1),'body_detected','tracking recovers after the interrupted frame');
+await step(1000);
+assert.equal(frames.size,1,'a delivery gap leaves a single live loop');
+const beforeStallStreams=streams.length;
+now+=3500;
+const stuckCallbacks=[...frames.values()];frames.clear();
+for(const fn of stuckCallbacks)await fn();
+assert.equal(streams.length,beforeStallStreams+1,'stalled capture automatically reopens the camera once');
+assert.equal(frames.size,1,'camera recovery starts exactly one loop');
+assert.equal(tracker.getMetrics().calibrated,false,'reopened camera requires a fresh calibration');
+for(let i=0;i<35;i++)await step();
 failInference=true;await step();
 assert.equal(frames.size,1,'a GPU inference failure automatically keeps one tracking loop alive through CPU fallback');
 assert.deepEqual(delegates.slice(0,2),['GPU','CPU'],'runtime recovery switches from GPU to CPU');
@@ -102,3 +118,47 @@ assert.equal(closed,3,'destroy disposes the active MediaPipe landmarker exactly 
 tracker.destroy();
 assert.equal(closed,3,'destroy is idempotent for model disposal');
 console.log('Actual tracker lifecycle passed: recalibration, restart, pause, model failure/recovery, late camera grant cancellation, and terminal model disposal.');
+
+open=async()=>newStream();
+
+// Run the actual shared lifecycle for every prescribed exercise, not just squat.
+for (const [exerciseKey, exercise] of Object.entries(exerciseCatalog)) {
+  let updates = 0;
+  let failPresentation = false;
+  const subject = await createMovementTracker({
+    video, canvas, exerciseKey, trackingMode: exercise.trackingMode,
+    onPose() { if (failPresentation) { failPresentation = false; throw Error('transient presentation failure'); } },
+    onUpdate() { updates++; },
+  });
+  await subject.start();
+  for (let i = 0; i < 35; i++) await step();
+  assert.ok(updates >= 35, `${exerciseKey}: frame updates flow`);
+  failPresentation = true;
+  await step();
+  const before = updates;
+  await step();
+  assert.ok(updates > before, `${exerciseKey}: resumes after presentation failure`);
+  assert.equal(frames.size, 1, `${exerciseKey}: exactly one tracking loop`);
+  subject.pause(); assert.equal(frames.size, 0, `${exerciseKey}: pause stops tracking`);
+  subject.resume(); await step();
+  subject.destroy(); assert.equal(frames.size, 0, `${exerciseKey}: teardown cancels tracking`);
+}
+console.log(`Shared tracking recovery exercised for all ${Object.keys(exerciseCatalog).length} exercises with synthetic model/device doubles.`);
+
+// A hold may not include time for which no fresh frame was observed.
+const holder = await createMovementTracker({video,canvas,exerciseKey:'abdominal_bracing',trackingMode:'timed_hold'});
+await holder.start();
+for(let i=0;i<60;i++) await step();
+const heldBefore=holder.getMetrics().holdSeconds;
+assert.ok(heldBefore>0,'steady synthetic hold accumulates time');
+await step(2000);
+assert.equal(holder.getMetrics().holdSeconds,heldBefore,'camera gap does not count toward prescribed hold');
+holder.destroy();
+
+let persistentErrors = 0;
+const brokenView = await createMovementTracker({video,canvas,onUpdate(){throw Error('view unavailable');},onError(){persistentErrors++;}});
+await brokenView.start();
+await step(); await step(); await step();
+assert.equal(frames.size,0,'persistent view failures stop instead of looping forever');
+assert.equal(persistentErrors,1,'persistent failure exposes an actionable error');
+brokenView.destroy();
