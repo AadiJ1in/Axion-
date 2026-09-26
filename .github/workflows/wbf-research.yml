@@ -38,8 +38,10 @@ jobs:
           node scripts/whole-body-compensation-test.mjs
           node scripts/whole-body-quality-model-test.mjs
           node scripts/whole-body-ui-test.mjs
-      - name: Check Python training pipeline syntax
-        run: python -m py_compile ml/train_wbf_movement_quality.py
+      - name: Check Python research pipeline syntax
+        run: |
+          python -m py_compile ml/extract_wbf_dataset_features.py
+          python -m py_compile ml/train_wbf_movement_quality.py
       - name: Run existing Axion regressions
         run: npm run check
       - name: Build current application
