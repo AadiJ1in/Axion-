@@ -3,9 +3,11 @@ import { analyzeWholeBodyRedistributionHistory } from "../src/whole-body-redistr
 import { WHOLE_BODY_REGIONS } from "../src/whole-body-biomechanics.js";
 
 const expectation = {
+  schemaVersion: 2,
   status: "available",
   exerciseKey: "bodyweight_squat",
   signal: "knee_bend",
+  prescribedSide: "either",
   primaryRegions: ["left_lower_limb", "right_lower_limb"],
   supportRegions: ["pelvis", "trunk", "base_of_support"],
   outsideRegions: ["head_neck", "left_upper_limb", "right_upper_limb"],
@@ -15,7 +17,7 @@ function stats(median) {
   return { n: 8, mean: median, median, min: median, max: median, range: 0, sd: 0, q1: median, q3: median, iqr: 0, mad: 0, cv: 0, slopePerRep: 0 };
 }
 
-function session(index, { primary, support, outside, leftLower, rightLower, leftUpper, rightUpper, head = 0.02, lateOutside = 0.01 }) {
+function session(index, { primary, support, outside, leftLower, rightLower, leftUpper, rightUpper, head = 0.02, lateOutside = 0.01, cameraView = "front", expectationOverride = expectation }) {
   const regionValues = {
     head_neck: head,
     left_upper_limb: leftUpper,
@@ -30,19 +32,23 @@ function session(index, { primary, support, outside, leftLower, rightLower, left
     id: `s${index}`,
     patient_id: "p1",
     exercise_key: "bodyweight_squat",
+    camera_view: cameraView,
     completed_at: new Date(Date.UTC(2026, 0, index)).toISOString(),
     movement_summary: {
       whole_body_v1: {
         averageCoverage: 0.95,
         movementDistribution: {
+          schemaVersion: 2,
           status: "available",
-          expectation,
+          expectation: expectationOverride,
           measuredReps: 8,
           descriptiveStatistics: {
             primaryMovementShare: stats(primary),
             supportMovementShare: stats(support),
             outsideMovementShare: stats(outside),
             outsideToPrimaryRatio: stats(outside / primary),
+            movementConcentrationIndex: stats(primary ** 2 + support ** 2 + outside ** 2),
+            movementDistributionEntropy: stats(0.6 + outside * 0.5),
           },
           earlyLateComparison: { outsideShareChange: lateOutside },
           regionContributionShare: Object.fromEntries(
@@ -64,8 +70,13 @@ const sessions = [
 ];
 
 const result = analyzeWholeBodyRedistributionHistory(sessions);
+assert.equal(result.schemaVersion, 2);
 assert.equal(result.status, "available");
 assert.equal(result.sessionCount, 6);
+assert.equal(result.comparisonContext.cameraView, "front");
+assert.equal(result.comparisonContext.intentSchemaVersion, 2);
+assert.equal(result.comparisonContext.prescribedSide, "either");
+assert.equal(result.comparisonContext.verification, "fully_verified");
 assert.equal(result.distributionShifts.outsideShare.persistent, true);
 assert.equal(result.distributionShifts.outsideShare.direction, 1);
 assert.ok(result.distributionShifts.outsideShare.standardizedShift > 0.75);
@@ -73,6 +84,7 @@ assert.equal(result.distributionShifts.primaryShare.persistent, true);
 assert.equal(result.distributionShifts.primaryShare.direction, -1);
 assert.ok(result.distributionShifts.primaryShare.standardizedShift < -0.75);
 assert.ok(result.distributionShifts.lateSetOutsideChange.recentMedian > result.distributionShifts.lateSetOutsideChange.earlyMedian);
+assert.ok(result.distributionShifts.entropy.recentMedian > result.distributionShifts.entropy.earlyMedian);
 assert.ok(result.redistributionCandidate);
 assert.equal(result.redistributionCandidate.patternType, "primary_share_down_outside_share_up");
 assert.equal(result.redistributionCandidate.destinationRegion, "left_upper_limb");
@@ -86,8 +98,31 @@ const mixed = analyzeWholeBodyRedistributionHistory([
 assert.equal(mixed.status, "unavailable");
 assert.equal(mixed.reason, "mixed_patients");
 
+const mixedView = analyzeWholeBodyRedistributionHistory([
+  sessions[0], sessions[1], sessions[2], sessions[3], sessions[4], { ...sessions[5], camera_view: "side" },
+]);
+assert.equal(mixedView.status, "unavailable");
+assert.equal(mixedView.reason, "mixed_capture_context");
+
+const mixedSide = analyzeWholeBodyRedistributionHistory([
+  sessions[0], sessions[1], sessions[2], sessions[3], sessions[4], {
+    ...sessions[5],
+    movement_summary: {
+      whole_body_v1: {
+        ...sessions[5].movement_summary.whole_body_v1,
+        movementDistribution: {
+          ...sessions[5].movement_summary.whole_body_v1.movementDistribution,
+          expectation: { ...expectation, prescribedSide: "left" },
+        },
+      },
+    },
+  },
+]);
+assert.equal(mixedSide.status, "unavailable");
+assert.equal(mixedSide.reason, "mixed_prescribed_side");
+
 const short = analyzeWholeBodyRedistributionHistory(sessions.slice(0, 5));
 assert.equal(short.status, "unavailable");
 assert.equal(short.reason, "insufficient_sessions");
 
-console.log("Whole-body longitudinal redistribution history passed.");
+console.log("Whole-body longitudinal redistribution history passed with capture/intent compatibility gates.");
