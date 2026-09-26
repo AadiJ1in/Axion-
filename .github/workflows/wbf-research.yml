@@ -29,6 +29,8 @@ jobs:
           node --check src/whole-body-biomechanics.js
           node --check src/whole-body-compensation.js
           node --check src/whole-body-distribution.js
+          node --check src/whole-body-distribution-v2.js
+          node --check src/whole-body-movement-intent.js
           node --check src/whole-body-motion-statistics.js
           node --check src/whole-body-redistribution-history.js
           node --check src/whole-body-tracker.js
@@ -41,6 +43,8 @@ jobs:
           node scripts/whole-body-biomechanics-test.mjs
           node scripts/whole-body-compensation-test.mjs
           node scripts/whole-body-distribution-test.mjs
+          node scripts/whole-body-distribution-v2-test.mjs
+          node scripts/whole-body-movement-intent-test.mjs
           node scripts/whole-body-motion-statistics-test.mjs
           node scripts/whole-body-redistribution-history-test.mjs
           node scripts/whole-body-quality-model-test.mjs
