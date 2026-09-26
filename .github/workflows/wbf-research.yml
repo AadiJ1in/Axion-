@@ -1,0 +1,46 @@
+name: AxionWBF research gate
+
+on:
+  push:
+    branches:
+      - axionwbf-prototype
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wbf-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Check WBF JavaScript syntax
+        run: |
+          node --check src/whole-body-biomechanics.js
+          node --check src/whole-body-compensation.js
+          node --check src/whole-body-tracker.js
+          node --check src/whole-body-ui.js
+          node --check src/whole-body-quality-model.js
+          node --check ml/whole_body_landmarks_to_features.mjs
+      - name: Run WBF contracts
+        run: |
+          node scripts/whole-body-biomechanics-test.mjs
+          node scripts/whole-body-compensation-test.mjs
+          node scripts/whole-body-quality-model-test.mjs
+          node scripts/whole-body-ui-test.mjs
+      - name: Check Python training pipeline syntax
+        run: python -m py_compile ml/train_wbf_movement_quality.py
+      - name: Run existing Axion regressions
+        run: npm run check
+      - name: Build current application
+        run: npm run build
