@@ -31,6 +31,7 @@ export const WHOLE_BODY_SIGNAL_INTENT_V2 = Object.freeze({
   plank_position: { primary: ["trunk"], support: ["pelvis", "left_upper_limb", "right_upper_limb", "base_of_support"] },
 
   pelvis_rotation: { primary: ["pelvis"], support: ["trunk", "left_lower_limb", "right_lower_limb", "base_of_support"] },
+  pelvis_side_shift: { primary: ["pelvis", "base_of_support"], support: ["trunk", "left_lower_limb", "right_lower_limb"] },
   hip_lift: { primary: ["pelvis", "left_lower_limb", "right_lower_limb"], support: ["trunk", "base_of_support"] },
   side_plank_lift: { primary: ["pelvis", "trunk"], support: ["left_upper_limb", "right_upper_limb", "base_of_support"] },
   hip_flexion: { primary: ["left_lower_limb", "right_lower_limb"], support: ["pelvis", "trunk", "base_of_support"] },
