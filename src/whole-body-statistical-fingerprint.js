@@ -1,10 +1,14 @@
-import { WHOLE_BODY_REGION_FEATURES, WHOLE_BODY_REGIONS } from "./whole-body-biomechanics.js";
+import { WHOLE_BODY_REGIONS } from "./whole-body-biomechanics.js";
+import {
+  WHOLE_BODY_ANALYSIS_REGION_FEATURES,
+  WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
+} from "./whole-body-region-ownership.js";
 
-// AxionWBF Statistical Fingerprint v3
+// AxionWBF Statistical Fingerprint v4
 // Flattens derived session statistics into research/model-ready numeric fields.
 // It never includes raw landmarks, images, video, patient identifiers, or diagnoses.
 
-export const WHOLE_BODY_STATISTICAL_FINGERPRINT_SCHEMA_VERSION = 3;
+export const WHOLE_BODY_STATISTICAL_FINGERPRINT_SCHEMA_VERSION = 4;
 
 const finite = (value) => value === null || value === undefined || value === ""
   ? null
@@ -48,7 +52,7 @@ const MOTION_METRICS = Object.freeze([
 
 function regionMotionFingerprint(motionStatistics, region) {
   const result = {};
-  const features = WHOLE_BODY_REGION_FEATURES[region] || [];
+  const features = WHOLE_BODY_ANALYSIS_REGION_FEATURES[region] || [];
   for (const metric of MOTION_METRICS) {
     const values = features
       .map((feature) => finite(motionStatistics?.features?.[feature]?.[metric]?.median))
@@ -76,6 +80,7 @@ export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
   if (!sessionSummary || distribution?.status !== "available" || !motion) {
     return {
       schemaVersion: WHOLE_BODY_STATISTICAL_FINGERPRINT_SCHEMA_VERSION,
+      regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
       status: "unavailable",
       reason: !sessionSummary ? "missing_session_summary" : distribution?.status !== "available" ? "missing_distribution" : "missing_motion_statistics",
       features: {},
@@ -123,6 +128,7 @@ export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
   output.late_primary_share = round(earlyLate.latePrimaryShare);
   output.primary_share_early_to_late_change = round(earlyLate.primaryShareChange);
   output.measured_reps = round(distribution.measuredReps);
+  output.complete_whole_body_reps = round(distribution.completeWholeBodyReps);
 
   for (const region of WHOLE_BODY_REGIONS) {
     const contribution = distribution.regionContributionShare?.[region];
@@ -146,6 +152,8 @@ export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
   const total = Object.keys(output).length;
   return {
     schemaVersion: WHOLE_BODY_STATISTICAL_FINGERPRINT_SCHEMA_VERSION,
+    regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
+    distributionSchemaVersion: distribution?.schemaVersion || null,
     status: "available",
     clinicalStatus: "descriptive_unvalidated",
     featureCount: total,
@@ -161,7 +169,7 @@ export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
     },
     compositionalSchemaVersion: compositional?.schemaVersion || null,
     features: output,
-    interpretation: "The WBF statistical fingerprint contains derived descriptive pose statistics only. Compositional features use log-ratio/distribution geometry and independent ILR coordinates appropriate for region shares that sum to one. Values are research features and are not force, tissue load, muscle activation, diagnosis, injury risk, or treatment recommendations.",
+    interpretation: "The WBF statistical fingerprint contains derived descriptive pose statistics only. Regional aggregates use a non-overlapping versioned feature-ownership map. Compositional features use log-ratio/distribution geometry and independent ILR coordinates appropriate for region shares that sum to one. Values are research features and are not force, tissue load, muscle activation, diagnosis, injury risk, or treatment recommendations.",
   };
 }
 
@@ -170,6 +178,7 @@ export function wholeBodyStatisticalFingerprintColumns() {
     movementDistribution: {
       status: "available",
       measuredReps: null,
+      completeWholeBodyReps: null,
       expectation: {},
       descriptiveStatistics: {},
       compositionalStatistics: {
