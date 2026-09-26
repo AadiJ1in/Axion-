@@ -9,7 +9,7 @@ import {
   createWholeBodyMotionAccumulator,
   summarizeWholeBodyMotionStatistics,
 } from "./whole-body-motion-statistics.js";
-import { buildWholeBodyStatisticalFingerprint } from "./whole-body-statistical-fingerprint.js";
+import { buildWholeBodyStatisticalFingerprintV5 } from "./whole-body-statistical-fingerprint-v5.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -99,7 +99,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
     };
     return {
       ...combined,
-      statisticalFingerprint: buildWholeBodyStatisticalFingerprint(combined),
+      statisticalFingerprint: buildWholeBodyStatisticalFingerprintV5(combined),
     };
   }
 
