@@ -38,6 +38,7 @@ jobs:
           node --check src/whole-body-personalized-reference.js
           node --check src/whole-body-redistribution-history.js
           node --check src/whole-body-statistical-fingerprint.js
+          node --check src/whole-body-longitudinal-fingerprint.js
           node --check src/whole-body-tracker.js
           node --check src/whole-body-ui.js
           node --check src/whole-body-distribution-ui.js
@@ -57,6 +58,7 @@ jobs:
           node scripts/whole-body-personalized-reference-test.mjs
           node scripts/whole-body-redistribution-history-test.mjs
           node scripts/whole-body-statistical-fingerprint-test.mjs
+          node scripts/whole-body-longitudinal-fingerprint-test.mjs
           node scripts/whole-body-quality-model-test.mjs
           node scripts/whole-body-ui-test.mjs
           node scripts/whole-body-distribution-ui-test.mjs
