@@ -3,10 +3,8 @@ import {
   extractWholeBodyFrame,
   summarizeWholeBodySession,
 } from "./whole-body-biomechanics.js";
-import {
-  resolveWholeBodyMovementExpectation,
-  summarizeWholeBodyMovementDistribution,
-} from "./whole-body-distribution.js";
+import { resolveWholeBodyMovementIntent } from "./whole-body-movement-intent.js";
+import { summarizeWholeBodyMovementDistributionV2 } from "./whole-body-distribution-v2.js";
 import {
   createWholeBodyMotionAccumulator,
   summarizeWholeBodyMotionStatistics,
@@ -26,7 +24,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
   const exerciseKey = trackerOptions.exerciseKey || "bodyweight_squat";
   const trackingMode = trackerOptions.trackingMode || "pose_reps";
   const prescribedSide = trackerOptions.prescribedSide || "either";
-  const movementExpectation = resolveWholeBodyMovementExpectation(exerciseKey, trackingMode, prescribedSide);
+  const movementExpectation = resolveWholeBodyMovementIntent(exerciseKey, trackingMode, prescribedSide);
 
   let activeRep = false;
   let lastStage = "up";
@@ -114,7 +112,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       return {
         ...summary,
         motionStatistics: summarizeWholeBodyMotionStatistics(completed),
-        movementDistribution: summarizeWholeBodyMovementDistribution(completed, {
+        movementDistribution: summarizeWholeBodyMovementDistributionV2(completed, {
           exerciseKey,
           trackingMode,
           prescribedSide,
