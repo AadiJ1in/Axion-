@@ -33,6 +33,7 @@ jobs:
           node --check src/whole-body-redistribution-history.js
           node --check src/whole-body-tracker.js
           node --check src/whole-body-ui.js
+          node --check src/whole-body-distribution-ui.js
           node --check src/whole-body-quality-model.js
           node --check ml/whole_body_landmarks_to_features.mjs
       - name: Run WBF contracts
@@ -44,6 +45,7 @@ jobs:
           node scripts/whole-body-redistribution-history-test.mjs
           node scripts/whole-body-quality-model-test.mjs
           node scripts/whole-body-ui-test.mjs
+          node scripts/whole-body-distribution-ui-test.mjs
       - name: Check Python research pipeline syntax
         run: |
           python -m py_compile ml/extract_wbf_dataset_features.py
