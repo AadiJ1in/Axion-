@@ -62,6 +62,25 @@ jobs:
           python -m py_compile ml/extract_wbf_dataset_features.py
           python -m py_compile ml/train_wbf_movement_quality.py
           python -m py_compile ml/train_wbf_fingerprint_model.py
+          python -m py_compile ml/generate_wbf_trainer_smoke_fixture.py
+          python -m py_compile ml/assert_wbf_trainer_smoke.py
+      - name: Run nested participant-aware trainer smoke
+        run: |
+          python -m pip install --disable-pip-version-check --quiet -r ml/requirements-trainer.txt
+          python ml/generate_wbf_trainer_smoke_fixture.py --output /tmp/wbf-trainer-smoke.csv
+          python ml/train_wbf_fingerprint_model.py \
+            --features-csv /tmp/wbf-trainer-smoke.csv \
+            --output /tmp/wbf-trainer-smoke.json \
+            --model-output /tmp/wbf-trainer-smoke.joblib \
+            --model-families ridge \
+            --min-groups 8 \
+            --inner-folds 2 \
+            --outer-folds 3 \
+            --logo-max-groups 0 \
+            --bootstrap-reps 30 \
+            --null-permutations 3 \
+            --min-fingerprint-coverage 0.8
+          python ml/assert_wbf_trainer_smoke.py --artifact /tmp/wbf-trainer-smoke.json
       - name: Run existing Axion regressions
         run: npm run check
       - name: Build current application
