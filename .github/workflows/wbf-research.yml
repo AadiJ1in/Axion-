@@ -28,6 +28,7 @@ jobs:
         run: |
           node --check src/whole-body-biomechanics.js
           node --check src/whole-body-compensation.js
+          node --check src/whole-body-distribution.js
           node --check src/whole-body-tracker.js
           node --check src/whole-body-ui.js
           node --check src/whole-body-quality-model.js
@@ -36,6 +37,7 @@ jobs:
         run: |
           node scripts/whole-body-biomechanics-test.mjs
           node scripts/whole-body-compensation-test.mjs
+          node scripts/whole-body-distribution-test.mjs
           node scripts/whole-body-quality-model-test.mjs
           node scripts/whole-body-ui-test.mjs
       - name: Check Python research pipeline syntax
