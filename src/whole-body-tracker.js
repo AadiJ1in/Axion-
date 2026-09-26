@@ -4,6 +4,10 @@ import {
   extractWholeBodyFrame,
   summarizeWholeBodySession,
 } from "./whole-body-biomechanics.js";
+import {
+  resolveWholeBodyMovementExpectation,
+  summarizeWholeBodyMovementDistribution,
+} from "./whole-body-distribution.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -15,6 +19,11 @@ export async function createWholeBodyMovementTracker(options = {}) {
     onRep = () => {},
     ...trackerOptions
   } = options;
+
+  const exerciseKey = trackerOptions.exerciseKey || "bodyweight_squat";
+  const trackingMode = trackerOptions.trackingMode || "pose_reps";
+  const prescribedSide = trackerOptions.prescribedSide || "either";
+  const movementExpectation = resolveWholeBodyMovementExpectation(exerciseKey, trackingMode, prescribedSide);
 
   let activeRep = false;
   let lastStage = "up";
@@ -93,8 +102,20 @@ export async function createWholeBodyMovementTracker(options = {}) {
     getWholeBodyReps() {
       return completed.map((rep) => ({ ...rep }));
     },
+    getWholeBodyMovementExpectation() {
+      return movementExpectation;
+    },
     getWholeBodySessionSummary() {
-      return summarizeWholeBodySession(completed);
+      const summary = summarizeWholeBodySession(completed);
+      if (!summary) return null;
+      return {
+        ...summary,
+        movementDistribution: summarizeWholeBodyMovementDistribution(completed, {
+          exerciseKey,
+          trackingMode,
+          prescribedSide,
+        }),
+      };
     },
     getLastPoseAvailability() {
       return {
