@@ -80,6 +80,7 @@ jobs:
           python -m py_compile ml/train_wbf_movement_quality.py
           python -m py_compile ml/train_wbf_fingerprint_model.py
           python -m py_compile ml/train_wbf_longitudinal_classifier.py
+          python -m py_compile ml/smoke_wbf_longitudinal_classifier.py
           python -m py_compile ml/audit_wbf_fingerprint_features.py
           python -m py_compile ml/audit_wbf_clinician_labels.py
           python -m py_compile ml/audit_wbf_longitudinal_windows.py
@@ -108,6 +109,7 @@ jobs:
             --null-permutations 3 \
             --min-fingerprint-coverage 0.8
           python ml/assert_wbf_trainer_smoke.py --artifact /tmp/wbf-trainer-smoke.json
+          python ml/smoke_wbf_longitudinal_classifier.py
       - name: Run existing Axion regressions
         run: npm run check
       - name: Build current application
