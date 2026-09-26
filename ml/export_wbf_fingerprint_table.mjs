@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
-import { buildWholeBodyStatisticalFingerprint, wholeBodyStatisticalFingerprintColumns } from "../src/whole-body-statistical-fingerprint.js";
+import {
+  buildWholeBodyStatisticalFingerprintV5,
+  wholeBodyStatisticalFingerprintColumnsV5,
+} from "../src/whole-body-statistical-fingerprint-v5.js";
 
 function parseArgs(argv) {
   const args = {};
@@ -53,7 +56,7 @@ const records = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).ma
   catch (error) { throw new Error(`Invalid JSON on line ${index + 1}: ${error.message}`); }
 });
 
-const columns = wholeBodyStatisticalFingerprintColumns();
+const columns = wholeBodyStatisticalFingerprintColumnsV5();
 const headers = [
   "participant_id",
   "session_id",
@@ -69,9 +72,10 @@ const headers = [
 const rows = [];
 for (const record of records) {
   const summary = bodySummary(record);
-  const fingerprint = summary?.statisticalFingerprint?.status === "available"
-    ? summary.statisticalFingerprint
-    : buildWholeBodyStatisticalFingerprint(summary);
+  const stored = summary?.statisticalFingerprint;
+  const fingerprint = stored?.status === "available" && stored?.schemaVersion === 5
+    ? stored
+    : buildWholeBodyStatisticalFingerprintV5(summary);
   if (fingerprint?.status !== "available") continue;
   const meta = metadata(record);
   const row = {
@@ -92,6 +96,7 @@ await writeFile(args.output, output, "utf8");
 console.log(JSON.stringify({
   inputRecords: records.length,
   exportedRows: rows.length,
+  fingerprintSchemaVersion: 5,
   featureColumns: columns.length,
   output: args.output,
 }, null, 2));
