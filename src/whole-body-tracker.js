@@ -1,6 +1,5 @@
 import { createMovementTracker } from "./pose.js";
 import {
-  createWholeBodyRepAccumulator,
   extractWholeBodyFrame,
   summarizeWholeBodySession,
 } from "./whole-body-biomechanics.js";
@@ -8,6 +7,10 @@ import {
   resolveWholeBodyMovementExpectation,
   summarizeWholeBodyMovementDistribution,
 } from "./whole-body-distribution.js";
+import {
+  createWholeBodyMotionAccumulator,
+  summarizeWholeBodyMotionStatistics,
+} from "./whole-body-motion-statistics.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -31,7 +34,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
   let lastWorldLandmarks = null;
   let latestFrame = null;
   const completed = [];
-  const accumulator = createWholeBodyRepAccumulator();
+  const accumulator = createWholeBodyMotionAccumulator();
 
   const tracker = await createMovementTracker({
     ...trackerOptions,
@@ -110,6 +113,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       if (!summary) return null;
       return {
         ...summary,
+        motionStatistics: summarizeWholeBodyMotionStatistics(completed),
         movementDistribution: summarizeWholeBodyMovementDistribution(completed, {
           exerciseKey,
           trackingMode,
