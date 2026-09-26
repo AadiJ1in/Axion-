@@ -31,6 +31,7 @@ jobs:
           node --check src/whole-body-distribution.js
           node --check src/whole-body-distribution-v2.js
           node --check src/whole-body-compositional-statistics.js
+          node --check src/whole-body-anatomical-balances.js
           node --check src/whole-body-movement-intent.js
           node --check src/whole-body-motion-statistics.js
           node --check src/whole-body-region-ownership.js
@@ -40,6 +41,7 @@ jobs:
           node --check src/whole-body-redistribution-history.js
           node --check src/whole-body-redistribution-evidence.js
           node --check src/whole-body-statistical-fingerprint.js
+          node --check src/whole-body-statistical-fingerprint-v5.js
           node --check src/whole-body-longitudinal-fingerprint.js
           node --check src/whole-body-tracker.js
           node --check src/whole-body-ui.js
@@ -55,12 +57,14 @@ jobs:
           node scripts/whole-body-region-ownership-test.mjs
           node scripts/whole-body-distribution-v2-test.mjs
           node scripts/whole-body-compositional-statistics-test.mjs
+          node scripts/whole-body-anatomical-balances-test.mjs
           node scripts/whole-body-movement-intent-test.mjs
           node scripts/whole-body-motion-statistics-test.mjs
           node scripts/whole-body-personalized-reference-test.mjs
           node scripts/whole-body-robust-evidence-test.mjs
           node scripts/whole-body-redistribution-history-test.mjs
           node scripts/whole-body-statistical-fingerprint-test.mjs
+          node scripts/whole-body-statistical-fingerprint-v5-test.mjs
           node scripts/whole-body-longitudinal-fingerprint-test.mjs
           node scripts/whole-body-quality-model-test.mjs
           node scripts/whole-body-ui-test.mjs
