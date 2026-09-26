@@ -8,8 +8,11 @@ const stats = { n: 8, mean: 0.2, median: 0.2, sd: 0.03, iqr: 0.04, mad: 0.02, cv
 const ilrStats = (median, slope) => ({ n: 8, mean: median, median, min: median - 0.2, max: median + 0.2, iqr: 0.15, slopePerRep: slope });
 const summary = {
   movementDistribution: {
+    schemaVersion: 3,
+    regionMapSchemaVersion: 1,
     status: "available",
     measuredReps: 8,
+    completeWholeBodyReps: 7,
     expectation: {
       schemaVersion: 2,
       signal: "knee_bend",
@@ -99,15 +102,18 @@ const summary = {
 };
 
 const fingerprint = buildWholeBodyStatisticalFingerprint(summary);
-assert.equal(fingerprint.schemaVersion, 3);
+assert.equal(fingerprint.schemaVersion, 4);
+assert.equal(fingerprint.regionMapSchemaVersion, 1);
+assert.equal(fingerprint.distributionSchemaVersion, 3);
 assert.equal(fingerprint.compositionalSchemaVersion, 2);
 assert.equal(fingerprint.status, "available");
-assert.ok(fingerprint.featureCount > 190, "fingerprint v3 should expose a broad independent/compositional session representation");
+assert.ok(fingerprint.featureCount > 190, "fingerprint v4 should expose a broad independent/compositional session representation");
 assert.ok(fingerprint.populatedFeatureCount > 70);
 assert.ok(fingerprint.coverage > 0 && fingerprint.coverage < 1);
 assert.equal(fingerprint.intent.signal, "knee_bend");
 assert.equal(fingerprint.features.primary_share_median, 0.55);
 assert.equal(fingerprint.features.outside_share_early_to_late_change, 0.10);
+assert.equal(fingerprint.features.complete_whole_body_reps, 7);
 assert.equal(fingerprint.features.trunk_motion_pathLength, 12);
 assert.equal(fingerprint.features.trunk_motion_peakExcursionPhase, 0.62);
 assert.equal(fingerprint.features.trunk_primary_spearman, 0.6);
@@ -119,7 +125,7 @@ assert.equal(fingerprint.features.composition_session_center_left_lower_limb, 0.
 assert.equal(fingerprint.features.composition_session_ilr_1, 0.1);
 assert.equal(fingerprint.features.composition_ilr_1_change, -0.2);
 assert.equal(fingerprint.features.composition_ilr_7_slopePerRep, -0.07);
-assert.match(fingerprint.interpretation, /independent ILR coordinates/i);
+assert.match(fingerprint.interpretation, /non-overlapping versioned feature-ownership map/i);
 
 const columns = wholeBodyStatisticalFingerprintColumns();
 assert.ok(columns.includes("primary_share_median"));
@@ -129,9 +135,11 @@ assert.ok(columns.includes("composition_early_late_aitchison_distance"));
 assert.ok(columns.includes("composition_primary_outside_balance_slopePerRep"));
 assert.ok(columns.includes("composition_session_ilr_7"));
 assert.ok(columns.includes("composition_ilr_7_change"));
+assert.ok(columns.includes("complete_whole_body_reps"));
 assert.deepEqual(columns, [...columns].sort(), "fingerprint columns must be deterministic");
 
 const unavailable = buildWholeBodyStatisticalFingerprint({ movementDistribution: { status: "unavailable" } });
 assert.equal(unavailable.status, "unavailable");
+assert.equal(unavailable.regionMapSchemaVersion, 1);
 
-console.log(`Whole-body statistical fingerprint v3 passed with ${fingerprint.featureCount} versioned fields.`);
+console.log(`Whole-body statistical fingerprint v4 passed with ${fingerprint.featureCount} versioned fields.`);
