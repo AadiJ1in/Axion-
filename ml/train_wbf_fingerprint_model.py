@@ -121,6 +121,8 @@ def round_nested(value, digits=5):
         return {key: round_nested(item, digits) for key, item in value.items()}
     if isinstance(value, list):
         return [round_nested(item, digits) for item in value]
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
     if isinstance(value, (float, np.floating)):
         return round(float(value), digits) if np.isfinite(value) else None
     if isinstance(value, (int, np.integer)):
@@ -269,8 +271,6 @@ def group_null_sanity(X, y, groups, args, permutations: int, observed_mae: float
     rng = np.random.default_rng(args.random_state + 314159)
     null_mae = []
     null_r2 = []
-    # Lightweight fixed Ridge model: this is a leakage sanity check, not a competing
-    # performance estimate. It deliberately avoids re-running full model selection.
     template = Pipeline([
         ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
         ("scaler", StandardScaler()),
@@ -440,8 +440,6 @@ def main() -> None:
     if null_sanity.get("status") == "available" and not null_sanity.get("observedBetterThanNullMedian"):
         warnings.append("Observed OOF MAE was not better than the median label-scramble sanity result; investigate leakage, weak signal, or insufficient data.")
 
-    # Final model selection occurs only after unbiased outer evaluation is complete.
-    # This fit is for a future research artifact; its CV score is NOT test performance.
     full_cv = inner_cv(groups, args.inner_folds)
     final_candidates = []
     for model_name, (pipeline, grid) in spaces.items():
