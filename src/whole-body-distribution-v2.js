@@ -3,6 +3,7 @@ import {
   analyzeWholeBodyRepDistribution,
   descriptiveStats,
 } from "./whole-body-distribution.js";
+import { summarizeWholeBodyCompositionalStatistics } from "./whole-body-compositional-statistics.js";
 import { resolveWholeBodyMovementIntent } from "./whole-body-movement-intent.js";
 
 export const WHOLE_BODY_DISTRIBUTION_SCHEMA_VERSION_V2 = 2;
@@ -177,6 +178,7 @@ export function summarizeWholeBodyMovementDistributionV2(reps = [], {
     .map((region) => ({ region, stats: regionContributions[region] }))
     .filter((item) => Number.isFinite(item.stats?.median))
     .sort((a, b) => b.stats.median - a.stats.median)[0] || null;
+  const compositionalStatistics = summarizeWholeBodyCompositionalStatistics(repDistributions, intent);
 
   return {
     schemaVersion: WHOLE_BODY_DISTRIBUTION_SCHEMA_VERSION_V2,
@@ -196,6 +198,7 @@ export function summarizeWholeBodyMovementDistributionV2(reps = [], {
       leftRightUpperRedistribution: leftRightBalance(repDistributions, "left_upper_limb", "right_upper_limb"),
       leftRightLowerRedistribution: leftRightBalance(repDistributions, "left_lower_limb", "right_lower_limb"),
     },
+    compositionalStatistics,
     regionContributionShare: regionContributions,
     earlyLateComparison: {
       earlyRepCount: early.length,
@@ -213,6 +216,6 @@ export function summarizeWholeBodyMovementDistributionV2(reps = [], {
       medianContributionShare: dominantOutside.stats.median,
     } : null,
     couplingWithPrimary: couplingWithPrimary(repDistributions, intent),
-    interpretation: "This summary describes where derived pose-feature excursion occurred relative to a versioned exercise tracking intent. Outside-region movement can reflect normal stabilization, strategy, fatigue, camera geometry, or tracking noise and is not automatically abnormal or harmful.",
+    interpretation: "This summary describes where derived pose-feature excursion occurred relative to a versioned exercise tracking intent. Compositional log-ratio statistics are used for relative distribution changes because region shares sum to one. Outside-region movement can reflect normal stabilization, strategy, fatigue, camera geometry, or tracking noise and is not automatically abnormal or harmful.",
   };
 }
