@@ -14,6 +14,8 @@ import math
 import random
 from pathlib import Path
 
+CURRENT_FINGERPRINT_SCHEMA = 4
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -59,7 +61,7 @@ def main():
                 "camera_view": "front" if participant % 3 else "three_quarter",
                 "prescribed_side": "either",
                 "assessment_score": round(target, 6),
-                "fingerprint_schema_version": 3,
+                "fingerprint_schema_version": CURRENT_FINGERPRINT_SCHEMA,
                 "fingerprint_coverage": 0.98,
             }
             row.update({f"fp_f{index:03d}": round(value, 8) for index, value in enumerate(features)})
@@ -70,7 +72,10 @@ def main():
         writer = csv.DictWriter(handle, fieldnames=headers)
         writer.writeheader()
         writer.writerows(rows)
-    print(f"Wrote {len(rows)} synthetic grouped rows with {args.features} fingerprint features to {args.output}")
+    print(
+        f"Wrote {len(rows)} synthetic grouped rows with {args.features} fingerprint features "
+        f"(schema {CURRENT_FINGERPRINT_SCHEMA}) to {args.output}"
+    )
 
 
 if __name__ == "__main__":
