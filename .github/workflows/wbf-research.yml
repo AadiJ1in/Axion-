@@ -82,6 +82,7 @@ jobs:
           python -m py_compile ml/train_wbf_longitudinal_classifier.py
           python -m py_compile ml/audit_wbf_fingerprint_features.py
           python -m py_compile ml/audit_wbf_clinician_labels.py
+          python -m py_compile ml/audit_wbf_longitudinal_windows.py
           python -m py_compile ml/validate_wbf_longitudinal_feature_table.py
           python -m py_compile ml/evaluate_wbf_feature_ablation.py
           python -m py_compile ml/generate_wbf_trainer_smoke_fixture.py
