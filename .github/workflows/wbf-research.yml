@@ -30,6 +30,7 @@ jobs:
           node --check src/whole-body-compensation.js
           node --check src/whole-body-distribution.js
           node --check src/whole-body-distribution-v2.js
+          node --check src/whole-body-compositional-statistics.js
           node --check src/whole-body-movement-intent.js
           node --check src/whole-body-motion-statistics.js
           node --check src/whole-body-redistribution-history.js
@@ -39,12 +40,14 @@ jobs:
           node --check src/whole-body-distribution-ui.js
           node --check src/whole-body-quality-model.js
           node --check ml/whole_body_landmarks_to_features.mjs
+          node --check ml/export_wbf_fingerprint_table.mjs
       - name: Run WBF contracts
         run: |
           node scripts/whole-body-biomechanics-test.mjs
           node scripts/whole-body-compensation-test.mjs
           node scripts/whole-body-distribution-test.mjs
           node scripts/whole-body-distribution-v2-test.mjs
+          node scripts/whole-body-compositional-statistics-test.mjs
           node scripts/whole-body-movement-intent-test.mjs
           node scripts/whole-body-motion-statistics-test.mjs
           node scripts/whole-body-redistribution-history-test.mjs
@@ -56,6 +59,7 @@ jobs:
         run: |
           python -m py_compile ml/extract_wbf_dataset_features.py
           python -m py_compile ml/train_wbf_movement_quality.py
+          python -m py_compile ml/train_wbf_fingerprint_model.py
       - name: Run existing Axion regressions
         run: npm run check
       - name: Build current application
