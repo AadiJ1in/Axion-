@@ -44,33 +44,40 @@ function restVisible(overlay) {
 
 let clinicalEvaluationModulePromise = null;
 function syncTherapistClinicalEvaluations() {
-  // The evaluation runner brings camera/pose-analysis code that patients do not
-  // need on normal authenticated boot. Load it only after therapist UI exists.
   if (!document.querySelector('.therapist-page')) return;
-  if (!clinicalEvaluationModulePromise) {
-    clinicalEvaluationModulePromise = import('./clinical-evaluation-ui.js');
-  }
+  if (!clinicalEvaluationModulePromise) clinicalEvaluationModulePromise = import('./clinical-evaluation-ui.js');
   void clinicalEvaluationModulePromise
     .then((module) => module.syncClinicalEvaluationWorkspace?.())
     .catch(() => { clinicalEvaluationModulePromise = null; });
 }
 
 let patientProgressModulePromise = null;
+let patientProgressRepModulePromise = null;
 function syncAuthenticatedPatientProgress() {
-  // The rich Progress analytics view is intentionally lazy. It loads only when
-  // the authenticated report/progress surface is already on screen, preserving
-  // the two-script core-safe boot contract and keeping Today/Journey lightweight.
+  // Rich analytics stay off the login-critical path. The real Progress page and
+  // its persisted rep-detail reader are loaded only after Progress is visible.
   if (!document.querySelector('main.report-page:not(.report-page--empty)')) return;
   if (!patientProgressModulePromise) patientProgressModulePromise = import('./patient-progress-surface.js');
   void patientProgressModulePromise
-    .then((module) => module.syncPatientProgressSurface?.())
-    .catch(() => { patientProgressModulePromise = null; });
+    .then((module) => {
+      module.syncPatientProgressSurface?.();
+      if (!patientProgressRepModulePromise) patientProgressRepModulePromise = import('./patient-progress-rep-enrichment.js');
+      return patientProgressRepModulePromise;
+    })
+    .then((module) => {
+      // The Progress renderer performs an authenticated async read first. Two
+      // bounded follow-up passes let the rep reader attach after that render
+      // without adding a global observer or recurring background work.
+      window.setTimeout(() => module.syncPatientProgressRepEnrichment?.(), 180);
+      window.setTimeout(() => module.syncPatientProgressRepEnrichment?.(), 650);
+    })
+    .catch(() => {
+      patientProgressModulePromise = null;
+      patientProgressRepModulePromise = null;
+    });
 }
 
 function syncLateClinicPresentation() {
-  // clinic-readiness can finish async after the main presentation pass. These
-  // helpers are tiny and idempotent: they only map the visible Today entry,
-  // normalize one therapist heading, and re-apply the late patient presentation.
   syncTodayRoadmapEntry();
   syncTherapistReviewCopy();
   syncTherapistClinicalEvaluations();
@@ -126,10 +133,6 @@ function syncRestExperience() {
   if (sessionPause) sessionPause.textContent = `Resting · ${clock}`;
 }
 
-// A safety report stops the media stream in main.js. On an explicit Resume click
-// we first release only the game safety latch in capture phase so the existing
-// handler can resume game state, then re-use the existing Start Camera action to
-// reacquire the stopped stream. This never invents or restores clinical reps.
 document.addEventListener('click', (event) => {
   const button = event.target.closest?.('#game-pause, #session-pause');
   if (!button || !/resume/i.test(button.textContent || '')) return;
@@ -150,9 +153,6 @@ document.addEventListener('click', (event) => {
   }, 80);
 }, true);
 
-// Rest timing is the only periodic patient-polish task. Global presentation
-// hierarchy is now render/event driven so tab changes cannot be rearranged again
-// by a background 250 ms presentation pass.
 const polishTimer = window.setInterval(syncRestExperience, 250);
 window.addEventListener('pagehide', () => {
   window.clearInterval(polishTimer);
