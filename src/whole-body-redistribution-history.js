@@ -5,7 +5,7 @@ import { WHOLE_BODY_REGIONS } from "./whole-body-biomechanics.js";
 // of the same exercise for the same person. It does not establish mechanical load
 // transfer, causation, diagnosis, injury risk, or treatment response.
 
-export const WHOLE_BODY_REDISTRIBUTION_HISTORY_SCHEMA_VERSION = 1;
+export const WHOLE_BODY_REDISTRIBUTION_HISTORY_SCHEMA_VERSION = 2;
 
 const finite = (value) => value === null || value === undefined || value === ""
   ? null
@@ -49,6 +49,60 @@ function dateMs(session) {
   return Number.isFinite(time) ? time : null;
 }
 
+function cameraView(session) {
+  return session?.camera_view
+    || session?.capture_context?.camera_view
+    || session?.movement_summary?.camera_view
+    || bodySummary(session)?.cameraView
+    || null;
+}
+
+function intentContext(session) {
+  const expectation = distribution(session)?.expectation || null;
+  return {
+    distributionSchemaVersion: finite(distribution(session)?.schemaVersion),
+    intentSchemaVersion: finite(expectation?.schemaVersion),
+    signal: expectation?.signal || null,
+    prescribedSide: expectation?.prescribedSide || null,
+    primaryRegions: Array.isArray(expectation?.primaryRegions) ? expectation.primaryRegions.join("|") : null,
+    supportRegions: Array.isArray(expectation?.supportRegions) ? expectation.supportRegions.join("|") : null,
+  };
+}
+
+function uniqueKnown(sessions, getter) {
+  return [...new Set(sessions.map(getter).filter((value) => value !== null && value !== undefined && value !== ""))];
+}
+
+function comparisonContext(sessions) {
+  const cameraViews = uniqueKnown(sessions, cameraView);
+  const distributionSchemas = uniqueKnown(sessions, (session) => intentContext(session).distributionSchemaVersion);
+  const intentSchemas = uniqueKnown(sessions, (session) => intentContext(session).intentSchemaVersion);
+  const signals = uniqueKnown(sessions, (session) => intentContext(session).signal);
+  const sides = uniqueKnown(sessions, (session) => intentContext(session).prescribedSide);
+  const primarySets = uniqueKnown(sessions, (session) => intentContext(session).primaryRegions);
+  const supportSets = uniqueKnown(sessions, (session) => intentContext(session).supportRegions);
+
+  if (cameraViews.length > 1) return { error: "mixed_capture_context", cameraViews };
+  if (distributionSchemas.length > 1) return { error: "mixed_distribution_schema", distributionSchemas };
+  if (intentSchemas.length > 1) return { error: "mixed_intent_schema", intentSchemas };
+  if (signals.length > 1) return { error: "mixed_tracking_signal", signals };
+  if (sides.length > 1) return { error: "mixed_prescribed_side", prescribedSides: sides };
+  if (primarySets.length > 1 || supportSets.length > 1) return { error: "mixed_movement_intent" };
+
+  const recordedFields = [cameraViews, distributionSchemas, intentSchemas, signals, sides, primarySets, supportSets]
+    .filter((values) => values.length === 1).length;
+  return {
+    cameraView: cameraViews[0] || null,
+    distributionSchemaVersion: distributionSchemas[0] || null,
+    intentSchemaVersion: intentSchemas[0] || null,
+    signal: signals[0] || null,
+    prescribedSide: sides[0] || null,
+    primaryRegions: primarySets[0]?.split("|") || null,
+    supportRegions: supportSets[0]?.split("|") || null,
+    verification: recordedFields === 7 ? "fully_verified" : recordedFields >= 4 ? "partially_verified" : "limited_metadata",
+  };
+}
+
 function distributionMetric(session, metric) {
   const value = distribution(session);
   if (!value) return null;
@@ -57,6 +111,8 @@ function distributionMetric(session, metric) {
   if (metric === "outsideShare") return finite(value.descriptiveStatistics?.outsideMovementShare?.median);
   if (metric === "outsideToPrimaryRatio") return finite(value.descriptiveStatistics?.outsideToPrimaryRatio?.median);
   if (metric === "lateSetOutsideChange") return finite(value.earlyLateComparison?.outsideShareChange);
+  if (metric === "concentration") return finite(value.descriptiveStatistics?.movementConcentrationIndex?.median);
+  if (metric === "entropy") return finite(value.descriptiveStatistics?.movementDistributionEntropy?.median);
   return null;
 }
 
@@ -70,6 +126,8 @@ const METRIC_FLOORS = Object.freeze({
   outsideShare: 0.03,
   outsideToPrimaryRatio: 0.10,
   lateSetOutsideChange: 0.03,
+  concentration: 0.03,
+  entropy: 0.03,
   regionContribution: 0.03,
 });
 
@@ -189,6 +247,14 @@ export function analyzeWholeBodyRedistributionHistory(sessions = [], {
     return unavailable("insufficient_sessions", { requiredSessions, availableSessions: ordered.length });
   }
 
+  const context = comparisonContext(ordered);
+  if (context.error) {
+    return unavailable(context.error, {
+      comparisonContext: context,
+      message: "Longitudinal movement-distribution sessions must use compatible capture and movement-intent context before they can be compared.",
+    });
+  }
+
   const baselineSessions = ordered.slice(0, baselineWindow);
   const recentSessions = ordered.slice(-recentWindow);
   const expectation = distribution(recentSessions.at(-1))?.expectation || null;
@@ -200,6 +266,8 @@ export function analyzeWholeBodyRedistributionHistory(sessions = [], {
     "outsideShare",
     "outsideToPrimaryRatio",
     "lateSetOutsideChange",
+    "concentration",
+    "entropy",
   ].map((metric) => [metric, compareMetric(baselineSessions, recentSessions, metric)]));
 
   const regionShifts = WHOLE_BODY_REGIONS
@@ -225,6 +293,11 @@ export function analyzeWholeBodyRedistributionHistory(sessions = [], {
     && metrics.primaryShare.standardizedShift <= -0.75;
   const redistributionCandidate = Boolean(outsideIncrease && primaryDecrease && destinationRegion);
 
+  const limitations = [];
+  if (!context.cameraView) limitations.push("Camera-view metadata was not recorded; consistent capture geometry should be verified before interpreting longitudinal change.");
+  if (!context.prescribedSide) limitations.push("Prescribed-side metadata was not recorded for the comparison window.");
+  if (!context.intentSchemaVersion) limitations.push("Movement-intent schema version was not recorded for all sessions.");
+
   return {
     schemaVersion: WHOLE_BODY_REDISTRIBUTION_HISTORY_SCHEMA_VERSION,
     status: "available",
@@ -233,6 +306,8 @@ export function analyzeWholeBodyRedistributionHistory(sessions = [], {
     patientId: patientIds[0],
     exerciseKey: exerciseKeys[0],
     sessionCount: ordered.length,
+    comparisonContext: context,
+    limitations,
     baselineWindow: {
       count: baselineSessions.length,
       start: baselineSessions[0]?.completed_at || baselineSessions[0]?.created_at || baselineSessions[0]?.started_at || null,
