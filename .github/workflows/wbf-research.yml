@@ -36,7 +36,9 @@ jobs:
           node --check src/whole-body-region-ownership.js
           node --check src/whole-body-rep-distribution.js
           node --check src/whole-body-personalized-reference.js
+          node --check src/whole-body-robust-evidence.js
           node --check src/whole-body-redistribution-history.js
+          node --check src/whole-body-redistribution-evidence.js
           node --check src/whole-body-statistical-fingerprint.js
           node --check src/whole-body-longitudinal-fingerprint.js
           node --check src/whole-body-tracker.js
@@ -56,6 +58,7 @@ jobs:
           node scripts/whole-body-movement-intent-test.mjs
           node scripts/whole-body-motion-statistics-test.mjs
           node scripts/whole-body-personalized-reference-test.mjs
+          node scripts/whole-body-robust-evidence-test.mjs
           node scripts/whole-body-redistribution-history-test.mjs
           node scripts/whole-body-statistical-fingerprint-test.mjs
           node scripts/whole-body-longitudinal-fingerprint-test.mjs
@@ -67,12 +70,17 @@ jobs:
           python -m py_compile ml/extract_wbf_dataset_features.py
           python -m py_compile ml/train_wbf_movement_quality.py
           python -m py_compile ml/train_wbf_fingerprint_model.py
+          python -m py_compile ml/audit_wbf_fingerprint_features.py
           python -m py_compile ml/generate_wbf_trainer_smoke_fixture.py
           python -m py_compile ml/assert_wbf_trainer_smoke.py
       - name: Run nested participant-aware trainer smoke
         run: |
           python -m pip install --disable-pip-version-check --quiet -r ml/requirements-trainer.txt
           python ml/generate_wbf_trainer_smoke_fixture.py --output /tmp/wbf-trainer-smoke.csv
+          python ml/audit_wbf_fingerprint_features.py \
+            --features-csv /tmp/wbf-trainer-smoke.csv \
+            --output /tmp/wbf-feature-audit.json \
+            --min-pairwise-n 5
           python ml/train_wbf_fingerprint_model.py \
             --features-csv /tmp/wbf-trainer-smoke.csv \
             --output /tmp/wbf-trainer-smoke.json \
