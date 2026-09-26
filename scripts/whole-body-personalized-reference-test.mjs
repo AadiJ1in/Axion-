@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { analyzeWholeBodyPersonalizedReference } from "../src/whole-body-personalized-reference.js";
-import { WHOLE_BODY_REGION_FEATURES, WHOLE_BODY_REGIONS } from "../src/whole-body-biomechanics.js";
+import { WHOLE_BODY_REGIONS } from "../src/whole-body-biomechanics.js";
+import { WHOLE_BODY_ANALYSIS_REGION_FEATURES } from "../src/whole-body-region-ownership.js";
 
 const expectation = {
   status: "available",
@@ -11,10 +12,8 @@ const expectation = {
 
 function motionFeatures(regionRanges) {
   const output = {};
-  for (const [region, features] of Object.entries(WHOLE_BODY_REGION_FEATURES)) {
-    for (const feature of features) {
-      if (!output[feature]) output[feature] = { range: { median: regionRanges[region] } };
-    }
+  for (const [region, features] of Object.entries(WHOLE_BODY_ANALYSIS_REGION_FEATURES)) {
+    for (const feature of features) output[feature] = { range: { median: regionRanges[region] } };
   }
   return output;
 }
@@ -47,7 +46,8 @@ const recentRanges = [
 const baseline = baselineRanges.map((ranges, index) => session(`b${index + 1}`, ranges));
 const recent = recentRanges.map((ranges, index) => session(`r${index + 1}`, ranges));
 const result = analyzeWholeBodyPersonalizedReference(baseline, recent, expectation);
-assert.equal(result.schemaVersion, 1);
+assert.equal(result.schemaVersion, 2);
+assert.equal(result.regionMapSchemaVersion, 1);
 assert.equal(result.status, "available");
 assert.ok(result.baselineFeatureCount >= 20);
 assert.equal(result.corroborationCandidate, true);
@@ -56,7 +56,7 @@ assert.ok(result.destinationRegion.standardizedShift > 0.75);
 assert.ok(result.destinationRegion.approximateFoldChange > 1.4);
 assert.ok(result.primaryOutsideContrast.standardizedShift < -0.75);
 assert.equal(result.primaryOutsideContrast.persistent, true);
-assert.match(result.interpretation, /does not use region-share normalization/i);
+assert.match(result.interpretation, /non-overlapping region ownership map/i);
 
 const unchanged = analyzeWholeBodyPersonalizedReference(
   baseline,
@@ -74,6 +74,7 @@ assert.equal(stillAvailable.status, "available", "one missing feature must not z
 
 const tooShort = analyzeWholeBodyPersonalizedReference(baseline.slice(0, 1), recent, expectation);
 assert.equal(tooShort.status, "unavailable");
+assert.equal(tooShort.regionMapSchemaVersion, 1);
 assert.equal(tooShort.reason, "insufficient_sessions");
 
-console.log("Whole-body personalized feature-range reference passed independently of distribution shares.");
+console.log("Whole-body personalized feature-range reference v2 passed independently of distribution shares.");
