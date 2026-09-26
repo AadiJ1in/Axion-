@@ -83,6 +83,7 @@ jobs:
           python -m py_compile ml/smoke_wbf_longitudinal_classifier.py
           python -m py_compile ml/wbf_group_conformal.py
           python -m py_compile ml/test_wbf_group_conformal.py
+          python -m py_compile ml/fit_wbf_longitudinal_conformal.py
           python -m py_compile ml/audit_wbf_fingerprint_features.py
           python -m py_compile ml/audit_wbf_clinician_labels.py
           python -m py_compile ml/audit_wbf_longitudinal_windows.py
