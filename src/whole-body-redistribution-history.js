@@ -8,15 +8,17 @@ import {
   jensenShannonDivergence,
   totalVariationDistance,
 } from "./whole-body-compositional-statistics.js";
+import { analyzeWholeBodyPersonalizedReference } from "./whole-body-personalized-reference.js";
 
-// AxionWBF longitudinal movement-distribution analysis v3.
-// Describes whether observable movement distribution changes across repeated sessions
-// of the same exercise for the same person. The research candidate is now gated by
-// compositional/log-ratio evidence so fixed-sum share closure cannot trigger it alone.
-// It does not establish mechanical load transfer, causation, diagnosis, injury risk,
+// AxionWBF longitudinal movement-distribution analysis v4.
+// A research candidate requires agreement between two independent mathematical views:
+// (1) whole-body compositional/log-ratio redistribution and (2) personalized raw-feature
+// range change relative to the patient's early same-exercise reference. Raw fixed-sum
+// share changes alone can never create a candidate.
+// This does not establish mechanical load transfer, causation, diagnosis, injury risk,
 // treatment response, or clinical significance.
 
-export const WHOLE_BODY_REDISTRIBUTION_HISTORY_SCHEMA_VERSION = 3;
+export const WHOLE_BODY_REDISTRIBUTION_HISTORY_SCHEMA_VERSION = 4;
 
 const SHIFT_THRESHOLD = 0.75;
 const COMPOSITIONAL_FLOORS = Object.freeze({
@@ -202,16 +204,6 @@ function baselineStatsFromValues(values, floor) {
     median: center,
     robustScale: Math.max(floor, Number.isFinite(deviation) ? deviation * 1.4826 : 0),
   };
-}
-
-function baselineStats(sessions, getter, floor) {
-  return baselineStatsFromValues(sessions.map(getter), floor);
-}
-
-function recentStats(sessions, getter) {
-  const values = sessions.map(getter).filter(Number.isFinite);
-  if (!values.length) return null;
-  return { samples: values.length, median: median(values), values };
 }
 
 function persistence(recentValues, baseline) {
@@ -422,6 +414,7 @@ export function analyzeWholeBodyRedistributionHistory(sessions = [], {
     .map((region) => compareRegion(baselineSessions, recentSessions, region))
     .filter(Boolean);
   const compositional = compositionalLongitudinalAnalysis(baselineSessions, recentSessions, expectation);
+  const personalized = analyzeWholeBodyPersonalizedReference(baselineSessions, recentSessions, expectation);
 
   const rawOutsideIncrease = metrics.outsideShare?.persistent
     && metrics.outsideShare.direction === 1
@@ -440,15 +433,21 @@ export function analyzeWholeBodyRedistributionHistory(sessions = [], {
     && compositional.distanceFromEarlyCenter?.persistent
     && compositional.distanceFromEarlyCenter.direction === 1
     && compositional.distanceFromEarlyCenter.standardizedShift >= SHIFT_THRESHOLD;
-  const destinationRegion = compositional.status === "available" ? compositional.destinationRegion : null;
-  const sourceRegion = compositional.status === "available" ? compositional.sourceRegion : null;
+  const compositionalDestination = compositional.status === "available" ? compositional.destinationRegion : null;
+  const compositionalSource = compositional.status === "available" ? compositional.sourceRegion : null;
+
+  const personalizedCorroboration = personalized.status === "available"
+    && personalized.corroborationCandidate
+    && personalized.destinationRegion?.region
+    && personalized.destinationRegion.region === compositionalDestination?.region;
 
   const redistributionCandidate = Boolean(
     rawOutsideIncrease
     && rawPrimaryDecrease
     && logBalanceDecrease
     && compositionalShift
-    && destinationRegion,
+    && compositionalDestination
+    && personalizedCorroboration,
   );
 
   const limitations = [];
@@ -456,12 +455,16 @@ export function analyzeWholeBodyRedistributionHistory(sessions = [], {
   if (!context.prescribedSide) limitations.push("Prescribed-side metadata was not recorded for the comparison window.");
   if (!context.intentSchemaVersion) limitations.push("Movement-intent schema version was not recorded for all sessions.");
   if (compositional.status !== "available") limitations.push("Complete compositional session summaries were unavailable, so no longitudinal redistribution candidate can be emitted.");
+  if (personalized.status !== "available") limitations.push("Personalized feature-range reference data were unavailable, so dual-method redistribution corroboration could not be completed.");
+  if (compositionalDestination && personalized.status === "available" && personalized.destinationRegion?.region && !personalizedCorroboration) {
+    limitations.push(`Independent redistribution views disagreed on the destination region (${compositionalDestination.region} vs ${personalized.destinationRegion.region}); no high-confidence candidate was emitted.`);
+  }
 
   return {
     schemaVersion: WHOLE_BODY_REDISTRIBUTION_HISTORY_SCHEMA_VERSION,
     status: "available",
     clinicalStatus: "descriptive_unvalidated",
-    referenceType: "early_same_exercise_within_person_compositional_distribution",
+    referenceType: "dual_method_early_same_exercise_within_person_reference",
     patientId: patientIds[0],
     exerciseKey: exerciseKeys[0],
     sessionCount: ordered.length,
@@ -485,23 +488,31 @@ export function analyzeWholeBodyRedistributionHistory(sessions = [], {
     distributionShifts: metrics,
     regionContributionShifts: regionShifts,
     compositionalShift: compositional,
+    personalizedReference: personalized,
+    methodAgreement: {
+      compositionalDestination: compositionalDestination?.region || null,
+      personalizedDestination: personalized.destinationRegion?.region || null,
+      destinationAgreement: Boolean(personalizedCorroboration),
+    },
     rawShareCorroboration: {
       primaryDecrease: Boolean(rawPrimaryDecrease),
       outsideIncrease: Boolean(rawOutsideIncrease),
     },
     redistributionCandidate: redistributionCandidate ? {
-      patternType: "persistent_compositional_primary_to_outside_redistribution",
-      sourceRegion: sourceRegion?.region || null,
-      destinationRegion: destinationRegion.region,
+      patternType: "dual_method_compositional_and_personalized_redistribution",
+      sourceRegion: compositionalSource?.region || personalized.sourceRegion?.region || null,
+      destinationRegion: compositionalDestination.region,
       primaryVsOutsideBalanceShift: compositional.primaryOutsideBalance.standardizedShift,
       aitchisonDistanceShift: compositional.distanceFromEarlyCenter.standardizedShift,
-      destinationClrShift: destinationRegion.standardizedShift,
+      destinationClrShift: compositionalDestination.standardizedShift,
+      personalizedDestinationShift: personalized.destinationRegion.standardizedShift,
+      personalizedPrimaryOutsideContrastShift: personalized.primaryOutsideContrast?.standardizedShift ?? null,
       primaryShareShift: metrics.primaryShare.standardizedShift,
       outsideShareShift: metrics.outsideShare.standardizedShift,
-      description: `The patient's recent same-exercise movement distribution shifted away from the early compositional reference: primary-vs-outside log balance decreased, whole-body Aitchison distance increased, and the strongest persistent outside-region relative increase was ${destinationRegion.region.replaceAll("_", " ")}.`,
+      description: `Two independent WBF representations agreed on a persistent same-exercise movement-strategy change toward ${compositionalDestination.region.replaceAll("_", " ")}: the whole-body composition shifted away from the early reference and the raw feature-range reference independently increased in the same destination region.`,
     } : null,
     interpretation: redistributionCandidate
-      ? "A persistent within-person compositional redistribution pattern met the current research gates and is presented for therapist review. The finding combines log-ratio balance, Aitchison-distance change, region-level CLR change, and raw-share corroboration. It does not establish mechanical load transfer, abnormal compensation, causation, injury risk, or clinical significance."
-      : "No longitudinal pattern met all compositional redistribution research gates. Raw share changes alone cannot create a WBF redistribution candidate.",
+      ? "A persistent within-person redistribution pattern met the current dual-method research gates. The finding requires agreement between compositional log-ratio geometry and independently normalized feature-range change, with raw-share direction used only as corroboration. It is a therapist-review research signal and does not establish mechanical load transfer, abnormal compensation, causation, injury risk, or clinical significance."
+      : "No longitudinal pattern met all dual-method redistribution research gates. Raw share changes or either mathematical representation alone cannot create a high-confidence WBF redistribution candidate.",
   };
 }
