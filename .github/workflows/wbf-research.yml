@@ -43,12 +43,14 @@ jobs:
           node --check src/whole-body-statistical-fingerprint.js
           node --check src/whole-body-statistical-fingerprint-v5.js
           node --check src/whole-body-longitudinal-fingerprint.js
+          node --check src/whole-body-longitudinal-fingerprint-v2.js
           node --check src/whole-body-tracker.js
           node --check src/whole-body-ui.js
           node --check src/whole-body-distribution-ui.js
           node --check src/whole-body-quality-model.js
           node --check ml/whole_body_landmarks_to_features.mjs
           node --check ml/export_wbf_fingerprint_table.mjs
+          node --check ml/export_wbf_longitudinal_fingerprint_table.mjs
       - name: Run WBF contracts
         run: |
           node scripts/whole-body-biomechanics-test.mjs
@@ -66,6 +68,7 @@ jobs:
           node scripts/whole-body-statistical-fingerprint-test.mjs
           node scripts/whole-body-statistical-fingerprint-v5-test.mjs
           node scripts/whole-body-longitudinal-fingerprint-test.mjs
+          node scripts/whole-body-longitudinal-fingerprint-v2-test.mjs
           node scripts/whole-body-quality-model-test.mjs
           node scripts/whole-body-ui-test.mjs
           node scripts/whole-body-distribution-ui-test.mjs
@@ -74,7 +77,9 @@ jobs:
           python -m py_compile ml/extract_wbf_dataset_features.py
           python -m py_compile ml/train_wbf_movement_quality.py
           python -m py_compile ml/train_wbf_fingerprint_model.py
+          python -m py_compile ml/train_wbf_longitudinal_classifier.py
           python -m py_compile ml/audit_wbf_fingerprint_features.py
+          python -m py_compile ml/audit_wbf_clinician_labels.py
           python -m py_compile ml/generate_wbf_trainer_smoke_fixture.py
           python -m py_compile ml/assert_wbf_trainer_smoke.py
       - name: Run nested participant-aware trainer smoke
