@@ -1,13 +1,17 @@
-import { WHOLE_BODY_REGION_FEATURES, WHOLE_BODY_REGIONS } from "./whole-body-biomechanics.js";
+import { WHOLE_BODY_REGIONS } from "./whole-body-biomechanics.js";
 import { WHOLE_BODY_FEATURE_NORMALIZATION_V1 } from "./whole-body-distribution.js";
+import {
+  WHOLE_BODY_ANALYSIS_REGION_FEATURES,
+  WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
+} from "./whole-body-region-ownership.js";
 
-// AxionWBF personalized movement-reference analysis v1.
+// AxionWBF personalized movement-reference analysis v2.
 // This is intentionally independent of the region-share/compositional pipeline.
 // It compares each underlying feature's within-repetition range against the same
 // patient's early same-exercise reference, then aggregates regularized log changes
-// by body region. This provides a second mathematical view of redistribution.
+// by a non-overlapping body-region ownership map.
 
-export const WHOLE_BODY_PERSONALIZED_REFERENCE_SCHEMA_VERSION = 1;
+export const WHOLE_BODY_PERSONALIZED_REFERENCE_SCHEMA_VERSION = 2;
 
 const REGULARIZATION_FRACTION = 0.10;
 const REGION_SCALE_FLOOR = 0.08;
@@ -52,7 +56,7 @@ function featureRange(session, feature) {
 
 function baselineFeatureReference(baselineSessions) {
   const reference = {};
-  const featureNames = [...new Set(Object.values(WHOLE_BODY_REGION_FEATURES).flat())];
+  const featureNames = [...new Set(Object.values(WHOLE_BODY_ANALYSIS_REGION_FEATURES).flat())];
   for (const feature of featureNames) {
     const values = baselineSessions.map((session) => featureRange(session, feature)).filter(Number.isFinite);
     if (values.length < 2) continue;
@@ -80,13 +84,17 @@ function featureLogChange(session, feature, reference) {
 }
 
 function regionScore(session, region, reference) {
-  const featureChanges = (WHOLE_BODY_REGION_FEATURES[region] || [])
+  const expectedFeatures = WHOLE_BODY_ANALYSIS_REGION_FEATURES[region] || [];
+  const featureChanges = expectedFeatures
     .map((feature) => ({ feature, logChange: featureLogChange(session, feature, reference) }))
     .filter((item) => Number.isFinite(item.logChange));
-  if (!featureChanges.length) return null;
+  const supportFraction = expectedFeatures.length ? featureChanges.length / expectedFeatures.length : 0;
+  if (featureChanges.length < Math.min(2, expectedFeatures.length) || supportFraction < 0.5) return null;
   return {
     region,
     featureCount: featureChanges.length,
+    expectedFeatureCount: expectedFeatures.length,
+    featureSupportFraction: round(supportFraction),
     medianLogRangeChange: median(featureChanges.map((item) => item.logChange)),
     features: featureChanges,
   };
@@ -144,6 +152,7 @@ export function analyzeWholeBodyPersonalizedReference(baselineSessions = [], rec
   if (baselineSessions.length < 2 || recentSessions.length < 2) {
     return {
       schemaVersion: WHOLE_BODY_PERSONALIZED_REFERENCE_SCHEMA_VERSION,
+      regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
       status: "unavailable",
       reason: "insufficient_sessions",
     };
@@ -151,6 +160,7 @@ export function analyzeWholeBodyPersonalizedReference(baselineSessions = [], rec
   if (expectation?.status !== "available") {
     return {
       schemaVersion: WHOLE_BODY_PERSONALIZED_REFERENCE_SCHEMA_VERSION,
+      regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
       status: "unavailable",
       reason: "missing_movement_intent",
     };
@@ -161,6 +171,7 @@ export function analyzeWholeBodyPersonalizedReference(baselineSessions = [], rec
   if (featureCount < 8) {
     return {
       schemaVersion: WHOLE_BODY_PERSONALIZED_REFERENCE_SCHEMA_VERSION,
+      regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
       status: "unavailable",
       reason: "insufficient_baseline_feature_ranges",
       featureCount,
@@ -198,6 +209,7 @@ export function analyzeWholeBodyPersonalizedReference(baselineSessions = [], rec
 
   return {
     schemaVersion: WHOLE_BODY_PERSONALIZED_REFERENCE_SCHEMA_VERSION,
+    regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
     status: "available",
     clinicalStatus: "descriptive_unvalidated",
     referenceType: "regularized_log_range_change_from_early_same_exercise_reference",
@@ -213,6 +225,6 @@ export function analyzeWholeBodyPersonalizedReference(baselineSessions = [], rec
       && primaryOutsideContrast.standardizedShift <= -SHIFT_THRESHOLD
       && destinationRegion,
     ),
-    interpretation: "This independent WBF view compares within-repetition feature ranges with the patient's own early same-exercise reference using regularized log ratios. It does not use region-share normalization and therefore provides separate corroboration of a possible movement-strategy shift. It does not estimate force, tissue load, causation, diagnosis, or injury risk.",
+    interpretation: "This independent WBF view compares within-repetition feature ranges with the patient's own early same-exercise reference using regularized log ratios and a non-overlapping region ownership map. It does not use region-share normalization and therefore provides separate corroboration of a possible movement-strategy shift. It does not estimate force, tissue load, causation, diagnosis, or injury risk.",
   };
 }
