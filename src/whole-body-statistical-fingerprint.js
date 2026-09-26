@@ -1,10 +1,10 @@
 import { WHOLE_BODY_REGION_FEATURES, WHOLE_BODY_REGIONS } from "./whole-body-biomechanics.js";
 
-// AxionWBF Statistical Fingerprint v1
+// AxionWBF Statistical Fingerprint v2
 // Flattens derived session statistics into research/model-ready numeric fields.
 // It never includes raw landmarks, images, video, patient identifiers, or diagnoses.
 
-export const WHOLE_BODY_STATISTICAL_FINGERPRINT_SCHEMA_VERSION = 1;
+export const WHOLE_BODY_STATISTICAL_FINGERPRINT_SCHEMA_VERSION = 2;
 
 const finite = (value) => value === null || value === undefined || value === ""
   ? null
@@ -84,6 +84,23 @@ export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
   };
   Object.entries(namedStats).forEach(([name, stats]) => flattenStats(output, name, stats));
 
+  const compositional = distribution.compositionalStatistics || {};
+  const compositionalDescriptive = compositional.descriptiveStatistics || {};
+  flattenStats(output, "composition_aitchison_center", compositionalDescriptive.aitchisonFromSessionCenter, ["mean", "median", "min", "max", "iqr", "slopePerRep"]);
+  flattenStats(output, "composition_primary_outside_balance", compositionalDescriptive.primaryVsOutsideBalance, ["mean", "median", "min", "max", "iqr", "slopePerRep"]);
+  flattenStats(output, "composition_primary_support_balance", compositionalDescriptive.primaryVsSupportBalance, ["mean", "median", "min", "max", "iqr", "slopePerRep"]);
+  const compositionalEarlyLate = compositional.earlyLate || {};
+  output.composition_early_late_aitchison_distance = round(compositionalEarlyLate.aitchisonDistance);
+  output.composition_early_late_js_divergence = round(compositionalEarlyLate.jensenShannonDivergence);
+  output.composition_early_late_hellinger_distance = round(compositionalEarlyLate.hellingerDistance);
+  output.composition_early_late_total_variation = round(compositionalEarlyLate.totalVariationDistance);
+  output.composition_primary_outside_balance_change = round(compositionalEarlyLate.primaryVsOutsideBalanceChange);
+  for (const region of WHOLE_BODY_REGIONS) {
+    output[`composition_session_center_${region}`] = round(compositional.sessionCenter?.[region]);
+    output[`composition_early_center_${region}`] = round(compositionalEarlyLate.earlyCenter?.[region]);
+    output[`composition_late_center_${region}`] = round(compositionalEarlyLate.lateCenter?.[region]);
+  }
+
   const earlyLate = distribution.earlyLateComparison || {};
   output.early_outside_share = round(earlyLate.earlyOutsideShare);
   output.late_outside_share = round(earlyLate.lateOutsideShare);
@@ -129,7 +146,7 @@ export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
       outsideRegions: distribution.expectation?.outsideRegions || [],
     },
     features: output,
-    interpretation: "The WBF statistical fingerprint contains derived descriptive pose statistics only. Values are research features and are not force, tissue load, muscle activation, diagnosis, injury risk, or treatment recommendations.",
+    interpretation: "The WBF statistical fingerprint contains derived descriptive pose statistics only. Compositional features use log-ratio/distribution geometry appropriate for region shares that sum to one. Values are research features and are not force, tissue load, muscle activation, diagnosis, injury risk, or treatment recommendations.",
   };
 }
 
@@ -140,6 +157,7 @@ export function wholeBodyStatisticalFingerprintColumns() {
       measuredReps: null,
       expectation: {},
       descriptiveStatistics: {},
+      compositionalStatistics: { descriptiveStatistics: {}, earlyLate: {}, sessionCenter: {} },
       earlyLateComparison: {},
       regionContributionShare: {},
       couplingWithPrimary: {},
