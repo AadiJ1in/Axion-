@@ -33,6 +33,8 @@ jobs:
           node --check src/whole-body-compositional-statistics.js
           node --check src/whole-body-movement-intent.js
           node --check src/whole-body-motion-statistics.js
+          node --check src/whole-body-region-ownership.js
+          node --check src/whole-body-rep-distribution.js
           node --check src/whole-body-personalized-reference.js
           node --check src/whole-body-redistribution-history.js
           node --check src/whole-body-statistical-fingerprint.js
@@ -47,6 +49,7 @@ jobs:
           node scripts/whole-body-biomechanics-test.mjs
           node scripts/whole-body-compensation-test.mjs
           node scripts/whole-body-distribution-test.mjs
+          node scripts/whole-body-region-ownership-test.mjs
           node scripts/whole-body-distribution-v2-test.mjs
           node scripts/whole-body-compositional-statistics-test.mjs
           node scripts/whole-body-movement-intent-test.mjs
