@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
 import {
-  buildWholeBodyLongitudinalFingerprintV2,
-  wholeBodyLongitudinalFingerprintColumnsV2,
-} from "../src/whole-body-longitudinal-fingerprint-v2.js";
+  buildWholeBodyLongitudinalModelFingerprint,
+  wholeBodyLongitudinalModelFingerprintColumns,
+} from "../src/whole-body-longitudinal-model-fingerprint.js";
 
 function parseArgs(argv) {
   const args = {};
@@ -55,7 +55,7 @@ const records = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).ma
   catch (error) { throw new Error(`Invalid JSON on line ${index + 1}: ${error.message}`); }
 });
 
-const columns = wholeBodyLongitudinalFingerprintColumnsV2();
+const columns = wholeBodyLongitudinalModelFingerprintColumns();
 const headers = [
   "participant_id",
   "window_id",
@@ -71,10 +71,10 @@ const headers = [
 const rows = [];
 for (const record of records) {
   const source = evidence(record);
-  const stored = record?.longitudinal_fingerprint || record?.longitudinalFingerprint;
-  const fingerprint = stored?.status === "available" && stored?.schemaVersion === 2
+  const stored = record?.longitudinal_model_fingerprint || record?.longitudinalModelFingerprint;
+  const fingerprint = stored?.status === "available" && stored?.schemaVersion === 3
     ? stored
-    : buildWholeBodyLongitudinalFingerprintV2(source);
+    : buildWholeBodyLongitudinalModelFingerprint(source);
   if (fingerprint?.status !== "available") continue;
   const meta = metadata(record);
   const row = {
@@ -86,7 +86,7 @@ for (const record of records) {
   rows.push(row);
 }
 
-if (!rows.length) throw new Error("No available WBF longitudinal fingerprints were found in the input.");
+if (!rows.length) throw new Error("No available WBF model-safe longitudinal fingerprints were found in the input.");
 const output = [
   headers.map(csvCell).join(","),
   ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(",")),
@@ -95,7 +95,8 @@ await writeFile(args.output, output, "utf8");
 console.log(JSON.stringify({
   inputRecords: records.length,
   exportedRows: rows.length,
-  fingerprintSchemaVersion: 2,
+  fingerprintSchemaVersion: 3,
   featureColumns: columns.length,
+  excludedRuleDerivedDecisionFields: true,
   output: args.output,
 }, null, 2));
