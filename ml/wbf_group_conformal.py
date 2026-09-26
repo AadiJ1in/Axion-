@@ -12,6 +12,9 @@ import math
 import numpy as np
 
 
+BOUNDARY_TOLERANCE = 1e-12
+
+
 def _higher_quantile(values: np.ndarray, probability: float) -> float:
     values = np.asarray(values, dtype=float)
     try:
@@ -67,6 +70,7 @@ def fit_group_block_conformal(y_true, positive_probability, groups, *, alpha=0.1
         "alpha": float(alpha),
         "participantGroups": int(len(unique_groups)),
         "quantile": float(quantile),
+        "boundaryTolerance": BOUNDARY_TOLERANCE,
         "minimumPositiveProbabilityForLabel1": float(1 - quantile),
         "maximumPositiveProbabilityForLabel0": float(quantile),
         "note": "Each participant contributes one worst-case calibration score. Coverage is an empirical research target under exchangeability assumptions, not a clinical guarantee.",
@@ -78,13 +82,17 @@ def prediction_sets(positive_probability, conformal):
     if conformal.get("status") != "available":
         return [None for _ in p]
     q = float(conformal["quantile"])
+    tolerance = float(conformal.get("boundaryTolerance", BOUNDARY_TOLERANCE))
     sets = []
     for probability in p:
         labels = []
         # Nonconformity if class 0 were true is p; if class 1 were true it is 1-p.
-        if probability <= q:
+        # Equality at the conformal quantile must count as included. A tiny numerical
+        # tolerance prevents binary floating-point representation from turning exact
+        # mathematical ties into false exclusions.
+        if probability <= q + tolerance:
             labels.append(0)
-        if 1 - probability <= q:
+        if 1 - probability <= q + tolerance:
             labels.append(1)
         sets.append(labels)
     return sets
