@@ -2,6 +2,7 @@ import { buildWholeBodyStatisticalFingerprint as buildV4 } from "./whole-body-st
 import {
   compareWholeBodyAnatomicalBalances,
   computeWholeBodyAnatomicalBalances,
+  WHOLE_BODY_ANATOMICAL_BALANCE_DEFINITIONS,
   WHOLE_BODY_ANATOMICAL_BALANCE_SCHEMA_VERSION,
 } from "./whole-body-anatomical-balances.js";
 
@@ -17,6 +18,19 @@ const round = (value, digits = 6) => {
   const factor = 10 ** digits;
   return Math.round(n * factor) / factor;
 };
+
+const ANATOMICAL_BALANCE_NAMES = Object.freeze([
+  ...Object.keys(WHOLE_BODY_ANATOMICAL_BALANCE_DEFINITIONS),
+  "primary_vs_support",
+  "primary_vs_outside",
+  "support_vs_outside",
+]);
+
+function writeBalanceBlock(features, prefix, values = {}) {
+  for (const name of ANATOMICAL_BALANCE_NAMES) {
+    features[`${prefix}${name}`] = round(values?.[name]);
+  }
+}
 
 export function buildWholeBodyStatisticalFingerprintV5(sessionSummary) {
   const base = buildV4(sessionSummary);
@@ -39,18 +53,10 @@ export function buildWholeBodyStatisticalFingerprintV5(sessionSummary) {
   );
 
   const features = { ...base.features };
-  for (const [name, value] of Object.entries(sessionBalances?.balances || {})) {
-    features[`anatomical_balance_${name}`] = round(value);
-  }
-  for (const [name, value] of Object.entries(earlyLateBalances?.early || {})) {
-    features[`anatomical_balance_early_${name}`] = round(value);
-  }
-  for (const [name, value] of Object.entries(earlyLateBalances?.late || {})) {
-    features[`anatomical_balance_late_${name}`] = round(value);
-  }
-  for (const [name, value] of Object.entries(earlyLateBalances?.change || {})) {
-    features[`anatomical_balance_change_${name}`] = round(value);
-  }
+  writeBalanceBlock(features, "anatomical_balance_", sessionBalances?.balances);
+  writeBalanceBlock(features, "anatomical_balance_early_", earlyLateBalances?.early);
+  writeBalanceBlock(features, "anatomical_balance_late_", earlyLateBalances?.late);
+  writeBalanceBlock(features, "anatomical_balance_change_", earlyLateBalances?.change);
 
   const populatedFeatureCount = Object.values(features).filter(Number.isFinite).length;
   const featureCount = Object.keys(features).length;
@@ -84,5 +90,14 @@ export function wholeBodyStatisticalFingerprintColumnsV5(sessionSummaryTemplate 
     },
     motionStatistics: { regionCoverage: {}, features: {} },
   };
-  return Object.keys(buildWholeBodyStatisticalFingerprintV5(source).features || {}).sort();
+  const columns = Object.keys(buildWholeBodyStatisticalFingerprintV5(source).features || {});
+  for (const name of ANATOMICAL_BALANCE_NAMES) {
+    columns.push(`anatomical_balance_${name}`);
+    columns.push(`anatomical_balance_early_${name}`);
+    columns.push(`anatomical_balance_late_${name}`);
+    columns.push(`anatomical_balance_change_${name}`);
+  }
+  return [...new Set(columns)].sort();
 }
+
+export const WHOLE_BODY_STATISTICAL_FINGERPRINT_ANATOMICAL_BALANCE_NAMES_V5 = ANATOMICAL_BALANCE_NAMES;
