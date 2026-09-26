@@ -263,7 +263,7 @@ def target_summary(y: np.ndarray) -> dict:
     }
 
 
-def group_null_sanity(X, y, groups, args, permutations: int) -> dict:
+def group_null_sanity(X, y, groups, args, permutations: int, observed_mae: float) -> dict:
     if permutations <= 0:
         return {"status": "disabled"}
     rng = np.random.default_rng(args.random_state + 314159)
@@ -288,6 +288,7 @@ def group_null_sanity(X, y, groups, args, permutations: int) -> dict:
         null_mae.append(block["mae"])
         if block.get("r2") is not None:
             null_r2.append(block["r2"])
+    fraction_at_or_below = (1 + sum(value <= observed_mae for value in null_mae)) / (permutations + 1)
     return {
         "status": "available",
         "permutations": permutations,
@@ -302,7 +303,10 @@ def group_null_sanity(X, y, groups, args, permutations: int) -> dict:
             "low95": float(np.quantile(null_r2, 0.025)) if null_r2 else None,
             "high95": float(np.quantile(null_r2, 0.975)) if null_r2 else None,
         },
-        "note": "Sanity diagnostic only; this is not an inferential permutation p-value because it uses a fixed Ridge pipeline rather than repeating nested model selection.",
+        "observedModelMae": float(observed_mae),
+        "observedBetterThanNullMedian": bool(observed_mae < np.median(null_mae)),
+        "fractionNullMaeAtOrBelowObserved": float(fraction_at_or_below),
+        "note": "Sanity diagnostic only; fractionNullMaeAtOrBelowObserved is not an inferential p-value because the null uses a fixed Ridge pipeline rather than repeating nested model selection.",
     }
 
 
@@ -422,22 +426,19 @@ def main() -> None:
     group_np = groups.to_numpy(dtype=str)
     overall = metrics(y_np, oof)
     baseline_overall = metrics(y_np, mean_baseline_oof)
+    beats_baseline = overall["mae"] < baseline_overall["mae"]
     relative_mae_improvement = (
         (baseline_overall["mae"] - overall["mae"]) / baseline_overall["mae"]
         if baseline_overall["mae"] > 1e-12 else None
     )
     uncertainty = participant_bootstrap(y_np, oof, group_np, args.bootstrap_reps, args.random_state + 991)
-    null_sanity = group_null_sanity(X, y, groups, args, args.null_permutations)
-    if null_sanity.get("status") == "available":
-        null_sanity["fractionNullMaeAtOrBelowObserved"] = float(
-            np.mean([
-                # Reconstructing individual permutation MAEs is intentionally not stored;
-                # compare observed with the null interval/median only in the report.
-                overall["mae"] >= null_sanity["mae"]["median"],
-            ])
-        )
-        null_sanity["observedModelMae"] = overall["mae"]
-        null_sanity["observedBetterThanNullMedian"] = overall["mae"] < null_sanity["mae"]["median"]
+    null_sanity = group_null_sanity(X, y, groups, args, args.null_permutations, overall["mae"])
+
+    warnings = []
+    if not beats_baseline:
+        warnings.append("Participant-disjoint OOF MAE did not beat the train-fold-mean baseline; the model should not be treated as useful.")
+    if null_sanity.get("status") == "available" and not null_sanity.get("observedBetterThanNullMedian"):
+        warnings.append("Observed OOF MAE was not better than the median label-scramble sanity result; investigate leakage, weak signal, or insufficient data.")
 
     # Final model selection occurs only after unbiased outer evaluation is complete.
     # This fit is for a future research artifact; its CV score is NOT test performance.
@@ -476,6 +477,7 @@ def main() -> None:
         "task": "regression",
         "target": args.target_column,
         "clinicalStatus": "research_only_not_clinically_validated",
+        "warnings": warnings,
         "explicitlyNotFor": [
             "diagnosis",
             "injury_risk",
@@ -506,6 +508,7 @@ def main() -> None:
             "modelSelectionFractions": {name: count / selection_total for name, count in selection_counts.items()},
             "outOfFoldMetrics": overall,
             "trainFoldMeanBaselineMetrics": baseline_overall,
+            "beatsTrainFoldMeanBaseline": beats_baseline,
             "relativeMaeImprovementOverTrainMean": relative_mae_improvement,
             "participantBootstrap95": uncertainty,
             "nullLabelSanity": null_sanity,
@@ -533,9 +536,11 @@ def main() -> None:
         "outer": outer_name,
         "oof": overall,
         "baseline": baseline_overall,
+        "beatsBaseline": beats_baseline,
         "relativeMaeImprovementOverTrainMean": relative_mae_improvement,
         "bootstrap95": uncertainty,
         "nullLabelSanity": null_sanity,
+        "warnings": warnings,
         "finalModel": final_name,
     }), indent=2))
 
