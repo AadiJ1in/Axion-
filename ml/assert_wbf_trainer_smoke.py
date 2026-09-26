@@ -5,6 +5,8 @@ import argparse
 import json
 from pathlib import Path
 
+CURRENT_FINGERPRINT_SCHEMA = 4
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -17,7 +19,7 @@ def main():
     artifact = json.loads(args.artifact.read_text(encoding="utf-8"))
     validation = artifact["validation"]
     assert artifact["clinicalStatus"] == "research_only_not_clinically_validated"
-    assert artifact["fingerprintSchemaVersion"] == 3
+    assert artifact["fingerprintSchemaVersion"] == CURRENT_FINGERPRINT_SCHEMA
     assert artifact["featureCount"] >= 30
     assert validation["participantDisjointOuterEvaluation"] is True
     assert validation["allPreprocessingInsideFolds"] is True
@@ -27,10 +29,11 @@ def main():
     assert validation["outOfFoldMetrics"]["mae"] < validation["trainFoldMeanBaselineMetrics"]["mae"]
     assert validation["nullLabelSanity"]["status"] == "available"
     assert validation["nullLabelSanity"]["permutations"] >= 2
+    assert validation["nullLabelSanity"]["observedBetterThanNullMedian"] is True
     assert validation["outerFoldCount"] >= 3
     assert artifact["finalResearchFit"]["modelFamily"] == "ridge"
     assert not artifact["warnings"], artifact["warnings"]
-    print("WBF nested participant-aware trainer smoke artifact passed.")
+    print(f"WBF nested participant-aware trainer smoke artifact passed for fingerprint schema {CURRENT_FINGERPRINT_SCHEMA}.")
 
 
 if __name__ == "__main__":
