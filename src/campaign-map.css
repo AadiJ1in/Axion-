@@ -290,6 +290,17 @@
   min-height:0!important;
   padding:10px 2px 4px!important;
 }
+
+/* Detailed nodes include stars, a story title, and sometimes a movement-game
+   label. Keep their rows independent from the compact locked-node rhythm so
+   the labels cannot run into the next row (especially the active session). */
+.campaign-region--active-detail .journey-node-grid{
+  grid-auto-rows:minmax(238px, max-content)!important;
+  row-gap:8px;
+}
+.campaign-region--active-detail .journey-step--detailed{
+  min-height:238px;
+}
 .journey-step{
   position:relative;
   z-index:7;
