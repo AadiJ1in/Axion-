@@ -55,6 +55,18 @@ function syncTherapistClinicalEvaluations() {
     .catch(() => { clinicalEvaluationModulePromise = null; });
 }
 
+let patientProgressModulePromise = null;
+function syncAuthenticatedPatientProgress() {
+  // The rich Progress analytics view is intentionally lazy. It loads only when
+  // the authenticated report/progress surface is already on screen, preserving
+  // the two-script core-safe boot contract and keeping Today/Journey lightweight.
+  if (!document.querySelector('main.report-page:not(.report-page--empty)')) return;
+  if (!patientProgressModulePromise) patientProgressModulePromise = import('./patient-progress-surface.js');
+  void patientProgressModulePromise
+    .then((module) => module.syncPatientProgressSurface?.())
+    .catch(() => { patientProgressModulePromise = null; });
+}
+
 function syncLateClinicPresentation() {
   // clinic-readiness can finish async after the main presentation pass. These
   // helpers are tiny and idempotent: they only map the visible Today entry,
@@ -62,6 +74,7 @@ function syncLateClinicPresentation() {
   syncTodayRoadmapEntry();
   syncTherapistReviewCopy();
   syncTherapistClinicalEvaluations();
+  syncAuthenticatedPatientProgress();
   syncUiRestoration();
 }
 
