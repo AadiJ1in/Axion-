@@ -9,6 +9,7 @@ import {
   createWholeBodyMotionAccumulator,
   summarizeWholeBodyMotionStatistics,
 } from "./whole-body-motion-statistics.js";
+import { buildWholeBodyStatisticalFingerprint } from "./whole-body-statistical-fingerprint.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -75,6 +76,33 @@ export async function createWholeBodyMovementTracker(options = {}) {
     },
   });
 
+  function sessionSummary() {
+    const summary = summarizeWholeBodySession(completed);
+    if (!summary) return null;
+    const motionStatistics = summarizeWholeBodyMotionStatistics(completed);
+    const movementDistribution = summarizeWholeBodyMovementDistributionV2(completed, {
+      exerciseKey,
+      trackingMode,
+      prescribedSide,
+    });
+    const combined = {
+      ...summary,
+      trackingContext: {
+        exerciseKey,
+        trackingMode,
+        prescribedSide,
+        movementIntentSchemaVersion: movementExpectation?.schemaVersion || null,
+        signal: movementExpectation?.signal || null,
+      },
+      motionStatistics,
+      movementDistribution,
+    };
+    return {
+      ...combined,
+      statisticalFingerprint: buildWholeBodyStatisticalFingerprint(combined),
+    };
+  }
+
   return Object.freeze({
     ...tracker,
     reset() {
@@ -107,17 +135,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       return movementExpectation;
     },
     getWholeBodySessionSummary() {
-      const summary = summarizeWholeBodySession(completed);
-      if (!summary) return null;
-      return {
-        ...summary,
-        motionStatistics: summarizeWholeBodyMotionStatistics(completed),
-        movementDistribution: summarizeWholeBodyMovementDistributionV2(completed, {
-          exerciseKey,
-          trackingMode,
-          prescribedSide,
-        }),
-      };
+      return sessionSummary();
     },
     getLastPoseAvailability() {
       return {
