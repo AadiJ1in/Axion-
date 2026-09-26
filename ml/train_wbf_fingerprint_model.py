@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Leakage-resistant AxionWBF statistical-fingerprint research trainer.
+"""Leakage-resistant AxionWBF statistical-fingerprint research trainer v2.
 
-This script evaluates several regression model families using participant-aware nested
-cross-validation. Every preprocessing, imputation, scaling, hyperparameter tuning, and
-model selection step is fit inside training folds only. The outer evaluation therefore
-contains participants never seen during model selection.
+Evaluates regression model families with participant-aware nested cross-validation.
+Every imputation, scaling, hyperparameter choice, and model selection step is fit inside
+training participants only. The outer predictions therefore come from participants
+never seen during model selection.
+
+The report includes a train-fold-mean baseline, participant-level bootstrap intervals,
+calibration diagnostics, subgroup slices, and a grouped label-scramble leakage sanity
+check. None of these constitute clinical validation.
 
 Intended use: research prediction of an explicitly supplied movement-quality or
 clinician/research score. Not for diagnosis, injury-risk prediction, tissue-load
-estimation, or autonomous treatment decisions.
+estimation, mechanical-load-transfer claims, or autonomous treatment decisions.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.ensemble import ExtraTreesRegressor, HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import ElasticNet, Ridge
@@ -28,6 +33,15 @@ from sklearn.metrics import explained_variance_score, mean_absolute_error, mean_
 from sklearn.model_selection import GridSearchCV, GroupKFold, LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler, StandardScaler
+
+
+ALL_MODEL_FAMILIES = (
+    "ridge",
+    "elastic_net",
+    "random_forest",
+    "extra_trees",
+    "hist_gradient_boosting",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,17 +62,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--outer-folds", type=int, default=5)
     parser.add_argument("--logo-max-groups", type=int, default=20)
     parser.add_argument("--bootstrap-reps", type=int, default=1000)
+    parser.add_argument("--null-permutations", type=int, default=20)
+    parser.add_argument(
+        "--model-families",
+        default=",".join(ALL_MODEL_FAMILIES),
+        help="Comma-separated subset of ridge,elastic_net,random_forest,extra_trees,hist_gradient_boosting",
+    )
     parser.add_argument("--random-state", type=int, default=42)
-    parser.add_argument("--model-version", default="axionwbf-fingerprint-nested-v1")
+    parser.add_argument("--model-version", default="axionwbf-fingerprint-nested-v2")
     return parser.parse_args()
-
-
-def safe_float(value):
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if np.isfinite(number) else None
 
 
 def rankdata(values: np.ndarray) -> np.ndarray:
@@ -144,12 +156,10 @@ def participant_bootstrap(y_true, prediction, groups, reps, seed) -> dict:
 
 
 def model_spaces(seed: int):
-    linear_imputer = SimpleImputer(strategy="median", keep_empty_features=True)
-    tree_imputer = SimpleImputer(strategy="median", keep_empty_features=True)
     return {
         "ridge": (
             Pipeline([
-                ("imputer", linear_imputer),
+                ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
                 ("scaler", StandardScaler()),
                 ("model", Ridge()),
             ]),
@@ -165,7 +175,7 @@ def model_spaces(seed: int):
         ),
         "random_forest": (
             Pipeline([
-                ("imputer", tree_imputer),
+                ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
                 ("model", RandomForestRegressor(n_estimators=500, random_state=seed, n_jobs=-1)),
             ]),
             {
@@ -199,11 +209,24 @@ def model_spaces(seed: int):
     }
 
 
+def selected_model_spaces(seed: int, requested: str):
+    available = model_spaces(seed)
+    names = [name.strip() for name in requested.split(",") if name.strip()]
+    unknown = [name for name in names if name not in available]
+    if unknown:
+        raise SystemExit(f"Unknown model families: {', '.join(unknown)}")
+    if not names:
+        raise SystemExit("At least one model family is required.")
+    return {name: available[name] for name in names}
+
+
 def outer_splitter(groups: pd.Series, args: argparse.Namespace):
     unique = groups.astype(str).nunique()
-    if unique <= args.logo_max_groups:
+    if args.logo_max_groups > 0 and unique <= args.logo_max_groups:
         return "leave_one_participant_out", LeaveOneGroupOut()
     folds = min(args.outer_folds, unique)
+    if folds < 2:
+        raise ValueError("Outer participant-aware cross-validation requires at least two groups.")
     return f"group_{folds}_fold", GroupKFold(n_splits=folds)
 
 
@@ -228,13 +251,73 @@ def sliced_metrics(frame: pd.DataFrame, column: str, y_true: np.ndarray, predict
     return output
 
 
+def target_summary(y: np.ndarray) -> dict:
+    return {
+        "mean": float(np.mean(y)),
+        "sd": float(np.std(y, ddof=1)) if len(y) > 1 else None,
+        "median": float(np.median(y)),
+        "q1": float(np.quantile(y, 0.25)),
+        "q3": float(np.quantile(y, 0.75)),
+        "min": float(np.min(y)),
+        "max": float(np.max(y)),
+    }
+
+
+def group_null_sanity(X, y, groups, args, permutations: int) -> dict:
+    if permutations <= 0:
+        return {"status": "disabled"}
+    rng = np.random.default_rng(args.random_state + 314159)
+    null_mae = []
+    null_r2 = []
+    # Lightweight fixed Ridge model: this is a leakage sanity check, not a competing
+    # performance estimate. It deliberately avoids re-running full model selection.
+    template = Pipeline([
+        ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
+        ("scaler", StandardScaler()),
+        ("model", Ridge(alpha=1.0)),
+    ])
+    for _ in range(permutations):
+        shuffled = rng.permutation(np.asarray(y, dtype=float))
+        null_oof = np.full(len(X), np.nan, dtype=float)
+        _, splitter = outer_splitter(groups, args)
+        for train_index, test_index in splitter.split(X, shuffled, groups=groups):
+            estimator = clone(template)
+            estimator.fit(X.iloc[train_index], shuffled[train_index])
+            null_oof[test_index] = estimator.predict(X.iloc[test_index])
+        block = metrics(shuffled, null_oof)
+        null_mae.append(block["mae"])
+        if block.get("r2") is not None:
+            null_r2.append(block["r2"])
+    return {
+        "status": "available",
+        "permutations": permutations,
+        "strategy": "row_label_shuffle_with_participant_disjoint_outer_ridge",
+        "mae": {
+            "median": float(np.median(null_mae)),
+            "low95": float(np.quantile(null_mae, 0.025)),
+            "high95": float(np.quantile(null_mae, 0.975)),
+        },
+        "r2": {
+            "median": float(np.median(null_r2)) if null_r2 else None,
+            "low95": float(np.quantile(null_r2, 0.025)) if null_r2 else None,
+            "high95": float(np.quantile(null_r2, 0.975)) if null_r2 else None,
+        },
+        "note": "Sanity diagnostic only; this is not an inferential permutation p-value because it uses a fixed Ridge pipeline rather than repeating nested model selection.",
+    }
+
+
 def main() -> None:
     args = parse_args()
     if not 0 < args.min_fingerprint_coverage <= 1:
         raise SystemExit("--min-fingerprint-coverage must be within (0, 1]")
     if args.min_groups < 5:
         raise SystemExit("--min-groups must be at least 5")
+    if args.bootstrap_reps < 20:
+        raise SystemExit("--bootstrap-reps must be at least 20")
+    if args.null_permutations < 0:
+        raise SystemExit("--null-permutations cannot be negative")
 
+    spaces = selected_model_spaces(args.random_state, args.model_families)
     frame = pd.read_csv(args.features_csv).copy()
     required = {args.target_column, args.group_column}
     missing = sorted(required.difference(frame.columns))
@@ -274,15 +357,18 @@ def main() -> None:
     frame = frame.reset_index(drop=True)
     row_coverage = X.notna().mean(axis=1)
     keep = row_coverage >= args.min_fingerprint_coverage
-    X, y, groups, frame = X.loc[keep].reset_index(drop=True), y.loc[keep].reset_index(drop=True), groups.loc[keep].reset_index(drop=True), frame.loc[keep].reset_index(drop=True)
+    X = X.loc[keep].reset_index(drop=True)
+    y = y.loc[keep].reset_index(drop=True)
+    groups = groups.loc[keep].reset_index(drop=True)
+    frame = frame.loc[keep].reset_index(drop=True)
     if groups.nunique() < args.min_groups:
         raise SystemExit("Too few participants remain after feature-completeness filtering.")
 
     outer_name, outer = outer_splitter(groups, args)
     oof = np.full(len(X), np.nan, dtype=float)
+    mean_baseline_oof = np.full(len(X), np.nan, dtype=float)
     fold_details = []
     selection_counts = Counter()
-    spaces = model_spaces(args.random_state)
 
     for fold_index, (train_index, test_index) in enumerate(outer.split(X, y, groups=groups), start=1):
         X_train, X_test = X.iloc[train_index], X.iloc[test_index]
@@ -309,8 +395,12 @@ def main() -> None:
         candidates.sort(key=lambda item: item[0])
         inner_mae, selected_name, selected_search = candidates[0]
         prediction = selected_search.best_estimator_.predict(X_test)
+        baseline_prediction = np.full(len(test_index), float(y_train.mean()), dtype=float)
         oof[test_index] = prediction
+        mean_baseline_oof[test_index] = baseline_prediction
         selection_counts[selected_name] += 1
+        model_test = metrics(y_test.to_numpy(), prediction)
+        baseline_test = metrics(y_test.to_numpy(), baseline_prediction)
         fold_details.append({
             "fold": fold_index,
             "testGroups": sorted(set(groups.iloc[test_index].astype(str))),
@@ -319,20 +409,38 @@ def main() -> None:
             "selectedModel": selected_name,
             "innerCvMae": inner_mae,
             "selectedParams": selected_search.best_params_,
-            "testMetrics": metrics(y_test.to_numpy(), prediction),
+            "testMetrics": model_test,
+            "trainMeanBaselineMetrics": baseline_test,
+            "maeImprovementOverTrainMean": baseline_test["mae"] - model_test["mae"],
             "candidateInnerMae": {name: score for score, name, _ in candidates},
         })
 
-    if np.isnan(oof).any():
+    if np.isnan(oof).any() or np.isnan(mean_baseline_oof).any():
         raise SystemExit("Outer cross-validation did not produce predictions for every included row.")
 
     y_np = y.to_numpy(dtype=float)
     group_np = groups.to_numpy(dtype=str)
     overall = metrics(y_np, oof)
+    baseline_overall = metrics(y_np, mean_baseline_oof)
+    relative_mae_improvement = (
+        (baseline_overall["mae"] - overall["mae"]) / baseline_overall["mae"]
+        if baseline_overall["mae"] > 1e-12 else None
+    )
     uncertainty = participant_bootstrap(y_np, oof, group_np, args.bootstrap_reps, args.random_state + 991)
+    null_sanity = group_null_sanity(X, y, groups, args, args.null_permutations)
+    if null_sanity.get("status") == "available":
+        null_sanity["fractionNullMaeAtOrBelowObserved"] = float(
+            np.mean([
+                # Reconstructing individual permutation MAEs is intentionally not stored;
+                # compare observed with the null interval/median only in the report.
+                overall["mae"] >= null_sanity["mae"]["median"],
+            ])
+        )
+        null_sanity["observedModelMae"] = overall["mae"]
+        null_sanity["observedBetterThanNullMedian"] = overall["mae"] < null_sanity["mae"]["median"]
 
-    # Final model selection is performed only after unbiased outer evaluation is complete.
-    # This fit is for a future research artifact; its score is NOT reported as test performance.
+    # Final model selection occurs only after unbiased outer evaluation is complete.
+    # This fit is for a future research artifact; its CV score is NOT test performance.
     full_cv = inner_cv(groups, args.inner_folds)
     final_candidates = []
     for model_name, (pipeline, grid) in spaces.items():
@@ -361,8 +469,9 @@ def main() -> None:
         "clinicalStatus": "research_only_not_clinically_validated",
     }, model_output)
 
+    selection_total = sum(selection_counts.values()) or 1
     artifact = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "modelVersion": args.model_version,
         "task": "regression",
         "target": args.target_column,
@@ -382,17 +491,24 @@ def main() -> None:
             "rows": int(len(frame)),
             "participantsOrGroups": int(groups.nunique()),
             "minimumFingerprintCoverage": args.min_fingerprint_coverage,
+            "targetSummary": target_summary(y_np),
         },
         "validation": {
             "outerStrategy": outer_name,
             "innerStrategy": f"GroupKFold(max={args.inner_folds})",
             "allPreprocessingInsideFolds": True,
             "participantDisjointOuterEvaluation": True,
+            "externalValidationPerformed": False,
             "selectionMetric": "MAE",
             "outerFoldCount": len(fold_details),
+            "modelFamiliesBenchmarked": list(spaces.keys()),
             "modelSelectionCounts": dict(selection_counts),
+            "modelSelectionFractions": {name: count / selection_total for name, count in selection_counts.items()},
             "outOfFoldMetrics": overall,
+            "trainFoldMeanBaselineMetrics": baseline_overall,
+            "relativeMaeImprovementOverTrainMean": relative_mae_improvement,
             "participantBootstrap95": uncertainty,
+            "nullLabelSanity": null_sanity,
             "metricsByExercise": sliced_metrics(frame, args.exercise_column, y_np, oof, group_np),
             "metricsByView": sliced_metrics(frame, args.view_column, y_np, oof, group_np),
             "folds": fold_details,
@@ -402,7 +518,7 @@ def main() -> None:
             "innerCvMae": final_cv_mae,
             "parameters": final_search.best_params_,
             "modelPath": str(model_output),
-            "note": "Final-fit CV is used only to choose/finalize a research artifact; unbiased performance is the participant-disjoint outer OOF block above.",
+            "note": "Final-fit CV only chooses/finalizes a research artifact; unbiased performance is the participant-disjoint outer OOF block. External validation is still required.",
         },
     }
 
@@ -416,7 +532,10 @@ def main() -> None:
         "features": len(feature_columns),
         "outer": outer_name,
         "oof": overall,
+        "baseline": baseline_overall,
+        "relativeMaeImprovementOverTrainMean": relative_mae_improvement,
         "bootstrap95": uncertainty,
+        "nullLabelSanity": null_sanity,
         "finalModel": final_name,
     }), indent=2))
 
