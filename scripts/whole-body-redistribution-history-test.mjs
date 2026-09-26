@@ -17,7 +17,26 @@ function stats(median) {
   return { n: 8, mean: median, median, min: median, max: median, range: 0, sd: 0, q1: median, q3: median, iqr: 0, mad: 0, cv: 0, slopePerRep: 0 };
 }
 
-function session(index, { primary, support, outside, leftLower, rightLower, leftUpper, rightUpper, head = 0.02, lateOutside = 0.01, cameraView = "front", expectationOverride = expectation }) {
+function closedRegionValues(values) {
+  const total = Object.values(values).reduce((sum, value) => sum + value, 0);
+  return Object.fromEntries(Object.entries(values).map(([region, value]) => [region, value / total]));
+}
+
+function session(index, {
+  primary,
+  support,
+  outside,
+  leftLower,
+  rightLower,
+  leftUpper,
+  rightUpper,
+  head = 0.02,
+  lateOutside = 0.01,
+  cameraView = "front",
+  expectationOverride = expectation,
+  compositionalSchemaVersion = 2,
+  compositionalCenterOverride = null,
+}) {
   const regionValues = {
     head_neck: head,
     left_upper_limb: leftUpper,
@@ -28,6 +47,7 @@ function session(index, { primary, support, outside, leftLower, rightLower, left
     right_lower_limb: rightLower,
     base_of_support: 0.06,
   };
+  const sessionCenter = compositionalCenterOverride || closedRegionValues(regionValues);
   return {
     id: `s${index}`,
     patient_id: "p1",
@@ -50,6 +70,11 @@ function session(index, { primary, support, outside, leftLower, rightLower, left
             movementConcentrationIndex: stats(primary ** 2 + support ** 2 + outside ** 2),
             movementDistributionEntropy: stats(0.6 + outside * 0.5),
           },
+          compositionalStatistics: {
+            schemaVersion: compositionalSchemaVersion,
+            status: "available",
+            sessionCenter,
+          },
           earlyLateComparison: { outsideShareChange: lateOutside },
           regionContributionShare: Object.fromEntries(
             WHOLE_BODY_REGIONS.map((region) => [region, stats(regionValues[region])]),
@@ -70,11 +95,12 @@ const sessions = [
 ];
 
 const result = analyzeWholeBodyRedistributionHistory(sessions);
-assert.equal(result.schemaVersion, 2);
+assert.equal(result.schemaVersion, 3);
 assert.equal(result.status, "available");
 assert.equal(result.sessionCount, 6);
 assert.equal(result.comparisonContext.cameraView, "front");
 assert.equal(result.comparisonContext.intentSchemaVersion, 2);
+assert.equal(result.comparisonContext.compositionalSchemaVersion, 2);
 assert.equal(result.comparisonContext.prescribedSide, "either");
 assert.equal(result.comparisonContext.verification, "fully_verified");
 assert.equal(result.distributionShifts.outsideShare.persistent, true);
@@ -85,10 +111,20 @@ assert.equal(result.distributionShifts.primaryShare.direction, -1);
 assert.ok(result.distributionShifts.primaryShare.standardizedShift < -0.75);
 assert.ok(result.distributionShifts.lateSetOutsideChange.recentMedian > result.distributionShifts.lateSetOutsideChange.earlyMedian);
 assert.ok(result.distributionShifts.entropy.recentMedian > result.distributionShifts.entropy.earlyMedian);
+assert.equal(result.compositionalShift.status, "available");
+assert.ok(result.compositionalShift.centerDistances.aitchison > 0);
+assert.ok(result.compositionalShift.primaryOutsideBalance.standardizedShift < -0.75);
+assert.equal(result.compositionalShift.primaryOutsideBalance.persistent, true);
+assert.ok(result.compositionalShift.distanceFromEarlyCenter.standardizedShift > 0.75);
+assert.equal(result.compositionalShift.distanceFromEarlyCenter.persistent, true);
+assert.equal(result.compositionalShift.destinationRegion.region, "left_upper_limb");
+assert.ok(result.compositionalShift.destinationRegion.standardizedShift > 0.75);
 assert.ok(result.redistributionCandidate);
-assert.equal(result.redistributionCandidate.patternType, "primary_share_down_outside_share_up");
+assert.equal(result.redistributionCandidate.patternType, "persistent_compositional_primary_to_outside_redistribution");
 assert.equal(result.redistributionCandidate.destinationRegion, "left_upper_limb");
-assert.match(result.interpretation, /does not establish mechanical load transfer/i);
+assert.ok(result.redistributionCandidate.primaryVsOutsideBalanceShift < -0.75);
+assert.ok(result.redistributionCandidate.aitchisonDistanceShift > 0.75);
+assert.match(result.interpretation, /log-ratio balance|Aitchison/i);
 
 const mixed = analyzeWholeBodyRedistributionHistory([
   sessions[0],
@@ -121,8 +157,54 @@ const mixedSide = analyzeWholeBodyRedistributionHistory([
 assert.equal(mixedSide.status, "unavailable");
 assert.equal(mixedSide.reason, "mixed_prescribed_side");
 
+const mixedCompositionalSchema = analyzeWholeBodyRedistributionHistory([
+  ...sessions.slice(0, 5),
+  {
+    ...sessions[5],
+    movement_summary: {
+      whole_body_v1: {
+        ...sessions[5].movement_summary.whole_body_v1,
+        movementDistribution: {
+          ...sessions[5].movement_summary.whole_body_v1.movementDistribution,
+          compositionalStatistics: {
+            ...sessions[5].movement_summary.whole_body_v1.movementDistribution.compositionalStatistics,
+            schemaVersion: 99,
+          },
+        },
+      },
+    },
+  },
+]);
+assert.equal(mixedCompositionalSchema.status, "unavailable");
+assert.equal(mixedCompositionalSchema.reason, "mixed_compositional_schema");
+
+const baselineComposition = sessions[1].movement_summary.whole_body_v1.movementDistribution.compositionalStatistics.sessionCenter;
+const rawOnlySessions = sessions.map((item, index) => {
+  if (index < 3) return item;
+  return {
+    ...item,
+    movement_summary: {
+      whole_body_v1: {
+        ...item.movement_summary.whole_body_v1,
+        movementDistribution: {
+          ...item.movement_summary.whole_body_v1.movementDistribution,
+          compositionalStatistics: {
+            ...item.movement_summary.whole_body_v1.movementDistribution.compositionalStatistics,
+            sessionCenter: baselineComposition,
+          },
+        },
+      },
+    },
+  };
+});
+const rawOnly = analyzeWholeBodyRedistributionHistory(rawOnlySessions);
+assert.equal(rawOnly.status, "available");
+assert.equal(rawOnly.rawShareCorroboration.primaryDecrease, true);
+assert.equal(rawOnly.rawShareCorroboration.outsideIncrease, true);
+assert.equal(rawOnly.redistributionCandidate, null, "raw closed-share changes must never create a redistribution candidate without compositional evidence");
+
 const short = analyzeWholeBodyRedistributionHistory(sessions.slice(0, 5));
 assert.equal(short.status, "unavailable");
 assert.equal(short.reason, "insufficient_sessions");
 
-console.log("Whole-body longitudinal redistribution history passed with capture/intent compatibility gates.");
+console.log("Whole-body longitudinal redistribution history passed with compositional and capture/intent gates.");
