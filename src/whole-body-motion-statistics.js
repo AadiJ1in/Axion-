@@ -8,7 +8,7 @@ import {
 // Derived feature trajectories exist only in memory for the active repetition and are
 // discarded after finish(). No raw image/video/landmark coordinates are retained.
 
-export const WHOLE_BODY_MOTION_STATISTICS_SCHEMA_VERSION = 1;
+export const WHOLE_BODY_MOTION_STATISTICS_SCHEMA_VERSION = 2;
 
 const finite = (value) => value === null || value === undefined || value === ""
   ? null
@@ -72,6 +72,18 @@ function linearSlopePerSecond(samples) {
   return denominator > 0 ? numerator / denominator : null;
 }
 
+function samplePhase(samples, index) {
+  if (!samples.length) return null;
+  if (samples.length === 1) return 0;
+  const start = finite(samples[0].timestampMs);
+  const end = finite(samples.at(-1).timestampMs);
+  const current = finite(samples[index]?.timestampMs);
+  if (Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(current) && end > start) {
+    return Math.max(0, Math.min(1, (current - start) / (end - start)));
+  }
+  return index / (samples.length - 1);
+}
+
 function summarizeTrajectory(samples) {
   const usable = samples.filter((sample) => Number.isFinite(sample.value));
   if (!usable.length) return null;
@@ -83,17 +95,32 @@ function summarizeTrajectory(samples) {
   const range = maximum - minimum;
   const delta = last - first;
   const steps = [];
-  const velocities = [];
+  const velocitySamples = [];
   let pathLength = 0;
-  for (let index = 1; index < usable.length; index += 1) {
+  let peakExcursionIndex = 0;
+  let peakExcursionFromStart = 0;
+
+  for (let index = 0; index < usable.length; index += 1) {
+    const excursion = Math.abs(usable[index].value - first);
+    if (excursion > peakExcursionFromStart) {
+      peakExcursionFromStart = excursion;
+      peakExcursionIndex = index;
+    }
+    if (index === 0) continue;
     const step = Math.abs(usable[index].value - usable[index - 1].value);
     pathLength += step;
     steps.push(step);
     const dtSeconds = Number.isFinite(usable[index].timestampMs) && Number.isFinite(usable[index - 1].timestampMs)
       ? (usable[index].timestampMs - usable[index - 1].timestampMs) / 1000
       : null;
-    if (Number.isFinite(dtSeconds) && dtSeconds > 0) velocities.push(step / dtSeconds);
+    if (Number.isFinite(dtSeconds) && dtSeconds > 0) {
+      velocitySamples.push({
+        value: step / dtSeconds,
+        phase: samplePhase(usable, index),
+      });
+    }
   }
+
   const durationSeconds = Number.isFinite(usable[0].timestampMs) && Number.isFinite(usable.at(-1).timestampMs)
     ? Math.max(0, (usable.at(-1).timestampMs - usable[0].timestampMs) / 1000)
     : null;
@@ -104,6 +131,13 @@ function summarizeTrajectory(samples) {
   const netDisplacement = Math.abs(delta);
   const pathToRangeRatio = range > 1e-9 ? pathLength / range : (pathLength <= 1e-9 ? 0 : null);
   const directionalEfficiency = pathLength > 1e-9 ? netDisplacement / pathLength : 1;
+  const velocityValues = velocitySamples.map((sample) => sample.value);
+  const peakVelocity = velocitySamples.length
+    ? [...velocitySamples].sort((a, b) => b.value - a.value)[0]
+    : null;
+  const midpoint = Math.ceil(values.length / 2);
+  const firstHalfMean = mean(values.slice(0, midpoint));
+  const secondHalfMean = mean(values.slice(Math.floor(values.length / 2)));
 
   return {
     samples: usable.length,
@@ -127,11 +161,23 @@ function summarizeTrajectory(samples) {
     pathLength: round(pathLength),
     pathToRangeRatio: round(pathToRangeRatio),
     directionalEfficiency: round(directionalEfficiency),
+    peakExcursionFromStart: round(peakExcursionFromStart),
+    peakExcursionPhase: round(samplePhase(usable, peakExcursionIndex)),
+    timeToPeakExcursionSeconds: Number.isFinite(durationSeconds)
+      ? round(durationSeconds * samplePhase(usable, peakExcursionIndex))
+      : null,
+    firstHalfMean: round(firstHalfMean),
+    secondHalfMean: round(secondHalfMean),
+    halfMeanChange: Number.isFinite(firstHalfMean) && Number.isFinite(secondHalfMean)
+      ? round(secondHalfMean - firstHalfMean)
+      : null,
     meanAbsoluteStep: round(mean(steps)),
     medianAbsoluteStep: round(median(steps)),
     peakAbsoluteStep: steps.length ? round(Math.max(...steps)) : null,
-    medianAbsoluteVelocityPerSecond: round(median(velocities)),
-    p95AbsoluteVelocityPerSecond: round(quantile(velocities, 0.95)),
+    medianAbsoluteVelocityPerSecond: round(median(velocityValues)),
+    p95AbsoluteVelocityPerSecond: round(quantile(velocityValues, 0.95)),
+    peakAbsoluteVelocityPerSecond: round(peakVelocity?.value),
+    peakVelocityPhase: round(peakVelocity?.phase),
     pathRatePerSecond: Number.isFinite(durationSeconds) && durationSeconds > 0 ? round(pathLength / durationSeconds) : null,
     linearSlopePerSecond: round(linearSlopePerSecond(usable)),
     durationSeconds: round(durationSeconds),
@@ -217,7 +263,13 @@ export function summarizeWholeBodyMotionStatistics(reps = []) {
     "pathLength",
     "pathToRangeRatio",
     "directionalEfficiency",
+    "peakExcursionFromStart",
+    "peakExcursionPhase",
+    "timeToPeakExcursionSeconds",
+    "halfMeanChange",
     "pathRatePerSecond",
+    "peakAbsoluteVelocityPerSecond",
+    "peakVelocityPhase",
     "linearSlopePerSecond",
   ];
   for (const feature of WHOLE_BODY_FEATURES_V1) {
@@ -240,6 +292,6 @@ export function summarizeWholeBodyMotionStatistics(reps = []) {
     reps: usable.length,
     regionCoverage,
     features,
-    interpretation: "Path-based statistics describe how much derived pose features changed within repetitions. They can reflect intended movement, stabilization, strategy, fatigue, camera variation, or tracking noise and require contextual interpretation.",
+    interpretation: "Path- and phase-based statistics describe how much derived pose features changed and when those changes peaked within repetitions. They can reflect intended movement, stabilization, strategy, fatigue, camera variation, or tracking noise and require contextual interpretation.",
   };
 }
