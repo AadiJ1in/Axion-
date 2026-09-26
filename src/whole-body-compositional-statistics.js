@@ -128,9 +128,9 @@ export function totalVariationDistance(left, right) {
 }
 
 function geometricMean(values) {
-  const composition = closeComposition(values);
-  if (!composition?.length) return null;
-  return Math.exp(mean(composition.map((value) => Math.log(value))));
+  const usable = values.map(finite).filter((value) => Number.isFinite(value) && value > 0);
+  if (usable.length !== values.length || !usable.length) return null;
+  return Math.exp(mean(usable.map((value) => Math.log(value))));
 }
 
 export function balanceCoordinate(composition, numeratorIndices, denominatorIndices) {
