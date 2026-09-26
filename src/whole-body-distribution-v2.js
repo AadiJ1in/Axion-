@@ -1,12 +1,11 @@
 import { WHOLE_BODY_REGIONS } from "./whole-body-biomechanics.js";
-import {
-  analyzeWholeBodyRepDistribution,
-  descriptiveStats,
-} from "./whole-body-distribution.js";
+import { descriptiveStats } from "./whole-body-distribution.js";
+import { analyzeWholeBodyRepDistributionV3 } from "./whole-body-rep-distribution.js";
 import { summarizeWholeBodyCompositionalStatistics } from "./whole-body-compositional-statistics.js";
 import { resolveWholeBodyMovementIntent } from "./whole-body-movement-intent.js";
+import { WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION } from "./whole-body-region-ownership.js";
 
-export const WHOLE_BODY_DISTRIBUTION_SCHEMA_VERSION_V2 = 2;
+export const WHOLE_BODY_DISTRIBUTION_SCHEMA_VERSION_V2 = 3;
 
 const REGION_LABELS = Object.freeze({
   head_neck: "Head & neck",
@@ -142,6 +141,7 @@ export function summarizeWholeBodyMovementDistributionV2(reps = [], {
   if (intent.status !== "available") {
     return {
       schemaVersion: WHOLE_BODY_DISTRIBUTION_SCHEMA_VERSION_V2,
+      regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
       status: "unavailable",
       clinicalStatus: "descriptive_unvalidated",
       reason: intent.reason,
@@ -149,10 +149,11 @@ export function summarizeWholeBodyMovementDistributionV2(reps = [], {
     };
   }
 
-  const repDistributions = reps.map((rep) => analyzeWholeBodyRepDistribution(rep, intent)).filter(Boolean);
+  const repDistributions = reps.map((rep) => analyzeWholeBodyRepDistributionV3(rep, intent)).filter(Boolean);
   if (repDistributions.length < 2) {
     return {
       schemaVersion: WHOLE_BODY_DISTRIBUTION_SCHEMA_VERSION_V2,
+      regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
       status: "unavailable",
       clinicalStatus: "descriptive_unvalidated",
       reason: "insufficient_measured_reps",
@@ -182,11 +183,13 @@ export function summarizeWholeBodyMovementDistributionV2(reps = [], {
 
   return {
     schemaVersion: WHOLE_BODY_DISTRIBUTION_SCHEMA_VERSION_V2,
+    regionMapSchemaVersion: WHOLE_BODY_ANALYSIS_REGION_MAP_VERSION,
     status: "available",
     clinicalStatus: "descriptive_unvalidated",
     interpretationScope: "observed_movement_distribution_relative_to_versioned_tracking_intent",
     expectation: intent,
     measuredReps: repDistributions.length,
+    completeWholeBodyReps: repDistributions.filter((rep) => rep.completeWholeBodyDistribution).length,
     repDistributions,
     descriptiveStatistics: {
       primaryMovementShare: descriptiveStats(primaryShares),
@@ -216,6 +219,6 @@ export function summarizeWholeBodyMovementDistributionV2(reps = [], {
       medianContributionShare: dominantOutside.stats.median,
     } : null,
     couplingWithPrimary: couplingWithPrimary(repDistributions, intent),
-    interpretation: "This summary describes where derived pose-feature excursion occurred relative to a versioned exercise tracking intent. Compositional log-ratio statistics are used for relative distribution changes because region shares sum to one. Outside-region movement can reflect normal stabilization, strategy, fatigue, camera geometry, or tracking noise and is not automatically abnormal or harmful.",
+    interpretation: "This summary describes where derived pose-feature excursion occurred relative to a versioned exercise tracking intent. Regional redistribution uses a non-overlapping feature-ownership map, and compositional log-ratio statistics are used for relative distribution changes because region shares sum to one. Outside-region movement can reflect normal stabilization, strategy, fatigue, camera geometry, or tracking noise and is not automatically abnormal or harmful.",
   };
 }
