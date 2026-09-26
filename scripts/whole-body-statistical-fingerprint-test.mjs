@@ -5,6 +5,7 @@ import {
 } from "../src/whole-body-statistical-fingerprint.js";
 
 const stats = { n: 8, mean: 0.2, median: 0.2, sd: 0.03, iqr: 0.04, mad: 0.02, cv: 0.15, slopePerRep: 0.01 };
+const ilrStats = (median, slope) => ({ n: 8, mean: median, median, min: median - 0.2, max: median + 0.2, iqr: 0.15, slopePerRep: slope });
 const summary = {
   movementDistribution: {
     status: "available",
@@ -28,6 +29,7 @@ const summary = {
       leftRightLowerRedistribution: { ...stats, mean: 0.02, median: 0.02 },
     },
     compositionalStatistics: {
+      schemaVersion: 2,
       status: "available",
       sessionCenter: {
         head_neck: 0.03,
@@ -39,10 +41,12 @@ const summary = {
         right_lower_limb: 0.26,
         base_of_support: 0.10,
       },
+      sessionCenterIlr: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
       descriptiveStatistics: {
         aitchisonFromSessionCenter: { n: 8, mean: 0.31, median: 0.30, min: 0.12, max: 0.56, iqr: 0.15, slopePerRep: 0.04 },
         primaryVsOutsideBalance: { n: 8, mean: 1.6, median: 1.5, min: 1.2, max: 2.0, iqr: 0.3, slopePerRep: -0.08 },
         primaryVsSupportBalance: { n: 8, mean: 0.8, median: 0.8, min: 0.6, max: 1.0, iqr: 0.2, slopePerRep: -0.03 },
+        ilrCoordinates: Object.fromEntries(Array.from({ length: 7 }, (_, index) => [`ilr_${index + 1}`, ilrStats(index + 0.5, -0.01 * (index + 1))])),
       },
       earlyLate: {
         aitchisonDistance: 0.82,
@@ -52,6 +56,9 @@ const summary = {
         primaryVsOutsideBalanceChange: -0.55,
         earlyCenter: { left_lower_limb: 0.30, right_lower_limb: 0.30, left_upper_limb: 0.03 },
         lateCenter: { left_lower_limb: 0.23, right_lower_limb: 0.23, left_upper_limb: 0.14 },
+        earlyCenterIlr: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+        lateCenterIlr: [0.0, 0.15, 0.25, 0.4, 0.5, 0.6, 0.7],
+        ilrChange: [-0.2, -0.15, -0.15, -0.1, -0.1, -0.1, -0.1],
       },
     },
     earlyLateComparison: {
@@ -92,10 +99,11 @@ const summary = {
 };
 
 const fingerprint = buildWholeBodyStatisticalFingerprint(summary);
-assert.equal(fingerprint.schemaVersion, 2);
+assert.equal(fingerprint.schemaVersion, 3);
+assert.equal(fingerprint.compositionalSchemaVersion, 2);
 assert.equal(fingerprint.status, "available");
-assert.ok(fingerprint.featureCount > 150, "fingerprint v2 should expose a broad descriptive/compositional session representation");
-assert.ok(fingerprint.populatedFeatureCount > 35);
+assert.ok(fingerprint.featureCount > 190, "fingerprint v3 should expose a broad independent/compositional session representation");
+assert.ok(fingerprint.populatedFeatureCount > 70);
 assert.ok(fingerprint.coverage > 0 && fingerprint.coverage < 1);
 assert.equal(fingerprint.intent.signal, "knee_bend");
 assert.equal(fingerprint.features.primary_share_median, 0.55);
@@ -108,7 +116,10 @@ assert.equal(fingerprint.features.composition_early_late_aitchison_distance, 0.8
 assert.equal(fingerprint.features.composition_early_late_js_divergence, 0.06);
 assert.equal(fingerprint.features.composition_primary_outside_balance_change, -0.55);
 assert.equal(fingerprint.features.composition_session_center_left_lower_limb, 0.26);
-assert.match(fingerprint.interpretation, /log-ratio\/distribution geometry/i);
+assert.equal(fingerprint.features.composition_session_ilr_1, 0.1);
+assert.equal(fingerprint.features.composition_ilr_1_change, -0.2);
+assert.equal(fingerprint.features.composition_ilr_7_slopePerRep, -0.07);
+assert.match(fingerprint.interpretation, /independent ILR coordinates/i);
 
 const columns = wholeBodyStatisticalFingerprintColumns();
 assert.ok(columns.includes("primary_share_median"));
@@ -116,9 +127,11 @@ assert.ok(columns.includes("trunk_motion_pathLength"));
 assert.ok(columns.includes("left_lower_limb_contribution_slopePerRep"));
 assert.ok(columns.includes("composition_early_late_aitchison_distance"));
 assert.ok(columns.includes("composition_primary_outside_balance_slopePerRep"));
+assert.ok(columns.includes("composition_session_ilr_7"));
+assert.ok(columns.includes("composition_ilr_7_change"));
 assert.deepEqual(columns, [...columns].sort(), "fingerprint columns must be deterministic");
 
 const unavailable = buildWholeBodyStatisticalFingerprint({ movementDistribution: { status: "unavailable" } });
 assert.equal(unavailable.status, "unavailable");
 
-console.log(`Whole-body statistical fingerprint v2 passed with ${fingerprint.featureCount} versioned fields.`);
+console.log(`Whole-body statistical fingerprint v3 passed with ${fingerprint.featureCount} versioned fields.`);
