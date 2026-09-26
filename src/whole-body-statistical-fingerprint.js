@@ -1,10 +1,10 @@
 import { WHOLE_BODY_REGION_FEATURES, WHOLE_BODY_REGIONS } from "./whole-body-biomechanics.js";
 
-// AxionWBF Statistical Fingerprint v2
+// AxionWBF Statistical Fingerprint v3
 // Flattens derived session statistics into research/model-ready numeric fields.
 // It never includes raw landmarks, images, video, patient identifiers, or diagnoses.
 
-export const WHOLE_BODY_STATISTICAL_FINGERPRINT_SCHEMA_VERSION = 2;
+export const WHOLE_BODY_STATISTICAL_FINGERPRINT_SCHEMA_VERSION = 3;
 
 const finite = (value) => value === null || value === undefined || value === ""
   ? null
@@ -58,6 +58,18 @@ function regionMotionFingerprint(motionStatistics, region) {
   return result;
 }
 
+function flattenIlrStats(output, compositional) {
+  const descriptive = compositional?.descriptiveStatistics?.ilrCoordinates || {};
+  for (let index = 0; index < 7; index += 1) {
+    const key = `ilr_${index + 1}`;
+    flattenStats(output, `composition_${key}`, descriptive[key], ["mean", "median", "min", "max", "iqr", "slopePerRep"]);
+    output[`composition_session_${key}`] = round(compositional?.sessionCenterIlr?.[index]);
+    output[`composition_early_${key}`] = round(compositional?.earlyLate?.earlyCenterIlr?.[index]);
+    output[`composition_late_${key}`] = round(compositional?.earlyLate?.lateCenterIlr?.[index]);
+    output[`composition_${key}_change`] = round(compositional?.earlyLate?.ilrChange?.[index]);
+  }
+}
+
 export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
   const distribution = sessionSummary?.movementDistribution;
   const motion = sessionSummary?.motionStatistics;
@@ -89,6 +101,8 @@ export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
   flattenStats(output, "composition_aitchison_center", compositionalDescriptive.aitchisonFromSessionCenter, ["mean", "median", "min", "max", "iqr", "slopePerRep"]);
   flattenStats(output, "composition_primary_outside_balance", compositionalDescriptive.primaryVsOutsideBalance, ["mean", "median", "min", "max", "iqr", "slopePerRep"]);
   flattenStats(output, "composition_primary_support_balance", compositionalDescriptive.primaryVsSupportBalance, ["mean", "median", "min", "max", "iqr", "slopePerRep"]);
+  flattenIlrStats(output, compositional);
+
   const compositionalEarlyLate = compositional.earlyLate || {};
   output.composition_early_late_aitchison_distance = round(compositionalEarlyLate.aitchisonDistance);
   output.composition_early_late_js_divergence = round(compositionalEarlyLate.jensenShannonDivergence);
@@ -145,8 +159,9 @@ export function buildWholeBodyStatisticalFingerprint(sessionSummary) {
       supportRegions: distribution.expectation?.supportRegions || [],
       outsideRegions: distribution.expectation?.outsideRegions || [],
     },
+    compositionalSchemaVersion: compositional?.schemaVersion || null,
     features: output,
-    interpretation: "The WBF statistical fingerprint contains derived descriptive pose statistics only. Compositional features use log-ratio/distribution geometry appropriate for region shares that sum to one. Values are research features and are not force, tissue load, muscle activation, diagnosis, injury risk, or treatment recommendations.",
+    interpretation: "The WBF statistical fingerprint contains derived descriptive pose statistics only. Compositional features use log-ratio/distribution geometry and independent ILR coordinates appropriate for region shares that sum to one. Values are research features and are not force, tissue load, muscle activation, diagnosis, injury risk, or treatment recommendations.",
   };
 }
 
@@ -157,7 +172,12 @@ export function wholeBodyStatisticalFingerprintColumns() {
       measuredReps: null,
       expectation: {},
       descriptiveStatistics: {},
-      compositionalStatistics: { descriptiveStatistics: {}, earlyLate: {}, sessionCenter: {} },
+      compositionalStatistics: {
+        descriptiveStatistics: { ilrCoordinates: {} },
+        earlyLate: {},
+        sessionCenter: {},
+        sessionCenterIlr: [],
+      },
       earlyLateComparison: {},
       regionContributionShare: {},
       couplingWithPrimary: {},
