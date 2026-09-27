@@ -53,27 +53,36 @@ function syncTherapistClinicalEvaluations() {
 
 let patientProgressModulePromise = null;
 let patientProgressRepModulePromise = null;
+let patientProgressVisualModulePromise = null;
 function syncAuthenticatedPatientProgress() {
-  // Rich analytics stay off the login-critical path. The real Progress page and
-  // its persisted rep-detail reader are loaded only after Progress is visible.
+  // Rich analytics stay off the login-critical path. The real Progress page,
+  // persisted rep detail, and chart polish load only after Progress is visible.
   if (!document.querySelector('main.report-page:not(.report-page--empty)')) return;
   if (!patientProgressModulePromise) patientProgressModulePromise = import('./patient-progress-surface.js');
   void patientProgressModulePromise
     .then((module) => {
       module.syncPatientProgressSurface?.();
       if (!patientProgressRepModulePromise) patientProgressRepModulePromise = import('./patient-progress-rep-enrichment.js');
-      return patientProgressRepModulePromise;
+      if (!patientProgressVisualModulePromise) patientProgressVisualModulePromise = import('./patient-progress-visual-fixes.js');
+      return Promise.all([patientProgressRepModulePromise, patientProgressVisualModulePromise]);
     })
-    .then((module) => {
-      // The Progress renderer performs an authenticated async read first. Two
-      // bounded follow-up passes let the rep reader attach after that render
-      // without adding a global observer or recurring background work.
-      window.setTimeout(() => module.syncPatientProgressRepEnrichment?.(), 180);
-      window.setTimeout(() => module.syncPatientProgressRepEnrichment?.(), 650);
+    .then(([repModule, visualModule]) => {
+      // The Progress renderer performs an authenticated async read first. Bounded
+      // follow-up passes attach saved rep detail and then redraw charts with axes.
+      window.setTimeout(() => {
+        repModule.syncPatientProgressRepEnrichment?.();
+        visualModule.syncPatientProgressVisualFixes?.();
+      }, 180);
+      window.setTimeout(() => {
+        repModule.syncPatientProgressRepEnrichment?.();
+        visualModule.syncPatientProgressVisualFixes?.();
+      }, 650);
+      window.setTimeout(() => visualModule.syncPatientProgressVisualFixes?.(), 1050);
     })
     .catch(() => {
       patientProgressModulePromise = null;
       patientProgressRepModulePromise = null;
+      patientProgressVisualModulePromise = null;
     });
 }
 
