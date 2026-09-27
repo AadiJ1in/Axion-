@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
 import {
-  buildWholeBodyStatisticalFingerprintV5,
-  wholeBodyStatisticalFingerprintColumnsV5,
-} from "../src/whole-body-statistical-fingerprint-v5.js";
+  buildWholeBodyStatisticalFingerprintV6,
+  wholeBodyStatisticalFingerprintColumnsV6,
+} from "../src/whole-body-statistical-fingerprint-v6.js";
 
 function parseArgs(argv) {
   const args = {};
@@ -39,7 +39,7 @@ function metadata(record) {
     participant_id: record?.participant_id ?? record?.patient_id ?? record?.subject_id ?? null,
     session_id: record?.session_id ?? record?.id ?? null,
     exercise_id: record?.exercise_id ?? record?.exercise_key ?? null,
-    camera_view: record?.camera_view ?? record?.capture_context?.cameraView ?? null,
+    camera_view: record?.camera_view ?? record?.capture_context?.cameraView ?? bodySummary(record)?.trackingContext?.cameraView ?? null,
     prescribed_side: record?.prescribed_side ?? bodySummary(record)?.trackingContext?.prescribedSide ?? null,
     assessment_score: record?.assessment_score ?? record?.label?.assessment_score ?? null,
   };
@@ -56,7 +56,7 @@ const records = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).ma
   catch (error) { throw new Error(`Invalid JSON on line ${index + 1}: ${error.message}`); }
 });
 
-const columns = wholeBodyStatisticalFingerprintColumnsV5();
+const columns = wholeBodyStatisticalFingerprintColumnsV6();
 const headers = [
   "participant_id",
   "session_id",
@@ -73,9 +73,9 @@ const rows = [];
 for (const record of records) {
   const summary = bodySummary(record);
   const stored = summary?.statisticalFingerprint;
-  const fingerprint = stored?.status === "available" && stored?.schemaVersion === 5
+  const fingerprint = stored?.status === "available" && stored?.schemaVersion === 6
     ? stored
-    : buildWholeBodyStatisticalFingerprintV5(summary);
+    : buildWholeBodyStatisticalFingerprintV6(summary);
   if (fingerprint?.status !== "available") continue;
   const meta = metadata(record);
   const row = {
@@ -96,7 +96,7 @@ await writeFile(args.output, output, "utf8");
 console.log(JSON.stringify({
   inputRecords: records.length,
   exportedRows: rows.length,
-  fingerprintSchemaVersion: 5,
+  fingerprintSchemaVersion: 6,
   featureColumns: columns.length,
   output: args.output,
 }, null, 2));
