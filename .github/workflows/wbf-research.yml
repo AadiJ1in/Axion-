@@ -32,6 +32,8 @@ jobs:
           node --check src/whole-body-distribution-v2.js
           node --check src/whole-body-compositional-statistics.js
           node --check src/whole-body-anatomical-balances.js
+          node --check src/whole-body-bilateral-asymmetry.js
+          node --check src/whole-body-asymmetry-history.js
           node --check src/whole-body-movement-intent.js
           node --check src/whole-body-motion-statistics.js
           node --check src/whole-body-region-ownership.js
@@ -42,6 +44,7 @@ jobs:
           node --check src/whole-body-redistribution-evidence.js
           node --check src/whole-body-statistical-fingerprint.js
           node --check src/whole-body-statistical-fingerprint-v5.js
+          node --check src/whole-body-statistical-fingerprint-v6.js
           node --check src/whole-body-longitudinal-fingerprint.js
           node --check src/whole-body-longitudinal-fingerprint-v2.js
           node --check src/whole-body-longitudinal-model-fingerprint.js
@@ -61,6 +64,8 @@ jobs:
           node scripts/whole-body-distribution-v2-test.mjs
           node scripts/whole-body-compositional-statistics-test.mjs
           node scripts/whole-body-anatomical-balances-test.mjs
+          node scripts/whole-body-bilateral-asymmetry-test.mjs
+          node scripts/whole-body-asymmetry-history-test.mjs
           node scripts/whole-body-movement-intent-test.mjs
           node scripts/whole-body-motion-statistics-test.mjs
           node scripts/whole-body-personalized-reference-test.mjs
@@ -68,6 +73,7 @@ jobs:
           node scripts/whole-body-redistribution-history-test.mjs
           node scripts/whole-body-statistical-fingerprint-test.mjs
           node scripts/whole-body-statistical-fingerprint-v5-test.mjs
+          node scripts/whole-body-statistical-fingerprint-v6-test.mjs
           node scripts/whole-body-longitudinal-fingerprint-test.mjs
           node scripts/whole-body-longitudinal-fingerprint-v2-test.mjs
           node scripts/whole-body-longitudinal-model-fingerprint-test.mjs
