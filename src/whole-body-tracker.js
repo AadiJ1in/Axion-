@@ -9,7 +9,8 @@ import {
   createWholeBodyMotionAccumulator,
   summarizeWholeBodyMotionStatistics,
 } from "./whole-body-motion-statistics.js";
-import { buildWholeBodyStatisticalFingerprintV5 } from "./whole-body-statistical-fingerprint-v5.js";
+import { summarizeWholeBodyBilateralAsymmetry } from "./whole-body-bilateral-asymmetry.js";
+import { buildWholeBodyStatisticalFingerprintV6 } from "./whole-body-statistical-fingerprint-v6.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -25,6 +26,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
   const exerciseKey = trackerOptions.exerciseKey || "bodyweight_squat";
   const trackingMode = trackerOptions.trackingMode || "pose_reps";
   const prescribedSide = trackerOptions.prescribedSide || "either";
+  const cameraView = trackerOptions.cameraView || null;
   const movementExpectation = resolveWholeBodyMovementIntent(exerciseKey, trackingMode, prescribedSide);
 
   let activeRep = false;
@@ -85,21 +87,24 @@ export async function createWholeBodyMovementTracker(options = {}) {
       trackingMode,
       prescribedSide,
     });
+    const bilateralAsymmetry = summarizeWholeBodyBilateralAsymmetry(completed);
     const combined = {
       ...summary,
       trackingContext: {
         exerciseKey,
         trackingMode,
         prescribedSide,
+        cameraView,
         movementIntentSchemaVersion: movementExpectation?.schemaVersion || null,
         signal: movementExpectation?.signal || null,
       },
       motionStatistics,
       movementDistribution,
+      bilateralAsymmetry,
     };
     return {
       ...combined,
-      statisticalFingerprint: buildWholeBodyStatisticalFingerprintV5(combined),
+      statisticalFingerprint: buildWholeBodyStatisticalFingerprintV6(combined),
     };
   }
 
