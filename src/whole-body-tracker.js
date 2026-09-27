@@ -9,7 +9,7 @@ import {
   createWholeBodyMotionAccumulator,
   summarizeWholeBodyMotionStatistics,
 } from "./whole-body-motion-statistics.js";
-import { summarizeWholeBodyBilateralAsymmetry } from "./whole-body-bilateral-asymmetry.js";
+import { summarizeViewAwareWholeBodyAsymmetry } from "./whole-body-asymmetry-view.js";
 import { buildWholeBodyStatisticalFingerprintV6 } from "./whole-body-statistical-fingerprint-v6.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
@@ -87,7 +87,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       trackingMode,
       prescribedSide,
     });
-    const bilateralAsymmetry = summarizeWholeBodyBilateralAsymmetry(completed);
+    const bilateralAsymmetry = summarizeViewAwareWholeBodyAsymmetry(completed, { cameraView });
     const combined = {
       ...summary,
       trackingContext: {
