@@ -13,8 +13,9 @@ import {
   applyWholeBodyNoiseCalibration,
   buildWholeBodyNoiseCalibration,
 } from "./whole-body-noise-calibration.js";
+import { summarizeWholeBodyNoiseResolution } from "./whole-body-noise-resolution.js";
 import { summarizeNoiseAwareWholeBodyAsymmetry } from "./whole-body-noise-aware-asymmetry.js";
-import { buildWholeBodyStatisticalFingerprintV6 } from "./whole-body-statistical-fingerprint-v6.js";
+import { buildWholeBodyStatisticalFingerprintV7 } from "./whole-body-statistical-fingerprint-v7.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -109,6 +110,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       trackingMode,
       prescribedSide,
     });
+    const noiseResolution = summarizeWholeBodyNoiseResolution(completed, noiseCalibration);
     const bilateralAsymmetry = summarizeNoiseAwareWholeBodyAsymmetry(completed, {
       cameraView,
       calibration: noiseCalibration,
@@ -124,13 +126,14 @@ export async function createWholeBodyMovementTracker(options = {}) {
         signal: movementExpectation?.signal || null,
       },
       noiseCalibration,
+      noiseResolution,
       motionStatistics,
       movementDistribution,
       bilateralAsymmetry,
     };
     return {
       ...combined,
-      statisticalFingerprint: buildWholeBodyStatisticalFingerprintV6(combined),
+      statisticalFingerprint: buildWholeBodyStatisticalFingerprintV7(combined),
     };
   }
 
