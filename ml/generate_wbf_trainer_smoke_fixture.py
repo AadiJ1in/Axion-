@@ -2,8 +2,9 @@
 """Generate a deterministic participant-grouped WBF v8 fingerprint table for CI only.
 
 Synthetic labels are deliberately tied to several named feature families so the smoke
-trainer should beat a participant-equal baseline under participant-disjoint CV. This is
-not research data and must never be used to report model performance.
+trainer should beat a participant-equal baseline under participant-disjoint CV. A few
+rows are marked research-model ineligible to verify that the trainer excludes them.
+This is not research data and must never be used to report model performance.
 """
 from __future__ import annotations
 
@@ -44,8 +45,13 @@ def main():
     generic_count = max(30, args.features - len(NAMED_FEATURES))
     generic = [f"fp_f{index:03d}" for index in range(generic_count)]
     feature_names = [*NAMED_FEATURES, *generic]
-    headers = ["participant_id","session_id","exercise_id","camera_view","prescribed_side","assessment_score","fingerprint_schema_version","fingerprint_coverage",*feature_names]
+    headers = [
+        "participant_id","session_id","exercise_id","camera_view","prescribed_side",
+        "research_model_eligible","analysis_quality_failed_checks","assessment_score",
+        "fingerprint_schema_version","fingerprint_coverage",*feature_names,
+    ]
     rows = []
+    ineligible = 0
     for participant in range(args.participants):
         participant_phase = (participant - (args.participants - 1) / 2) / max(1, args.participants - 1)
         session_count = args.sessions_per_participant + (participant % 3)
@@ -71,12 +77,17 @@ def main():
                 + 2 * values["fp_bilateral_coordination_knee_flexion_zeroLagCorrelation_median"]
                 + rng.uniform(-0.25, 0.25)
             )
+            eligible = not (participant % 5 == 0 and session == session_count - 1)
+            if not eligible:
+                ineligible += 1
             row = {
                 "participant_id": f"p{participant:02d}",
                 "session_id": f"p{participant:02d}_s{session:02d}",
                 "exercise_id": "bodyweight_squat" if participant % 2 == 0 else "sit_to_stand",
                 "camera_view": "front" if participant % 3 else "three_quarter",
                 "prescribed_side": "either",
+                "research_model_eligible": 1 if eligible else 0,
+                "analysis_quality_failed_checks": "" if eligible else "movementResolution",
                 "assessment_score": round(target, 6),
                 "fingerprint_schema_version": CURRENT_FINGERPRINT_SCHEMA,
                 "fingerprint_coverage": 0.98,
@@ -87,7 +98,7 @@ def main():
     with args.output.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=headers)
         writer.writeheader(); writer.writerows(rows)
-    print(f"Wrote {len(rows)} synthetic grouped rows with {len(feature_names)} v8 fingerprint features to {args.output}")
+    print(f"Wrote {len(rows)} synthetic grouped rows ({ineligible} intentionally ineligible) with {len(feature_names)} v8 fingerprint features to {args.output}")
 
 
 if __name__ == "__main__":
