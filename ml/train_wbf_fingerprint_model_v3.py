@@ -2,8 +2,9 @@
 """AxionWBF fingerprint trainer v3.
 
 Adds participant-equal model selection, participant-balanced fitting, a fold-local
-missingness/dispersion filter, and a one-standard-error preference for simpler model
-families. All preprocessing remains inside participant-disjoint nested CV.
+missingness/dispersion filter, a one-standard-error preference for simpler model
+families, and participant-block OOF residual intervals. All preprocessing remains
+inside participant-disjoint nested CV.
 
 Research only. External prospective validation remains required before clinical use.
 """
@@ -32,6 +33,11 @@ from train_wbf_fingerprint_model import (
     round_nested,
     sliced_metrics,
     target_summary,
+)
+from wbf_regression_conformal import (
+    evaluate_prediction_intervals,
+    fit_participant_block_regression_interval,
+    prediction_intervals,
 )
 
 ALL_MODEL_FAMILIES = ("ridge", "elastic_net", "hist_gradient_boosting", "random_forest", "extra_trees")
@@ -104,6 +110,7 @@ def parse_args():
     p.add_argument("--logo-max-groups", type=int, default=20)
     p.add_argument("--bootstrap-reps", type=int, default=1000)
     p.add_argument("--null-permutations", type=int, default=20)
+    p.add_argument("--conformal-alpha", type=float, default=0.10)
     p.add_argument("--model-families", default=",".join(ALL_MODEL_FAMILIES))
     p.add_argument("--random-state", type=int, default=42)
     p.add_argument("--model-version", default="axionwbf-fingerprint-participant-balanced-v3")
@@ -213,6 +220,7 @@ def main():
     args = parse_args()
     if not 0 < args.min_fingerprint_coverage <= 1: raise SystemExit("--min-fingerprint-coverage must be within (0,1]")
     if not 0 < args.min_training_feature_coverage <= 1: raise SystemExit("--min-training-feature-coverage must be within (0,1]")
+    if not 0 < args.conformal_alpha < 0.5: raise SystemExit("--conformal-alpha must be in (0,0.5)")
     spaces = selected_spaces(args)
     frame = pd.read_csv(args.features_csv).copy()
     required = {args.target_column, args.group_column}
@@ -287,12 +295,23 @@ def main():
     beats_row_baseline = overall["mae"] < baseline_overall["mae"]
     uncertainty = participant_bootstrap(y_np, oof, g_np, args.bootstrap_reps, args.random_state + 991)
     null_sanity = group_null_sanity(X, y, groups, args, args.null_permutations, overall["mae"])
+    regression_interval = fit_participant_block_regression_interval(
+        y_np,
+        oof,
+        g_np,
+        alpha=args.conformal_alpha,
+        minimum_groups=args.min_groups,
+    )
+    oof_intervals = prediction_intervals(oof, regression_interval)
+    interval_evaluation = evaluate_prediction_intervals(y_np, oof_intervals, g_np)
 
     warnings = []
     if not beats_participant_baseline: warnings.append("Participant-equal OOF MAE did not beat the participant-equal training baseline.")
     if not beats_row_baseline: warnings.append("Row-level OOF MAE did not beat the train-fold baseline.")
     if null_sanity.get("status") == "available" and not null_sanity.get("observedBetterThanNullMedian"):
         warnings.append("Observed OOF MAE was not better than the median label-scramble sanity result.")
+    if regression_interval.get("status") != "available":
+        warnings.append("Participant-block regression uncertainty interval was unavailable.")
 
     full_cv = inner_cv(groups, args.inner_folds)
     final_candidates = [search_family(X, y, groups, full_cv, name, pipe, grid) for name, (pipe, grid) in spaces.items()]
@@ -308,6 +327,7 @@ def main():
         "selectedFeatureOrderAfterFoldSafeFilter": selected_features,
         "fingerprintSchemaVersion": fingerprint_schema,
         "modelVersion": args.model_version,
+        "participantBlockRegressionInterval": regression_interval,
         "clinicalStatus": "research_only_not_clinically_validated",
     }, model_output)
 
@@ -340,6 +360,10 @@ def main():
             "beatsTrainFoldMeanBaseline": beats_row_baseline,
             "beatsParticipantEqualBaseline": beats_participant_baseline,
             "participantBootstrap95": uncertainty,
+            "participantBlockRegressionInterval": {
+                "calibration": regression_interval,
+                "outOfFoldEvaluation": interval_evaluation,
+            },
             "nullLabelSanity": null_sanity,
             "metricsByExercise": sliced_metrics(frame, args.exercise_column, y_np, oof, g_np),
             "metricsByView": sliced_metrics(frame, args.view_column, y_np, oof, g_np),
@@ -358,12 +382,24 @@ def main():
             "inputFeatureCount": len(feature_columns),
             "selectedFeatureCount": len(selected_features),
             "modelPath": str(model_output),
-            "note": "Final fit is a research artifact. Participant-disjoint OOF estimates are internal validation only; prospective external validation is required before clinical deployment.",
+            "uncertaintyInterval": regression_interval,
+            "note": "Final fit is a research artifact. Participant-disjoint OOF estimates and residual intervals are internal validation only; prospective external validation and recalibration are required before clinical deployment.",
         },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(round_nested(artifact), indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(round_nested({"output": str(args.output), "rows": len(frame), "groups": groups.nunique(), "features": len(feature_columns), "selectedFeatures": len(selected_features), "oof": overall, "participantEqual": participant_overall, "warnings": warnings, "finalModel": final_selected["name"]}), indent=2))
+    print(json.dumps(round_nested({
+        "output": str(args.output),
+        "rows": len(frame),
+        "groups": groups.nunique(),
+        "features": len(feature_columns),
+        "selectedFeatures": len(selected_features),
+        "oof": overall,
+        "participantEqual": participant_overall,
+        "regressionInterval": regression_interval,
+        "warnings": warnings,
+        "finalModel": final_selected["name"],
+    }), indent=2))
 
 
 if __name__ == "__main__":
