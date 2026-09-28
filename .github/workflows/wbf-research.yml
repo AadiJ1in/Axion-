@@ -34,6 +34,7 @@ jobs:
           node --check src/whole-body-compositional-statistics.js
           node --check src/whole-body-anatomical-balances.js
           node --check src/whole-body-bilateral-asymmetry.js
+          node --check src/whole-body-bilateral-coordination.js
           node --check src/whole-body-asymmetry-view.js
           node --check src/whole-body-asymmetry-history.js
           node --check src/whole-body-noise-calibration.js
@@ -51,6 +52,7 @@ jobs:
           node --check src/whole-body-statistical-fingerprint-v5.js
           node --check src/whole-body-statistical-fingerprint-v6.js
           node --check src/whole-body-statistical-fingerprint-v7.js
+          node --check src/whole-body-statistical-fingerprint-v8.js
           node --check src/whole-body-longitudinal-fingerprint.js
           node --check src/whole-body-longitudinal-fingerprint-v2.js
           node --check src/whole-body-longitudinal-model-fingerprint.js
@@ -72,9 +74,11 @@ jobs:
           node scripts/whole-body-compositional-statistics-test.mjs
           node scripts/whole-body-anatomical-balances-test.mjs
           node scripts/whole-body-bilateral-asymmetry-test.mjs
+          node scripts/whole-body-bilateral-coordination-test.mjs
           node scripts/whole-body-asymmetry-view-test.mjs
           node scripts/whole-body-asymmetry-history-test.mjs
           node scripts/whole-body-noise-calibration-test.mjs
+          node scripts/whole-body-noise-resolution-test.mjs
           node scripts/whole-body-noise-aware-asymmetry-test.mjs
           node scripts/whole-body-movement-intent-test.mjs
           node scripts/whole-body-motion-statistics-test.mjs
@@ -85,6 +89,7 @@ jobs:
           node scripts/whole-body-statistical-fingerprint-v5-test.mjs
           node scripts/whole-body-statistical-fingerprint-v6-test.mjs
           node scripts/whole-body-statistical-fingerprint-v7-test.mjs
+          node scripts/whole-body-statistical-fingerprint-v8-test.mjs
           node scripts/whole-body-longitudinal-fingerprint-test.mjs
           node scripts/whole-body-longitudinal-fingerprint-v2-test.mjs
           node scripts/whole-body-longitudinal-model-fingerprint-test.mjs
