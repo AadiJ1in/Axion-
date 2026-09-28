@@ -12,6 +12,7 @@ def main():
     args = parse_args()
     artifact = json.loads(args.artifact.read_text(encoding="utf-8"))
     validation = artifact["validation"]
+    interval = validation["participantBlockRegressionInterval"]
     assert artifact["schemaVersion"] == 3
     assert artifact["clinicalStatus"] == "research_only_not_clinically_validated"
     assert artifact["fingerprintSchemaVersion"] == CURRENT_FINGERPRINT_SCHEMA
@@ -32,10 +33,16 @@ def main():
     assert validation["nullLabelSanity"]["status"] == "available"
     assert validation["nullLabelSanity"]["permutations"] >= 2
     assert validation["nullLabelSanity"]["observedBetterThanNullMedian"] is True
+    assert interval["calibration"]["status"] == "available"
+    assert interval["calibration"]["halfWidth"] > 0
+    assert interval["outOfFoldEvaluation"]["status"] == "available"
+    assert interval["outOfFoldEvaluation"]["empiricalCoverage"] >= 0.80
+    assert interval["outOfFoldEvaluation"]["participantMeanCoverage"] >= 0.80
     assert validation["outerFoldCount"] >= 3
     assert artifact["finalResearchFit"]["modelFamily"] == "ridge"
     assert artifact["finalResearchFit"]["selectedFeatureCount"] >= 5
+    assert artifact["finalResearchFit"]["uncertaintyInterval"]["status"] == "available"
     assert not artifact["warnings"], artifact["warnings"]
-    print(f"WBF participant-balanced trainer v3 smoke passed for fingerprint schema {CURRENT_FINGERPRINT_SCHEMA}.")
+    print(f"WBF participant-balanced trainer v3 smoke passed for fingerprint schema {CURRENT_FINGERPRINT_SCHEMA}, including participant-block regression uncertainty.")
 
 if __name__ == "__main__": main()
