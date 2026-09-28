@@ -35,12 +35,19 @@ function bodySummary(record) {
 }
 
 function metadata(record) {
+  const summary = bodySummary(record);
+  const quality = summary?.analysisQuality;
   return {
     participant_id: record?.participant_id ?? record?.patient_id ?? record?.subject_id ?? null,
     session_id: record?.session_id ?? record?.id ?? null,
     exercise_id: record?.exercise_id ?? record?.exercise_key ?? null,
-    camera_view: record?.camera_view ?? record?.capture_context?.cameraView ?? bodySummary(record)?.trackingContext?.cameraView ?? null,
-    prescribed_side: record?.prescribed_side ?? bodySummary(record)?.trackingContext?.prescribedSide ?? null,
+    camera_view: record?.camera_view ?? record?.capture_context?.cameraView ?? summary?.trackingContext?.cameraView ?? null,
+    prescribed_side: record?.prescribed_side ?? summary?.trackingContext?.prescribedSide ?? null,
+    pose_coordinate_mode: summary?.trackingContext?.poseCoordinateMode ?? null,
+    noise_calibration_status: summary?.noiseCalibration?.status ?? null,
+    analysis_quality_schema_version: quality?.schemaVersion ?? null,
+    research_model_eligible: quality?.researchModelEligible === true ? 1 : quality?.researchModelEligible === false ? 0 : null,
+    analysis_quality_failed_checks: Array.isArray(quality?.failedChecks) ? quality.failedChecks.join(";") : null,
     assessment_score: record?.assessment_score ?? record?.label?.assessment_score ?? null,
   };
 }
@@ -55,8 +62,9 @@ const records = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).ma
 
 const columns = wholeBodyStatisticalFingerprintColumnsV8();
 const headers = [
-  "participant_id", "session_id", "exercise_id", "camera_view", "prescribed_side", "assessment_score",
-  "fingerprint_schema_version", "fingerprint_coverage", ...columns.map((column) => `fp_${column}`),
+  "participant_id", "session_id", "exercise_id", "camera_view", "prescribed_side", "pose_coordinate_mode",
+  "noise_calibration_status", "analysis_quality_schema_version", "research_model_eligible", "analysis_quality_failed_checks",
+  "assessment_score", "fingerprint_schema_version", "fingerprint_coverage", ...columns.map((column) => `fp_${column}`),
 ];
 const rows = [];
 for (const record of records) {
@@ -75,4 +83,12 @@ for (const record of records) {
 if (!rows.length) throw new Error("No available WBF statistical fingerprints were found in the input.");
 const output = [headers.map(csvCell).join(","), ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(","))].join("\n") + "\n";
 await writeFile(args.output, output, "utf8");
-console.log(JSON.stringify({ inputRecords: records.length, exportedRows: rows.length, fingerprintSchemaVersion: 8, featureColumns: columns.length, output: args.output }, null, 2));
+console.log(JSON.stringify({
+  inputRecords: records.length,
+  exportedRows: rows.length,
+  eligibleRows: rows.filter((row) => row.research_model_eligible === 1).length,
+  ineligibleRows: rows.filter((row) => row.research_model_eligible === 0).length,
+  fingerprintSchemaVersion: 8,
+  featureColumns: columns.length,
+  output: args.output,
+}, null, 2));
