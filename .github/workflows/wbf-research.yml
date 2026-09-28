@@ -107,7 +107,9 @@ jobs:
           python -m py_compile ml/train_wbf_longitudinal_classifier.py
           python -m py_compile ml/smoke_wbf_longitudinal_classifier.py
           python -m py_compile ml/wbf_group_conformal.py
+          python -m py_compile ml/wbf_regression_conformal.py
           python -m py_compile ml/test_wbf_group_conformal.py
+          python -m py_compile ml/test_wbf_regression_conformal.py
           python -m py_compile ml/fit_wbf_longitudinal_conformal.py
           python -m py_compile ml/audit_wbf_fingerprint_features.py
           python -m py_compile ml/audit_wbf_clinician_labels.py
@@ -122,6 +124,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check --quiet -r ml/requirements-trainer.txt
           python ml/test_wbf_feature_families.py
+          python ml/test_wbf_regression_conformal.py
           python ml/generate_wbf_trainer_smoke_fixture.py --output /tmp/wbf-trainer-smoke.csv
           python ml/audit_wbf_fingerprint_features.py \
             --features-csv /tmp/wbf-trainer-smoke.csv \
