@@ -9,7 +9,11 @@ import {
   createWholeBodyMotionAccumulator,
   summarizeWholeBodyMotionStatistics,
 } from "./whole-body-motion-statistics.js";
-import { summarizeViewAwareWholeBodyAsymmetry } from "./whole-body-asymmetry-view.js";
+import {
+  applyWholeBodyNoiseCalibration,
+  buildWholeBodyNoiseCalibration,
+} from "./whole-body-noise-calibration.js";
+import { summarizeNoiseAwareWholeBodyAsymmetry } from "./whole-body-noise-aware-asymmetry.js";
 import { buildWholeBodyStatisticalFingerprintV6 } from "./whole-body-statistical-fingerprint-v6.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
@@ -34,8 +38,19 @@ export async function createWholeBodyMovementTracker(options = {}) {
   let lastImageLandmarks = null;
   let lastWorldLandmarks = null;
   let latestFrame = null;
+  let noiseCalibration = null;
+  let calibrationFrozen = false;
+  const calibrationFrames = [];
   const completed = [];
   const accumulator = createWholeBodyMotionAccumulator();
+
+  function finalizeNoiseCalibration() {
+    if (calibrationFrozen) return noiseCalibration;
+    calibrationFrozen = true;
+    noiseCalibration = buildWholeBodyNoiseCalibration(calibrationFrames);
+    calibrationFrames.length = 0;
+    return noiseCalibration;
+  }
 
   const tracker = await createMovementTracker({
     ...trackerOptions,
@@ -47,12 +62,17 @@ export async function createWholeBodyMovementTracker(options = {}) {
         worldLandmarks,
         timestampMs: performance.now(),
       });
+      if (!calibrationFrozen && !activeRep && completed.length === 0 && latestFrame) {
+        calibrationFrames.push(latestFrame);
+        if (calibrationFrames.length > 90) calibrationFrames.shift();
+      }
       if (activeRep && latestFrame) accumulator.push(latestFrame);
       onPose(imageLandmarks, worldLandmarks, latestFrame);
     },
     onUpdate(update) {
       const stage = update?.stage || lastStage;
       if (!activeRep && stage === "down" && lastStage !== "down") {
+        finalizeNoiseCalibration();
         activeRep = true;
         accumulator.start(performance.now());
         if (latestFrame) accumulator.push(latestFrame);
@@ -65,7 +85,8 @@ export async function createWholeBodyMovementTracker(options = {}) {
       onUpdate(update);
     },
     onRep(rep, history) {
-      const wholeBody = activeRep ? accumulator.finish(performance.now()) : null;
+      const rawWholeBody = activeRep ? accumulator.finish(performance.now()) : null;
+      const wholeBody = rawWholeBody ? applyWholeBodyNoiseCalibration(rawWholeBody, noiseCalibration) : null;
       activeRep = false;
       accumulator.reset();
       const enriched = wholeBody ? { ...rep, wholeBody } : { ...rep };
@@ -79,6 +100,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
   });
 
   function sessionSummary() {
+    if (!calibrationFrozen && completed.length) finalizeNoiseCalibration();
     const summary = summarizeWholeBodySession(completed);
     if (!summary) return null;
     const motionStatistics = summarizeWholeBodyMotionStatistics(completed);
@@ -87,7 +109,10 @@ export async function createWholeBodyMovementTracker(options = {}) {
       trackingMode,
       prescribedSide,
     });
-    const bilateralAsymmetry = summarizeViewAwareWholeBodyAsymmetry(completed, { cameraView });
+    const bilateralAsymmetry = summarizeNoiseAwareWholeBodyAsymmetry(completed, {
+      cameraView,
+      calibration: noiseCalibration,
+    });
     const combined = {
       ...summary,
       trackingContext: {
@@ -98,6 +123,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
         movementIntentSchemaVersion: movementExpectation?.schemaVersion || null,
         signal: movementExpectation?.signal || null,
       },
+      noiseCalibration,
       motionStatistics,
       movementDistribution,
       bilateralAsymmetry,
@@ -116,6 +142,9 @@ export async function createWholeBodyMovementTracker(options = {}) {
       latestFrame = null;
       lastImageLandmarks = null;
       lastWorldLandmarks = null;
+      noiseCalibration = null;
+      calibrationFrozen = false;
+      calibrationFrames.length = 0;
       completed.length = 0;
       accumulator.reset();
       tracker.reset();
@@ -141,6 +170,9 @@ export async function createWholeBodyMovementTracker(options = {}) {
     },
     getWholeBodySessionSummary() {
       return sessionSummary();
+    },
+    getNoiseCalibration() {
+      return noiseCalibration ? { ...noiseCalibration } : null;
     },
     getLastPoseAvailability() {
       return {
