@@ -24,6 +24,8 @@ from sklearn.model_selection import GroupKFold, cross_val_predict
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler
 
+from wbf_feature_families import feature_family
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -57,29 +59,6 @@ def pipeline(alpha):
         ("scaler", RobustScaler()),
         ("model", Ridge(alpha=alpha)),
     ])
-
-
-def family(column: str) -> str:
-    name = column.removeprefix("fp_")
-    if name.startswith("composition_"):
-        return "compositional"
-    if name.startswith("anatomical_balance_"):
-        return "anatomical_balances"
-    if "_motion_" in name:
-        return "regional_motion"
-    if name.endswith("_primary_spearman") or name.endswith("_primary_coupling_n"):
-        return "coupling"
-    if "_contribution_" in name:
-        return "regional_contribution"
-    if name.startswith("primary_share_") or name.startswith("support_share_") or name.startswith("outside_share_") or name.startswith("outside_to_primary_ratio_"):
-        return "coarse_distribution"
-    if name.startswith("movement_concentration_") or name.startswith("movement_entropy_") or name.startswith("upper_lr_") or name.startswith("lower_lr_"):
-        return "global_distribution_shape"
-    if name.startswith("early_") or name.startswith("late_") or "early_to_late" in name:
-        return "early_late"
-    if name.endswith("_coverage") or name in {"fp_measured_reps", "fp_complete_whole_body_reps"}:
-        return "capture_quality"
-    return "other"
 
 
 def paired_group_bootstrap(y, full_prediction, reduced_prediction, groups, reps, seed):
@@ -136,7 +115,7 @@ def main():
         raise SystemExit("At least three participant groups are required.")
     cv = GroupKFold(n_splits=fold_count)
 
-    family_map = {column: family(column) for column in features}
+    family_map = {column: feature_family(column) for column in features}
     families = sorted(set(family_map.values()))
 
     def evaluate(columns):
@@ -163,14 +142,14 @@ def main():
         "familyOnly": {},
     }
 
-    for feature_family in families:
-        family_columns = [column for column in features if family_map[column] == feature_family]
-        reduced_columns = [column for column in features if family_map[column] != feature_family]
+    for feature_family_name in families:
+        family_columns = [column for column in features if family_map[column] == feature_family_name]
+        reduced_columns = [column for column in features if family_map[column] != feature_family_name]
 
         family_result = evaluate(family_columns)
         if family_result:
             _, block = family_result
-            results["familyOnly"][feature_family] = {
+            results["familyOnly"][feature_family_name] = {
                 "featureCount": len(family_columns),
                 "metrics": block,
             }
@@ -178,7 +157,7 @@ def main():
         reduced_result = evaluate(reduced_columns)
         if reduced_result:
             reduced_prediction, block = reduced_result
-            results["leaveOneFamilyOut"][feature_family] = {
+            results["leaveOneFamilyOut"][feature_family_name] = {
                 "removedFeatureCount": len(family_columns),
                 "remainingFeatureCount": len(reduced_columns),
                 "metrics": block,
@@ -189,12 +168,12 @@ def main():
                     reduced_prediction,
                     groups.to_numpy(),
                     args.bootstrap_reps,
-                    args.random_state + sum(ord(char) for char in feature_family),
+                    args.random_state + sum(ord(char) for char in feature_family_name),
                 ),
             }
 
     artifact = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "clinicalStatus": "research_only_not_clinically_validated",
         "rows": int(len(frame)),
         "participantsOrGroups": int(groups.nunique()),
@@ -203,7 +182,7 @@ def main():
         "alpha": args.alpha,
         "featureFamilies": {name: [column for column in features if family_map[column] == name] for name in families},
         "results": results,
-        "interpretation": "A feature family is more convincing when removing it worsens participant-disjoint out-of-fold error and the paired participant bootstrap consistently favors the full model. This is an ablation diagnostic, not proof that a feature family is causal, clinically meaningful, or patentable.",
+        "interpretation": "A feature family is more convincing when removing it worsens participant-disjoint out-of-fold error and the paired participant bootstrap consistently favors the full model. WBF v7 separates bilateral magnitude, timing, coordination, dynamics, compositional asymmetry, and capture-noise resolution so each can be tested independently. This is an ablation diagnostic, not proof that a feature family is causal or clinically meaningful.",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
