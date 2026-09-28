@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a deterministic participant-grouped WBF v7 fingerprint table for CI only.
+"""Generate a deterministic participant-grouped WBF v8 fingerprint table for CI only.
 
 Synthetic labels are deliberately tied to several named feature families so the smoke
 trainer should beat a participant-equal baseline under participant-disjoint CV. This is
@@ -13,7 +13,7 @@ import math
 import random
 from pathlib import Path
 
-CURRENT_FINGERPRINT_SCHEMA = 7
+CURRENT_FINGERPRINT_SCHEMA = 8
 NAMED_FEATURES = [
     "fp_primary_share_median",
     "fp_outside_share_median",
@@ -22,6 +22,8 @@ NAMED_FEATURES = [
     "fp_asymmetry_composition_share_knee_flexion",
     "fp_noise_resolution_global_median",
     "fp_noise_resolution_well_above_fraction",
+    "fp_bilateral_coordination_knee_flexion_absoluteLagPhase_median",
+    "fp_bilateral_coordination_knee_flexion_zeroLagCorrelation_median",
     "fp_anatomical_balance_left_vs_right_appendicular",
 ]
 
@@ -31,7 +33,7 @@ def parse_args():
     p.add_argument("--output", required=True, type=Path)
     p.add_argument("--participants", type=int, default=12)
     p.add_argument("--sessions-per-participant", type=int, default=3)
-    p.add_argument("--features", type=int, default=48)
+    p.add_argument("--features", type=int, default=50)
     p.add_argument("--seed", type=int, default=991)
     return p.parse_args()
 
@@ -46,7 +48,7 @@ def main():
     rows = []
     for participant in range(args.participants):
         participant_phase = (participant - (args.participants - 1) / 2) / max(1, args.participants - 1)
-        session_count = args.sessions_per_participant + (participant % 3)  # deliberately unbalanced repeated measures
+        session_count = args.sessions_per_participant + (participant % 3)
         for session in range(session_count):
             progression = session / max(1, session_count - 1)
             latent = 1.4 * participant_phase + 1.15 * progression
@@ -57,12 +59,16 @@ def main():
                 values[name] = coefficient * latent + 0.15 * wave + rng.uniform(-0.04, 0.04)
             values["fp_noise_resolution_global_median"] = 5.0 + 0.35 * math.sin(participant + session) + rng.uniform(-0.05, 0.05)
             values["fp_noise_resolution_well_above_fraction"] = min(1.0, max(0.7, 0.9 + rng.uniform(-0.04, 0.04)))
+            values["fp_bilateral_coordination_knee_flexion_absoluteLagPhase_median"] = max(0.0, 0.03 + 0.035 * progression + 0.01 * participant_phase + rng.uniform(-0.004, 0.004))
+            values["fp_bilateral_coordination_knee_flexion_zeroLagCorrelation_median"] = min(1.0, max(-1.0, 0.92 - 0.20 * progression + rng.uniform(-0.015, 0.015)))
             target = (
                 55
                 + 9 * values["fp_primary_share_median"]
                 - 7 * values["fp_outside_share_median"]
                 - 8 * values["fp_asymmetry_knee_flexion_globalRms_median"]
                 + 5 * values["fp_asymmetry_shoulder_arm_trunk_timingRms_median"]
+                - 12 * values["fp_bilateral_coordination_knee_flexion_absoluteLagPhase_median"]
+                + 2 * values["fp_bilateral_coordination_knee_flexion_zeroLagCorrelation_median"]
                 + rng.uniform(-0.25, 0.25)
             )
             row = {
@@ -81,7 +87,7 @@ def main():
     with args.output.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=headers)
         writer.writeheader(); writer.writerows(rows)
-    print(f"Wrote {len(rows)} synthetic grouped rows with {len(feature_names)} v7 fingerprint features to {args.output}")
+    print(f"Wrote {len(rows)} synthetic grouped rows with {len(feature_names)} v8 fingerprint features to {args.output}")
 
 
 if __name__ == "__main__":
