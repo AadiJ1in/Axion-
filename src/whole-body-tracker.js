@@ -20,6 +20,7 @@ import {
   summarizeWholeBodyBilateralCoordination,
 } from "./whole-body-bilateral-coordination.js";
 import { buildWholeBodyStatisticalFingerprintV8 } from "./whole-body-statistical-fingerprint-v8.js";
+import { assessWholeBodyAnalysisQuality } from "./whole-body-analysis-quality.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -42,6 +43,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
   let lastStage = "up";
   let lastImageLandmarks = null;
   let lastWorldLandmarks = null;
+  let worldLandmarksObserved = false;
   let latestFrame = null;
   let noiseCalibration = null;
   let calibrationFrozen = false;
@@ -63,6 +65,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
     onPose(imageLandmarks, worldLandmarks = null) {
       lastImageLandmarks = imageLandmarks;
       lastWorldLandmarks = worldLandmarks;
+      if (Array.isArray(worldLandmarks) && worldLandmarks.length) worldLandmarksObserved = true;
       latestFrame = extractWholeBodyFrame({
         imageLandmarks,
         worldLandmarks,
@@ -142,6 +145,8 @@ export async function createWholeBodyMovementTracker(options = {}) {
         trackingMode,
         prescribedSide,
         cameraView,
+        worldLandmarksObserved,
+        poseCoordinateMode: worldLandmarksObserved ? "image_and_world" : "image_only",
         movementIntentSchemaVersion: movementExpectation?.schemaVersion || null,
         signal: movementExpectation?.signal || null,
       },
@@ -152,9 +157,11 @@ export async function createWholeBodyMovementTracker(options = {}) {
       bilateralAsymmetry,
       bilateralCoordination,
     };
+    const statisticalFingerprint = buildWholeBodyStatisticalFingerprintV8(combined);
+    const withFingerprint = { ...combined, statisticalFingerprint };
     return {
-      ...combined,
-      statisticalFingerprint: buildWholeBodyStatisticalFingerprintV8(combined),
+      ...withFingerprint,
+      analysisQuality: assessWholeBodyAnalysisQuality(withFingerprint),
     };
   }
 
@@ -166,6 +173,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       latestFrame = null;
       lastImageLandmarks = null;
       lastWorldLandmarks = null;
+      worldLandmarksObserved = false;
       noiseCalibration = null;
       calibrationFrozen = false;
       calibrationFrames.length = 0;
@@ -205,6 +213,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       return {
         imageLandmarksAvailable: Array.isArray(lastImageLandmarks),
         worldLandmarksAvailable: Array.isArray(lastWorldLandmarks),
+        worldLandmarksObserved,
       };
     },
   });
