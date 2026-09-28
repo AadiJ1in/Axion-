@@ -12,11 +12,16 @@ def main():
     args = parse_args()
     artifact = json.loads(args.artifact.read_text(encoding="utf-8"))
     validation = artifact["validation"]
+    dataset = artifact["dataset"]
     interval = validation["participantBlockRegressionInterval"]
     assert artifact["schemaVersion"] == 3
     assert artifact["clinicalStatus"] == "research_only_not_clinically_validated"
     assert artifact["fingerprintSchemaVersion"] == CURRENT_FINGERPRINT_SCHEMA
     assert artifact["featureCount"] >= 30
+    assert dataset["eligibilityFilterApplied"] is True
+    assert dataset["ineligibleRowsExcluded"] > 0
+    assert dataset["rowsBeforeEligibility"] > dataset["rows"]
+    assert validation["researchEligibilityFiltering"] is True
     assert validation["participantDisjointOuterEvaluation"] is True
     assert validation["allPreprocessingInsideFolds"] is True
     assert validation["foldLocalFeatureFiltering"] is True
@@ -42,7 +47,8 @@ def main():
     assert artifact["finalResearchFit"]["modelFamily"] == "ridge"
     assert artifact["finalResearchFit"]["selectedFeatureCount"] >= 5
     assert artifact["finalResearchFit"]["uncertaintyInterval"]["status"] == "available"
+    assert artifact["finalResearchFit"]["inferenceRequiresResearchModelEligibleSession"] is True
     assert not artifact["warnings"], artifact["warnings"]
-    print(f"WBF participant-balanced trainer v3 smoke passed for fingerprint schema {CURRENT_FINGERPRINT_SCHEMA}, including participant-block regression uncertainty.")
+    print(f"WBF participant-balanced trainer v3 smoke passed for fingerprint schema {CURRENT_FINGERPRINT_SCHEMA}, including eligibility filtering and participant-block uncertainty.")
 
 if __name__ == "__main__": main()
