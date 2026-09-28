@@ -3,8 +3,9 @@
 
 Adds participant-equal model selection, participant-balanced fitting, a fold-local
 missingness/dispersion filter, a one-standard-error preference for simpler model
-families, and participant-block OOF residual intervals. All preprocessing remains
-inside participant-disjoint nested CV.
+families, participant-block OOF residual intervals, and fail-closed session eligibility
+filtering for current WBF fingerprints. All preprocessing remains inside
+participant-disjoint nested CV.
 
 Research only. External prospective validation remains required before clinical use.
 """
@@ -102,6 +103,8 @@ def parse_args():
     p.add_argument("--feature-prefix", default="fp_")
     p.add_argument("--coverage-column", default="fingerprint_coverage")
     p.add_argument("--schema-column", default="fingerprint_schema_version")
+    p.add_argument("--eligibility-column", default="research_model_eligible")
+    p.add_argument("--allow-ineligible-sessions", action="store_true")
     p.add_argument("--min-fingerprint-coverage", type=float, default=0.55)
     p.add_argument("--min-training-feature-coverage", type=float, default=0.25)
     p.add_argument("--min-groups", type=int, default=8)
@@ -216,6 +219,11 @@ def one_se_select(candidates):
     return selected, best, threshold
 
 
+def eligibility_mask(series):
+    accepted = {"1", "true", "yes", "y", "eligible"}
+    return series.map(lambda value: str(value).strip().lower() in accepted)
+
+
 def main():
     args = parse_args()
     if not 0 < args.min_fingerprint_coverage <= 1: raise SystemExit("--min-fingerprint-coverage must be within (0,1]")
@@ -234,6 +242,21 @@ def main():
         schemas = sorted(set(pd.to_numeric(frame[args.schema_column], errors="coerce").dropna().astype(int).tolist()))
         if len(schemas) > 1: raise SystemExit(f"Mixed fingerprint schema versions are not allowed: {schemas}")
     fingerprint_schema = schemas[0] if schemas else None
+
+    rows_before_eligibility = int(len(frame))
+    eligibility_filter_applied = False
+    ineligible_rows_excluded = 0
+    if not args.allow_ineligible_sessions:
+        if args.eligibility_column not in frame.columns:
+            if fingerprint_schema is None or fingerprint_schema >= 8:
+                raise SystemExit(f"Current WBF training requires eligibility column: {args.eligibility_column}")
+        else:
+            eligible = eligibility_mask(frame[args.eligibility_column])
+            ineligible_rows_excluded = int((~eligible).sum())
+            frame = frame.loc[eligible].copy()
+            eligibility_filter_applied = True
+    if frame.empty: raise SystemExit("No research-model eligible rows remain after eligibility filtering")
+
     frame[args.target_column] = pd.to_numeric(frame[args.target_column], errors="coerce")
     frame = frame.dropna(subset=[args.target_column, args.group_column]).copy()
     if args.coverage_column in frame.columns:
@@ -306,12 +329,13 @@ def main():
     interval_evaluation = evaluate_prediction_intervals(y_np, oof_intervals, g_np)
 
     warnings = []
+    if args.allow_ineligible_sessions:
+        warnings.append("Eligibility filtering was explicitly disabled; this artifact must not be used for deployment decisions.")
     if not beats_participant_baseline: warnings.append("Participant-equal OOF MAE did not beat the participant-equal training baseline.")
     if not beats_row_baseline: warnings.append("Row-level OOF MAE did not beat the train-fold baseline.")
     if null_sanity.get("status") == "available" and not null_sanity.get("observedBetterThanNullMedian"):
         warnings.append("Observed OOF MAE was not better than the median label-scramble sanity result.")
-    if regression_interval.get("status") != "available":
-        warnings.append("Participant-block regression uncertainty interval was unavailable.")
+    if regression_interval.get("status") != "available": warnings.append("Participant-block regression uncertainty interval was unavailable.")
 
     full_cv = inner_cv(groups, args.inner_folds)
     final_candidates = [search_family(X, y, groups, full_cv, name, pipe, grid) for name, (pipe, grid) in spaces.items()]
@@ -328,6 +352,10 @@ def main():
         "fingerprintSchemaVersion": fingerprint_schema,
         "modelVersion": args.model_version,
         "participantBlockRegressionInterval": regression_interval,
+        "inferenceRequirements": {
+            "researchModelEligibleSessionRequired": not args.allow_ineligible_sessions,
+            "minimumFingerprintCoverage": args.min_fingerprint_coverage,
+        },
         "clinicalStatus": "research_only_not_clinically_validated",
     }, model_output)
 
@@ -341,7 +369,14 @@ def main():
         "warnings": warnings,
         "fingerprintSchemaVersion": fingerprint_schema,
         "featureCount": len(feature_columns),
-        "dataset": {"rows": int(len(frame)), "participantsOrGroups": int(groups.nunique()), "targetSummary": target_summary(y_np)},
+        "dataset": {
+            "rowsBeforeEligibility": rows_before_eligibility,
+            "rows": int(len(frame)),
+            "ineligibleRowsExcluded": ineligible_rows_excluded,
+            "eligibilityFilterApplied": eligibility_filter_applied,
+            "participantsOrGroups": int(groups.nunique()),
+            "targetSummary": target_summary(y_np),
+        },
         "validation": {
             "outerStrategy": outer_name,
             "innerStrategy": f"GroupKFold(max={args.inner_folds})",
@@ -351,6 +386,7 @@ def main():
             "participantEqualModelSelection": True,
             "oneStandardErrorSimplicityRule": True,
             "participantDisjointOuterEvaluation": True,
+            "researchEligibilityFiltering": eligibility_filter_applied,
             "externalValidationPerformed": False,
             "selectionMetric": "participant_equal_mean_absolute_error",
             "outOfFoldMetrics": overall,
@@ -383,6 +419,7 @@ def main():
             "selectedFeatureCount": len(selected_features),
             "modelPath": str(model_output),
             "uncertaintyInterval": regression_interval,
+            "inferenceRequiresResearchModelEligibleSession": not args.allow_ineligible_sessions,
             "note": "Final fit is a research artifact. Participant-disjoint OOF estimates and residual intervals are internal validation only; prospective external validation and recalibration are required before clinical deployment.",
         },
     }
@@ -390,7 +427,9 @@ def main():
     args.output.write_text(json.dumps(round_nested(artifact), indent=2) + "\n", encoding="utf-8")
     print(json.dumps(round_nested({
         "output": str(args.output),
+        "rowsBeforeEligibility": rows_before_eligibility,
         "rows": len(frame),
+        "ineligibleRowsExcluded": ineligible_rows_excluded,
         "groups": groups.nunique(),
         "features": len(feature_columns),
         "selectedFeatures": len(selected_features),
