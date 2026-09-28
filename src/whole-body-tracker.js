@@ -15,6 +15,10 @@ import {
 } from "./whole-body-noise-calibration.js";
 import { summarizeWholeBodyNoiseResolution } from "./whole-body-noise-resolution.js";
 import { summarizeNoiseAwareWholeBodyAsymmetry } from "./whole-body-noise-aware-asymmetry.js";
+import {
+  analyzeWholeBodyBilateralCoordinationFrames,
+  summarizeWholeBodyBilateralCoordination,
+} from "./whole-body-bilateral-coordination.js";
 import { buildWholeBodyStatisticalFingerprintV7 } from "./whole-body-statistical-fingerprint-v7.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
@@ -42,6 +46,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
   let noiseCalibration = null;
   let calibrationFrozen = false;
   const calibrationFrames = [];
+  const activeRepFrames = [];
   const completed = [];
   const accumulator = createWholeBodyMotionAccumulator();
 
@@ -67,7 +72,10 @@ export async function createWholeBodyMovementTracker(options = {}) {
         calibrationFrames.push(latestFrame);
         if (calibrationFrames.length > 90) calibrationFrames.shift();
       }
-      if (activeRep && latestFrame) accumulator.push(latestFrame);
+      if (activeRep && latestFrame) {
+        accumulator.push(latestFrame);
+        activeRepFrames.push(latestFrame);
+      }
       onPose(imageLandmarks, worldLandmarks, latestFrame);
     },
     onUpdate(update) {
@@ -75,8 +83,12 @@ export async function createWholeBodyMovementTracker(options = {}) {
       if (!activeRep && stage === "down" && lastStage !== "down") {
         finalizeNoiseCalibration();
         activeRep = true;
+        activeRepFrames.length = 0;
         accumulator.start(performance.now());
-        if (latestFrame) accumulator.push(latestFrame);
+        if (latestFrame) {
+          accumulator.push(latestFrame);
+          activeRepFrames.push(latestFrame);
+        }
       }
       if (stage !== "down" && lastStage === "down" && update?.reps === tracker.getReps()) {
         // The underlying tracker decides whether this movement becomes a valid rep.
@@ -87,8 +99,15 @@ export async function createWholeBodyMovementTracker(options = {}) {
     },
     onRep(rep, history) {
       const rawWholeBody = activeRep ? accumulator.finish(performance.now()) : null;
-      const wholeBody = rawWholeBody ? applyWholeBodyNoiseCalibration(rawWholeBody, noiseCalibration) : null;
+      const bilateralCoordination = activeRepFrames.length
+        ? analyzeWholeBodyBilateralCoordinationFrames(activeRepFrames)
+        : null;
+      const calibratedWholeBody = rawWholeBody ? applyWholeBodyNoiseCalibration(rawWholeBody, noiseCalibration) : null;
+      const wholeBody = calibratedWholeBody
+        ? { ...calibratedWholeBody, bilateralCoordination }
+        : null;
       activeRep = false;
+      activeRepFrames.length = 0;
       accumulator.reset();
       const enriched = wholeBody ? { ...rep, wholeBody } : { ...rep };
       completed.push(enriched);
@@ -115,6 +134,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       cameraView,
       calibration: noiseCalibration,
     });
+    const bilateralCoordination = summarizeWholeBodyBilateralCoordination(completed);
     const combined = {
       ...summary,
       trackingContext: {
@@ -130,6 +150,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       motionStatistics,
       movementDistribution,
       bilateralAsymmetry,
+      bilateralCoordination,
     };
     return {
       ...combined,
@@ -148,17 +169,20 @@ export async function createWholeBodyMovementTracker(options = {}) {
       noiseCalibration = null;
       calibrationFrozen = false;
       calibrationFrames.length = 0;
+      activeRepFrames.length = 0;
       completed.length = 0;
       accumulator.reset();
       tracker.reset();
     },
     stop() {
       activeRep = false;
+      activeRepFrames.length = 0;
       accumulator.reset();
       tracker.stop();
     },
     destroy() {
       activeRep = false;
+      activeRepFrames.length = 0;
       accumulator.reset();
       tracker.destroy();
     },
