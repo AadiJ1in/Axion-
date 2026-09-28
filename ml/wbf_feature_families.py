@@ -11,6 +11,9 @@ from __future__ import annotations
 def feature_family(column: str) -> str:
     name = column.removeprefix("fp_")
 
+    if name.startswith("bilateral_coordination_"):
+        return "bilateral_trajectory_coordination"
+
     if name.startswith("noise_calibration_") or name.startswith("noise_resolution_"):
         return "capture_noise_resolution"
 
