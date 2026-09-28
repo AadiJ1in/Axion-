@@ -382,8 +382,6 @@ export async function createMovementTracker(options) {
       processingErrors = 0;
     } catch (error) {
       if (!running || generation !== frameGeneration) return;
-      // UI/measurement exceptions used to skip scheduling forever. Fail closed
-      // for this frame, then retry; persistent failures get an actionable restart.
       processingErrors += 1;
       try {
         pauseMeasurement("Tracking interrupted. Hold your starting position while tracking recovers.");
@@ -439,9 +437,6 @@ export async function createMovementTracker(options) {
       } catch (inferenceError) {
         if (!running || generation !== frameGeneration) return;
         pauseMeasurement("Movement model interrupted. Counting is paused during recovery.");
-        // Some laptops can initialize GPU inference successfully and then lose
-        // the graphics context on a real camera frame. The runtime owns that
-        // backend-specific recovery so movement state remains backend-agnostic.
         if (poseRuntime.canFallbackToCpu() && running) {
           const recoveryGeneration = cameraGeneration;
           try {
@@ -450,8 +445,7 @@ export async function createMovementTracker(options) {
             lastVideoTime = -1;
             return;
           } catch {
-            // If compatibility mode also fails, use the normal recoverable
-            // camera error state below.
+            // If compatibility mode also fails, use the normal recoverable camera error state below.
           }
         }
         stop();
@@ -468,6 +462,7 @@ export async function createMovementTracker(options) {
         return;
       }
       const landmarks = result.landmarks?.[0];
+      const worldLandmarks = result.worldLandmarks?.[0] || null;
       let quality = null;
       if (!landmarks) {
         noPoseFrames += 1;
@@ -477,12 +472,11 @@ export async function createMovementTracker(options) {
         quality = trackingQuality(landmarks);
         onTrackingState({ code: quality.label === "Low" ? "low_confidence" : "body_detected", label: quality.label === "Low" ? "Improve camera position" : "Body detected", quality: quality.label, confidence: Math.round(quality.score * 100) });
       }
-      if (landmarks) onPose(landmarks);
+      if (landmarks) onPose(landmarks, worldLandmarks);
       if (!landmarks || !acceptsTrackingQuality(quality?.score)) {
         pauseMeasurement(landmarks ? `Reposition for a clearer ${profile.label.toLowerCase()} view. Rep counting is paused.` : `Return to frame. ${profile.cameraHint}`);
         return;
       }
-      const worldLandmarks = result.worldLandmarks?.[0] || null;
       const measurementLandmarks = worldLandmarks || landmarks;
       const metrics = measurementLandmarks ? measureMovementSignal(measurementLandmarks, profile) : { value: null, left: null, right: null, symmetryDelta: null };
       latestBiomechanicsFrame = extractBiomechanicsFrame({
