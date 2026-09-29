@@ -88,9 +88,14 @@ def assess(artifact, *, mode, min_participants, min_fingerprint_schema,
         artifact, coverage_tolerance
     )
 
+    required_status = (
+        "research_only_not_clinically_validated"
+        if mode == "research_shadow"
+        else "clinically_validated_for_declared_use"
+    )
     checks = [
-        check("research_only_artifact_status", artifact.get("clinicalStatus") == "research_only_not_clinically_validated",
-              artifact.get("clinicalStatus"), "research_only_not_clinically_validated"),
+        check("release_status", artifact.get("clinicalStatus") == required_status,
+              artifact.get("clinicalStatus"), required_status),
         check("current_fingerprint_schema", isinstance(schema, int) and schema >= min_fingerprint_schema,
               schema, f">={min_fingerprint_schema}"),
         check("participant_count", participants >= min_participants, participants, f">={min_participants}"),
@@ -133,12 +138,10 @@ def assess(artifact, *, mode, min_participants, min_fingerprint_schema,
 
     external_validation = validation.get("externalValidationPerformed") is True
     if mode == "clinical":
-        checks.extend([
+        checks.append(
             check("external_prospective_validation", external_validation, external_validation, True,
-                  detail="Clinical release is withheld unless the artifact explicitly documents external prospective validation."),
-            check("clinical_status", artifact.get("clinicalStatus") == "clinically_validated_for_declared_use",
-                  artifact.get("clinicalStatus"), "clinically_validated_for_declared_use"),
-        ])
+                  detail="Clinical release is withheld unless the artifact explicitly documents external prospective validation.")
+        )
 
     failed = [item for item in checks if not item["passed"]]
     eligible = len(failed) == 0
@@ -150,7 +153,7 @@ def assess(artifact, *, mode, min_participants, min_fingerprint_schema,
         else "withhold_release"
     )
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "mode": mode,
         "eligible": eligible,
         "policy": policy,
