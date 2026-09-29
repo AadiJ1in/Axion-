@@ -106,6 +106,7 @@ jobs:
           python -m py_compile ml/train_wbf_movement_quality.py
           python -m py_compile ml/train_wbf_fingerprint_model.py
           python -m py_compile ml/train_wbf_fingerprint_model_v3.py
+          python -m py_compile ml/run_wbf_fingerprint_trainer.py
           python -m py_compile ml/predict_wbf_fingerprint_model.py
           python -m py_compile ml/attach_wbf_feature_reference.py
           python -m py_compile ml/assess_wbf_release_readiness.py
@@ -141,7 +142,7 @@ jobs:
             --features-csv /tmp/wbf-trainer-smoke.csv \
             --output /tmp/wbf-feature-audit.json \
             --min-pairwise-n 5
-          python ml/train_wbf_fingerprint_model_v3.py \
+          PYTHONPATH=ml python ml/run_wbf_fingerprint_trainer.py \
             --features-csv /tmp/wbf-trainer-smoke.csv \
             --output /tmp/wbf-trainer-smoke.json \
             --model-output /tmp/wbf-trainer-smoke.joblib \
@@ -154,9 +155,13 @@ jobs:
             --null-permutations 3 \
             --min-fingerprint-coverage 0.8
           python ml/assert_wbf_trainer_smoke.py --artifact /tmp/wbf-trainer-smoke.json
-          python ml/attach_wbf_feature_reference.py \
+          PYTHONPATH=ml python ml/attach_wbf_feature_reference.py \
             --model /tmp/wbf-trainer-smoke.joblib \
             --features-csv /tmp/wbf-trainer-smoke.csv
+          PYTHONPATH=ml python ml/predict_wbf_fingerprint_model.py \
+            --model /tmp/wbf-trainer-smoke.joblib \
+            --features-csv /tmp/wbf-trainer-smoke.csv \
+            --output /tmp/wbf-smoke-predictions.csv
           python ml/test_wbf_group_conformal.py
           python ml/smoke_wbf_longitudinal_classifier.py
       - name: Run existing Axion regressions
