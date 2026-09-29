@@ -231,9 +231,19 @@ export function createAdventureScene(canvas, definition, { video = null } = {}) 
         sprite(state.movement>.2?2:0,x+lane*state.movement*w*.15-size/2,h*.7-size-Math.sin(state.movement*Math.PI)*h*.2,size,size);
       }else{
         sprite(0,x-size/2,h*.72-size,size,size);
-        const ty=(.78-.55*gameTarget(definition,state.obstaclePattern))*h;
-        sprite(7,w*.78,ty-size*.3,size*.65,size*.65);
-        ctx.strokeStyle='#c6f9ff';ctx.lineWidth=Math.max(3,w*.005);ctx.shadowColor='#50cfff';ctx.shadowBlur=effects==='full'&&mean<=12?20:0;ctx.beginPath();ctx.moveTo(x+size*.25,h*.62);ctx.lineTo(w*.8,y);ctx.stroke();ctx.shadowBlur=0;
+        if(definition.exerciseKey==='chin_tuck'&&state.guidedCadence){
+          const guideY=h*(.28+.44*state.guideTarget),userY=h*(.28+.44*state.movement);
+          sprite(7,w*.78,guideY-size*.3,size*.65,size*.65);
+          ctx.strokeStyle='#f6d98d';ctx.lineWidth=Math.max(4,w*.006);ctx.shadowColor='#f6c95d';ctx.shadowBlur=effects==='full'&&mean<=12?18:0;ctx.setLineDash([10,8]);ctx.beginPath();ctx.moveTo(x+size*.25,h*.62);ctx.lineTo(w*.8,guideY);ctx.stroke();ctx.setLineDash([]);
+          ctx.strokeStyle='#c6f9ff';ctx.lineWidth=Math.max(3,w*.0045);ctx.shadowColor='#50cfff';ctx.shadowBlur=effects==='full'&&mean<=12?14:0;ctx.beginPath();ctx.moveTo(x+size*.25,h*.62);ctx.lineTo(w*.8,userY);ctx.stroke();ctx.shadowBlur=0;
+          ctx.fillStyle='rgba(7,18,28,.78)';ctx.fillRect(w*.36,h*.08,w*.28,h*.09);
+          ctx.fillStyle='#f8edc8';ctx.textAlign='center';ctx.font=`700 ${Math.max(12,w*.018)}px sans-serif`;
+          ctx.fillText(`${state.guidePhase==='down'?'TUCK':'RETURN'} · ${state.guideSecondsRemaining.toFixed(1)}s`,w*.5,h*.135);
+        }else{
+          const ty=(.78-.55*gameTarget(definition,state.obstaclePattern))*h;
+          sprite(7,w*.78,ty-size*.3,size*.65,size*.65);
+          ctx.strokeStyle='#c6f9ff';ctx.lineWidth=Math.max(3,w*.005);ctx.shadowColor='#50cfff';ctx.shadowBlur=effects==='full'&&mean<=12?20:0;ctx.beginPath();ctx.moveTo(x+size*.25,h*.62);ctx.lineTo(w*.8,y);ctx.stroke();ctx.shadowBlur=0;
+        }
       }
       if(effects!=='minimal')drawBeaconRestoration(ctx,definition.story,w,h,state.progress,reduced||effects==='low');
       const particleCount=reduced?0:effects==='full'?18:effects==='reduced'?8:0;
