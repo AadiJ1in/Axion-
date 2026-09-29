@@ -105,6 +105,8 @@ jobs:
           python -m py_compile ml/train_wbf_fingerprint_model.py
           python -m py_compile ml/train_wbf_fingerprint_model_v3.py
           python -m py_compile ml/predict_wbf_fingerprint_model.py
+          python -m py_compile ml/assess_wbf_release_readiness.py
+          python -m py_compile ml/test_wbf_release_readiness.py
           python -m py_compile ml/train_wbf_longitudinal_classifier.py
           python -m py_compile ml/smoke_wbf_longitudinal_classifier.py
           python -m py_compile ml/wbf_group_conformal.py
@@ -128,6 +130,7 @@ jobs:
           python ml/test_wbf_feature_families.py
           python ml/test_wbf_regression_conformal.py
           python ml/test_predict_wbf_fingerprint_model.py
+          PYTHONPATH=ml python ml/test_wbf_release_readiness.py
           python ml/generate_wbf_trainer_smoke_fixture.py --output /tmp/wbf-trainer-smoke.csv
           python ml/audit_wbf_fingerprint_features.py \
             --features-csv /tmp/wbf-trainer-smoke.csv \
