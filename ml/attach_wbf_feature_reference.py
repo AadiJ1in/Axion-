@@ -25,6 +25,9 @@ def parse_args():
     p.add_argument("--eligibility-column", default="research_model_eligible")
     p.add_argument("--minimum-reference-coverage", type=float, default=0.50)
     p.add_argument("--minimum-scale", type=float, default=1e-8)
+    p.add_argument("--max-robust-z", type=float, default=6.0)
+    p.add_argument("--max-outlier-fraction", type=float, default=0.15)
+    p.add_argument("--min-reference-feature-fraction", type=float, default=0.70)
     return p.parse_args()
 
 
@@ -37,31 +40,28 @@ def robust_feature_reference(frame, columns, *, minimum_reference_coverage, mini
     row_count = len(frame)
     for column in columns:
         values = pd.to_numeric(frame[column], errors="coerce") if column in frame.columns else pd.Series(dtype=float)
-        finite = values[np.isfinite(values.to_numpy(dtype=float, na_value=np.nan))] if len(values) else values
-        coverage = float(len(finite) / row_count) if row_count else 0.0
-        if len(finite) < 3 or coverage < minimum_reference_coverage:
-            output[column] = {
-                "status": "unavailable",
-                "coverage": coverage,
-                "n": int(len(finite)),
-            }
+        array = values.to_numpy(dtype=float, na_value=np.nan) if len(values) else np.asarray([], dtype=float)
+        finite_values = values[np.isfinite(array)] if len(values) else values
+        coverage = float(len(finite_values) / row_count) if row_count else 0.0
+        if len(finite_values) < 3 or coverage < minimum_reference_coverage:
+            output[column] = {"status": "unavailable", "coverage": coverage, "n": int(len(finite_values))}
             continue
-        q1 = float(finite.quantile(0.25))
-        median = float(finite.quantile(0.50))
-        q3 = float(finite.quantile(0.75))
+        q1 = float(finite_values.quantile(0.25))
+        median = float(finite_values.quantile(0.50))
+        q3 = float(finite_values.quantile(0.75))
         iqr = q3 - q1
         robust_sigma = iqr / 1.349 if iqr > minimum_scale else minimum_scale
         output[column] = {
             "status": "available",
-            "n": int(len(finite)),
+            "n": int(len(finite_values)),
             "coverage": coverage,
             "median": median,
             "q1": q1,
             "q3": q3,
             "iqr": iqr,
             "robustSigmaFromIqr": max(float(robust_sigma), minimum_scale),
-            "min": float(finite.min()),
-            "max": float(finite.max()),
+            "min": float(finite_values.min()),
+            "max": float(finite_values.max()),
         }
     return output
 
@@ -99,12 +99,9 @@ def main():
     if len(frame) < 8:
         raise SystemExit("At least 8 eligible training rows are required for a feature reference")
 
-    reference = robust_feature_reference(
-        frame,
-        selected,
+    reference = robust_feature_reference(frame, selected,
         minimum_reference_coverage=args.minimum_reference_coverage,
-        minimum_scale=args.minimum_scale,
-    )
+        minimum_scale=args.minimum_scale)
     available = sum(block.get("status") == "available" for block in reference.values())
     artifact["trainingFeatureReference"] = {
         "schemaVersion": 1,
@@ -118,15 +115,17 @@ def main():
         "features": reference,
         "interpretation": "Robust medians/IQRs summarize the model development distribution for extrapolation screening only. They are not healthy/abnormal reference ranges.",
     }
+    artifact["inferenceRequirements"] = {
+        **requirements,
+        "trainingDistributionReferenceRequired": True,
+        "maximumRobustZ": float(args.max_robust_z),
+        "maximumOutlierFeatureFraction": float(args.max_outlier_fraction),
+        "minimumReferenceFeatureFraction": float(args.min_reference_feature_fraction),
+    }
     output = args.output or args.model
     output.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(artifact, output)
-    print({
-        "output": str(output),
-        "trainingRows": len(frame),
-        "selectedFeatures": len(selected),
-        "availableReferenceFeatures": available,
-    })
+    print({"output": str(output), "trainingRows": len(frame), "selectedFeatures": len(selected), "availableReferenceFeatures": available})
 
 
 if __name__ == "__main__":
