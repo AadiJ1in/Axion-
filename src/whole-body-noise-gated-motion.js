@@ -8,9 +8,10 @@ import { WHOLE_BODY_FEATURES_V1 } from "./whole-body-biomechanics.js";
 // tracker-noise floor. No raw images or landmark coordinates are persisted.
 //
 // For an observed adjacent step d and a stationary empirical noise threshold n, the
-// retained step is sqrt(max(d^2 - n^2, 0)) when d > n, otherwise zero. This is a
-// conservative variance-deconvolution style engineering descriptor; it is not a
-// physiological denoiser and not a clinical threshold.
+// retained step is sqrt(max(d^2 - n^2, 0)) when d > n, otherwise zero. The threshold
+// is scaled by the current inter-frame duration using calibration velocity when
+// available, reducing sensitivity to variable frame timing. This is an engineering
+// descriptor, not a physiological denoiser or clinical threshold.
 
 export const WHOLE_BODY_NOISE_GATED_MOTION_SCHEMA_VERSION = 1;
 
@@ -25,7 +26,14 @@ const round = (value, digits = 6) => {
   return Math.round(n * factor) / factor;
 };
 
-function thresholdFor(calibration, feature) {
+function median(values) {
+  const usable = values.map(finite).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!usable.length) return null;
+  const middle = Math.floor(usable.length / 2);
+  return usable.length % 2 ? usable[middle] : (usable[middle - 1] + usable[middle]) / 2;
+}
+
+function baseStepThreshold(calibration, feature) {
   if (calibration?.status !== "available") return null;
   const block = calibration?.features?.[feature];
   if (!block) return null;
@@ -33,6 +41,17 @@ function thresholdFor(calibration, feature) {
   const robustAllowance = finite(block.stepNoiseAllowance);
   const values = [empirical95, robustAllowance].filter(Number.isFinite);
   return values.length ? Math.max(...values) : null;
+}
+
+function stepThresholdForDt(calibration, feature, dtSeconds) {
+  if (calibration?.status !== "available") return null;
+  const block = calibration?.features?.[feature];
+  if (!block) return null;
+  const velocityP95 = finite(block.velocityP95);
+  if (Number.isFinite(velocityP95) && Number.isFinite(dtSeconds) && dtSeconds > 0) {
+    return Math.max(0, velocityP95 * dtSeconds);
+  }
+  return baseStepThreshold(calibration, feature);
 }
 
 function amplitudeFloor(calibration, feature) {
@@ -45,9 +64,8 @@ function amplitudeFloor(calibration, feature) {
 function summarizeNoiseGatedTrajectory(samples, calibration, feature) {
   const usable = samples.filter((sample) => Number.isFinite(sample.value));
   if (usable.length < 2) return null;
-  const stepThreshold = thresholdFor(calibration, feature);
   const featureAmplitudeFloor = amplitudeFloor(calibration, feature);
-  if (!Number.isFinite(stepThreshold)) {
+  if (calibration?.status !== "available" || !calibration?.features?.[feature]) {
     return {
       status: "unavailable",
       reason: "feature_noise_floor_unavailable",
@@ -60,8 +78,15 @@ function summarizeNoiseGatedTrajectory(samples, calibration, feature) {
   let supraThresholdSteps = 0;
   let validSteps = 0;
   const gatedVelocities = [];
+  const thresholds = [];
   for (let index = 1; index < usable.length; index += 1) {
     const step = Math.abs(usable[index].value - usable[index - 1].value);
+    const dtSeconds = Number.isFinite(usable[index].timestampMs) && Number.isFinite(usable[index - 1].timestampMs)
+      ? (usable[index].timestampMs - usable[index - 1].timestampMs) / 1000
+      : null;
+    const stepThreshold = stepThresholdForDt(calibration, feature, dtSeconds);
+    if (!Number.isFinite(stepThreshold)) continue;
+    thresholds.push(stepThreshold);
     rawPath += step;
     validSteps += 1;
     const retained = step > stepThreshold
@@ -69,12 +94,16 @@ function summarizeNoiseGatedTrajectory(samples, calibration, feature) {
       : 0;
     if (retained > 0) supraThresholdSteps += 1;
     gatedPath += retained;
-    const dtSeconds = Number.isFinite(usable[index].timestampMs) && Number.isFinite(usable[index - 1].timestampMs)
-      ? (usable[index].timestampMs - usable[index - 1].timestampMs) / 1000
-      : null;
     if (retained > 0 && Number.isFinite(dtSeconds) && dtSeconds > 0) {
       gatedVelocities.push(retained / dtSeconds);
     }
+  }
+  if (!validSteps) {
+    return {
+      status: "unavailable",
+      reason: "invalid_frame_timing_for_noise_gating",
+      samples: usable.length,
+    };
   }
 
   const durationSeconds = Number.isFinite(usable[0].timestampMs) && Number.isFinite(usable.at(-1).timestampMs)
@@ -96,7 +125,7 @@ function summarizeNoiseGatedTrajectory(samples, calibration, feature) {
     status: "available",
     samples: usable.length,
     validSteps,
-    stepNoiseThreshold: round(stepThreshold),
+    medianStepNoiseThreshold: round(median(thresholds)),
     amplitudeNoiseFloor: round(featureAmplitudeFloor),
     supraThresholdSteps,
     supraThresholdStepFraction: validSteps ? round(supraThresholdSteps / validSteps) : null,
