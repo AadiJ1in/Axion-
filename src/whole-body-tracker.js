@@ -5,14 +5,9 @@ import {
 } from "./whole-body-biomechanics.js";
 import { resolveWholeBodyMovementIntent } from "./whole-body-movement-intent.js";
 import { summarizeWholeBodyMovementDistributionV2 } from "./whole-body-distribution-v2.js";
-import {
-  createWholeBodyMotionAccumulator,
-  summarizeWholeBodyMotionStatistics,
-} from "./whole-body-motion-statistics.js";
-import {
-  applyWholeBodyNoiseCalibration,
-  buildWholeBodyNoiseCalibration,
-} from "./whole-body-noise-calibration.js";
+import { summarizeWholeBodyMotionStatistics } from "./whole-body-motion-statistics.js";
+import { createNoiseGatedWholeBodyMotionAccumulator } from "./whole-body-noise-gated-motion.js";
+import { buildWholeBodyNoiseCalibration } from "./whole-body-noise-calibration.js";
 import { summarizeWholeBodyNoiseResolution } from "./whole-body-noise-resolution.js";
 import { summarizeNoiseAwareWholeBodyAsymmetry } from "./whole-body-noise-aware-asymmetry.js";
 import {
@@ -50,7 +45,9 @@ export async function createWholeBodyMovementTracker(options = {}) {
   const calibrationFrames = [];
   const activeRepFrames = [];
   const completed = [];
-  const accumulator = createWholeBodyMotionAccumulator();
+  const accumulator = createNoiseGatedWholeBodyMotionAccumulator({
+    getNoiseCalibration: () => noiseCalibration,
+  });
 
   function finalizeNoiseCalibration() {
     if (calibrationFrozen) return noiseCalibration;
@@ -101,18 +98,17 @@ export async function createWholeBodyMovementTracker(options = {}) {
       onUpdate(update);
     },
     onRep(rep, history) {
-      const rawWholeBody = activeRep ? accumulator.finish(performance.now()) : null;
+      const wholeBody = activeRep ? accumulator.finish(performance.now()) : null;
       const bilateralCoordination = activeRepFrames.length
         ? analyzeWholeBodyBilateralCoordinationFrames(activeRepFrames)
         : null;
-      const calibratedWholeBody = rawWholeBody ? applyWholeBodyNoiseCalibration(rawWholeBody, noiseCalibration) : null;
-      const wholeBody = calibratedWholeBody
-        ? { ...calibratedWholeBody, bilateralCoordination }
+      const enrichedWholeBody = wholeBody
+        ? { ...wholeBody, bilateralCoordination }
         : null;
       activeRep = false;
       activeRepFrames.length = 0;
       accumulator.reset();
-      const enriched = wholeBody ? { ...rep, wholeBody } : { ...rep };
+      const enriched = enrichedWholeBody ? { ...rep, wholeBody: enrichedWholeBody } : { ...rep };
       completed.push(enriched);
       const enrichedHistory = history.map((item) => {
         const match = completed.find((candidate) => candidate.index === item.index);
