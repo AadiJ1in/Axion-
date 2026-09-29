@@ -22,6 +22,8 @@ export function assignmentDetails(assignment = {}) {
     exercise_mode: assignment.exercise_mode === "movement_game" ? "movement_game" : "standard",
     prescribed_side: ["left", "right"].includes(assignment.prescribed_side) ? assignment.prescribed_side : "either",
     rest_seconds: Math.max(0, Number(assignment.rest_seconds ?? 60) || 0),
+    game_phase_down_seconds: Math.max(1, Math.min(30, Number(assignment.game_phase_down_seconds) || 3)),
+    game_phase_up_seconds: Math.max(1, Math.min(30, Number(assignment.game_phase_up_seconds) || 3)),
     focus: catalog.focus || ["Range", "Rhythm", "Control"],
     joint: catalog.joint || "knee",
     region: catalog.region || "General",
@@ -72,7 +74,7 @@ export async function loadPatientWorkspace(client, userId) {
     plan = planResult.data;
     if (plan) {
       const [assignmentResult, roadmapResult, nodeResult, nodeAssignmentResult, completionResult] = await Promise.all([
-        client.from("exercise_assignments").select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, rest_seconds, prescribed_side, target_sets, target_repetitions, duration_seconds, instructions, status, created_at, updated_at").eq("plan_id", plan.id).eq("status", "active").order("sequence"),
+        client.from("exercise_assignments").select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, rest_seconds, prescribed_side, game_phase_down_seconds, game_phase_up_seconds, target_sets, target_repetitions, duration_seconds, instructions, status, created_at, updated_at").eq("plan_id", plan.id).eq("status", "active").order("sequence"),
         client.from("roadmap_stages").select("id, plan_id, stage_number, title, detail, status, unlock_after_sessions").eq("plan_id", plan.id).order("stage_number"),
         client.from("roadmap_nodes").select("id, plan_id, session_number, week_number, session_in_week, biome, title, detail, target_date, unlock_override, override_reason, overridden_at, created_at, updated_at").eq("plan_id", plan.id).order("session_number"),
         client.from("roadmap_node_assignments").select("roadmap_node_id, assignment_id, sequence").order("sequence"),
@@ -184,7 +186,7 @@ export async function loadTherapistWorkspace(client, therapistId, patientIds = [
   const assignments = planIds.length
     ? await throwIfError(
       await client.from("exercise_assignments")
-        .select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, rest_seconds, prescribed_side, target_sets, target_repetitions, duration_seconds, instructions, status, created_at, updated_at")
+        .select("id, plan_id, exercise_key, display_name, sequence, tracking_mode, exercise_mode, rest_seconds, prescribed_side, game_phase_down_seconds, game_phase_up_seconds, target_sets, target_repetitions, duration_seconds, instructions, status, created_at, updated_at")
         .in("plan_id", planIds)
         .order("sequence"),
       "Could not load roadmap exercises"
@@ -358,12 +360,14 @@ export async function createPersonalPlan(client, therapistId, patientId, input) 
       exercise_mode: item.exerciseMode === "movement_game" && getAdventureDefinition(item.exerciseKey) ? "movement_game" : "standard",
       prescribed_side: ["left", "right"].includes(item.prescribedSide) ? item.prescribedSide : "either",
       rest_seconds: item.restEnabled === false ? 0 : Math.max(5, Math.min(900, Number(item.restSeconds) || 60)),
+      game_phase_down_seconds: item.exerciseKey === "chin_tuck" ? Math.max(1, Math.min(30, Number(item.gamePhaseDownSeconds) || 3)) : 3,
+      game_phase_up_seconds: item.exerciseKey === "chin_tuck" ? Math.max(1, Math.min(30, Number(item.gamePhaseUpSeconds) || 3)) : 3,
     };
   });
   if (!exercises.length) throw new Error("Choose at least one supported exercise.");
   if (exercises.length > 12) throw new Error("Choose no more than 12 exercises for one roadmap.");
   return throwIfError(
-    await client.rpc("publish_patient_plan_v6", {
+    await client.rpc("publish_patient_plan_v7", {
       p_patient_id: patientId,
       p_title: input.title.trim() || "Personal recovery roadmap",
       p_program_label: input.programLabel.trim() || "Personal recovery plan",

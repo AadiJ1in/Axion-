@@ -8,6 +8,11 @@ export const MOVEMENT_EVENT = Object.freeze({
 });
 export const getMovementGameMapping = getAdventureDefinition;
 
+export function normalizeGamePhaseSeconds(value, fallback = 3) {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) ? Math.max(1, Math.min(30, seconds)) : fallback;
+}
+
 export function movementGameStory(completed, target, mapping) {
   const progress = target ? Math.min(1, completed / target) : 0;
   const story = mapping?.story;
@@ -34,11 +39,15 @@ export function movementGameStory(completed, target, mapping) {
 
 export function createMovementGameController({
   exerciseKey, targetReps=0, targetHoldSeconds=0, liveCamera=false, runnerMode=false,
+  phaseDownSeconds=3, phaseUpSeconds=3,
   now=()=>performance.now(), onState=()=>{}
 }) {
   const mapping = getMovementGameMapping(exerciseKey);
   const clinicalTarget = Math.max(0, Number(targetReps) || 0);
   const holdTargetSeconds = Math.max(0, Number(targetHoldSeconds) || 0);
+  const guidedCadence = exerciseKey === 'chin_tuck';
+  const downSeconds = normalizeGamePhaseSeconds(phaseDownSeconds);
+  const upSeconds = normalizeGamePhaseSeconds(phaseUpSeconds);
   let runner = runnerMode && exerciseKey === 'bodyweight_squat' ? createRuinsRunner() : null;
   const camera = !runner && liveCamera && exerciseKey === 'bodyweight_squat' ? createSquatCameraControl() : null;
   let state;
@@ -47,7 +56,9 @@ export function createMovementGameController({
     exerciseKey,mapping,mode:'standard',gameDifficulty:'standard',clinicalTarget,holdTargetSeconds,
     completed:0,remaining:clinicalTarget,movement:0,rawMovement:0,runnerY:25,obstacleX:108,obstaclePattern:0,
     attemptActive:false,attemptCollided:false,obstacleResolved:false,collisions:0,collectibles:0,score:0,
-    combo:0,paused:false,safetyFlagged:false,lastOutcome:null,side:null,elapsed:0,stars:0,latestDebugTiming:null
+    combo:0,paused:false,safetyFlagged:false,lastOutcome:null,side:null,elapsed:0,stars:0,latestDebugTiming:null,
+    trackingReady:false,guidedCadence,phaseDownSeconds:downSeconds,phaseUpSeconds:upSeconds,
+    guideElapsed:0,guideTarget:0,guidePhase:'down',guideSecondsRemaining:downSeconds
   });
   state = initial();
 
@@ -77,7 +88,12 @@ export function createMovementGameController({
   const api = {
     getState:snapshot,
     updateCameraPose(points){ if(!state.paused) camera?.pose(points,now()); },
-    setCameraReady(ready){ camera?.setReady(ready); runner?.ready(ready); },
+    setCameraReady(ready){
+      const next=Boolean(ready);
+      if(next&&!state.trackingReady)state.guideElapsed=0;
+      state.trackingReady=next;
+      camera?.setReady(next);runner?.ready(next);
+    },
     resetCamera(){ camera?.reset(); if(runner) runner=createRuinsRunner(); },
     setMode(mode){ state.mode=mode==='game' && mapping?'game':'standard'; return publish(); },
     setGameDifficulty(level){ if(['gentle','standard','lively'].includes(level)) state.gameDifficulty=level; return publish(); },
@@ -90,6 +106,19 @@ export function createMovementGameController({
     },
     tick(deltaMs){
       if(state.mode!=='game'||state.paused||state.completed>=clinicalTarget) return snapshot();
+      const dt=Math.min(80,Math.max(0,Number(deltaMs)||0));
+      if(state.guidedCadence&&state.trackingReady){
+        const downMs=state.phaseDownSeconds*1000,upMs=state.phaseUpSeconds*1000,cycleMs=downMs+upMs;
+        state.guideElapsed=(state.guideElapsed+dt)%cycleMs;
+        if(state.guideElapsed<downMs){
+          state.guidePhase='down';state.guideTarget=state.guideElapsed/downMs;
+          state.guideSecondsRemaining=Math.max(0,(downMs-state.guideElapsed)/1000);
+        }else{
+          const elapsedUp=state.guideElapsed-downMs;
+          state.guidePhase='up';state.guideTarget=1-(elapsedUp/upMs);
+          state.guideSecondsRemaining=Math.max(0,(upMs-elapsedUp)/1000);
+        }
+      }
       if(runner){
         const outcome=runner.tick(deltaMs,now());
         if(outcome==='collision'){state.attemptCollided=true;state.collisions++;state.combo=0;state.score=Math.max(0,state.score-25);state.lastOutcome='collision';return publish();}
@@ -98,7 +127,6 @@ export function createMovementGameController({
       }
       if(!state.attemptActive) return snapshot();
       if(camera) return snapshot();
-      const dt=Math.min(80,Math.max(0,Number(deltaMs)||0));
       state.elapsed+=dt;
       state.obstacleX-=({gentle:6,standard:9,lively:11}[state.gameDifficulty])*dt/1000;
       if(!state.obstacleResolved && state.obstacleX<=28){

@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "../src/movement-game.js";
+import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT, normalizeGamePhaseSeconds } from "../src/movement-game.js";
 import { motionInput } from "../src/adventure-definitions.js";
 
 assert.equal(getMovementGameMapping("bodyweight_squat").action, "duck");
 assert.equal(getMovementGameMapping("chin_tuck").title, "Signal Alignment", "neck reps receive the signal-alignment game family");
 assert.equal(getMovementGameMapping("upper_trap_stretch").title, "Hold the Signal", "neck holds receive the matching hold game");
 assert.equal(getMovementGameMapping("unknown_exercise"), null, "unknown exercise ids never silently become games");
+assert.equal(normalizeGamePhaseSeconds(0), 1);
+assert.equal(normalizeGamePhaseSeconds(99), 30);
 
 const controller = createMovementGameController({ exerciseKey: "bodyweight_squat", targetReps: 10 });
 controller.setMode("game");
@@ -53,6 +55,16 @@ fallback.consume({ type: MOVEMENT_EVENT.MOVEMENT_PROGRESS, progress: 0.8, stage:
 assert.equal(fallback.getState().completed, 0, "continuous exercise-game motion cannot create a clinical rep");
 fallback.consume({ type: MOVEMENT_EVENT.REP_COMPLETE });
 assert.equal(fallback.getState().completed, 1, "a validated rep advances the exercise game once");
+
+const cadence = createMovementGameController({ exerciseKey: "chin_tuck", targetReps: 2, phaseDownSeconds: 3, phaseUpSeconds: 3 });
+cadence.setMode("game");
+cadence.setCameraReady(true);
+for (let index = 0; index < 19; index += 1) cadence.tick(80);
+assert.equal(cadence.getState().guidePhase, "down");
+assert.ok(Math.abs(cadence.getState().guideTarget - .5) < .03, "chin-tuck guide moves halfway down after half the therapist-set tuck phase");
+for (let index = 0; index < 20; index += 1) cadence.tick(80);
+assert.equal(cadence.getState().guidePhase, "up", "chin-tuck guide reverses after the therapist-set tuck phase");
+assert.equal(cadence.getState().completed, 0, "paced beam animation cannot create a clinical repetition");
 
 const hold = createMovementGameController({ exerciseKey: "upper_trap_stretch", targetReps: 2, targetHoldSeconds: 20 });
 hold.setMode("game");

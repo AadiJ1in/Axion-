@@ -66,10 +66,20 @@ html[data-axion-patient-section="journey"] .patient-portal .ui-journey-intro{mar
 .patient-portal[data-ui-patient-today="true"] .daily-goal-card h3{font-size:1.05rem!important}
 
 /* Progress: prioritize understandable trends over opaque scoring. */
-.report-page[data-ui-patient-progress="true"] .pulse-banner{border-radius:16px!important}
-.report-page[data-ui-patient-progress="true"] .pulse-score{width:76px!important;height:76px!important}
+.report-page[data-ui-patient-progress="true"] .pulse-banner{border-radius:16px!important;column-gap:1.6rem!important}
+.report-page[data-ui-patient-progress="true"] .pulse-score{width:104px!important;height:104px!important}
 .report-page[data-ui-patient-progress="true"] .pulse-score b{font-size:1.45rem!important}
+.report-page[data-ui-patient-progress="true"] .pulse-score>span{gap:.28rem;place-items:center}
+.report-page[data-ui-patient-progress="true"] .pulse-score small{
+  width:78px;
+  font-size:.625rem!important;
+  line-height:1.25;
+  letter-spacing:.08em;
+  white-space:normal;
+  text-wrap:balance;
+}
 .report-page[data-ui-patient-progress="true"] .pulse-copy h2{font-size:1.15rem!important}
+.report-page[data-ui-patient-progress="true"] .pulse-copy p{margin-top:.55rem!important}
 .report-page[data-ui-patient-progress="true"] .analysis-grid{gap:.7rem}
 .report-page[data-ui-patient-progress="true"] .analysis-grid>article{box-shadow:none!important}
 

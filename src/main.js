@@ -1328,7 +1328,10 @@ function prescriptionTarget(exercise) {
   const dose = exercise.tracking_mode === "timed_hold"
     ? `${exercise.target_sets || 1} sets · ${exercise.duration_seconds || 30}s hold`
     : `${exercise.target_sets || 1} sets · ${exercise.target_repetitions || 10} reps`;
-  return `${dose}${Number(exercise.rest_seconds || 0) > 0 && Number(exercise.target_sets || 1) > 1 ? ` · ${exercise.rest_seconds}s rest` : ""}`;
+  const cadence = exercise.exercise_key === "chin_tuck"
+    ? ` · ${exercise.game_phase_down_seconds || 3}s tuck / ${exercise.game_phase_up_seconds || 3}s return`
+    : "";
+  return `${dose}${cadence}${Number(exercise.rest_seconds || 0) > 0 && Number(exercise.target_sets || 1) > 1 ? ` · ${exercise.rest_seconds}s rest` : ""}`;
 }
 
 function exercisePrescriptionRows() {
@@ -1350,6 +1353,7 @@ function exercisePrescriptionRows() {
         ? `<select class="prescription-mode" ${index === 0 ? "" : "disabled"}><option value="movement_game">Movement Game</option><option value="standard">Standard</option></select>`
         : `<input class="prescription-mode" type="hidden" value="standard"/><em>Standard</em>`}</span>
       ${key === "forward_lunge" || key === "standing_shoulder_abduction" ? `<span class="dosage-control"><small>PRESCRIBED SIDE</small><select class="prescription-side" ${index === 0 ? "" : "disabled"}><option value="either">Either side</option><option value="left">Left</option><option value="right">Right</option></select></span>` : ""}
+      ${key === "chin_tuck" ? `<span class="dosage-control prescription-cadence-control"><small>TUCK PHASE</small><label><input class="prescription-phase-down" type="number" min="1" max="30" step="1" value="3" ${index === 0 ? "" : "disabled"}/><em>sec</em></label></span><span class="dosage-control prescription-cadence-control"><small>RETURN PHASE</small><label><input class="prescription-phase-up" type="number" min="1" max="30" step="1" value="3" ${index === 0 ? "" : "disabled"}/><em>sec</em></label></span>` : ""}
       <span class="dosage-control prescription-rest-control"><small>REST BETWEEN SETS</small><label><input class="prescription-rest-enabled" type="checkbox" checked ${index === 0 ? "" : "disabled"}/><input class="prescription-rest" type="number" min="5" max="900" value="60" ${index === 0 ? "" : "disabled"}/><em>sec</em></label></span>
     </div>`;
   }).join("");
@@ -1629,6 +1633,8 @@ async function submitPersonalPlan(event) {
         restEnabled: Boolean(row.querySelector(".prescription-rest-enabled")?.checked),
         restSeconds: row.querySelector(".prescription-rest")?.value || 0,
         prescribedSide: row.querySelector(".prescription-side")?.value || "either",
+        gamePhaseDownSeconds: row.querySelector(".prescription-phase-down")?.value || 3,
+        gamePhaseUpSeconds: row.querySelector(".prescription-phase-up")?.value || 3,
       }));
     const patientSelect = document.querySelector("#plan-patient");
     const patientId = patientSelect.value;
@@ -2069,6 +2075,8 @@ async function initializeLab() {
     exerciseKey: currentAssignment?.exercise_key || "bodyweight_squat",
     targetReps: demoScriptActive ? 5 : doseProgress(currentAssignment).total,
     targetHoldSeconds: currentAssignment?.tracking_mode === "timed_hold" ? (currentAssignment?.duration_seconds || 30) : 0,
+    phaseDownSeconds: currentAssignment?.game_phase_down_seconds || 3,
+    phaseUpSeconds: currentAssignment?.game_phase_up_seconds || 3,
     liveCamera: true,
     runnerMode: true,
     onState: renderMovementGameState,

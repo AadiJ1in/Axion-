@@ -1,5 +1,6 @@
 export function adventureMarkup(mapping, targetReps, assignment, escapeHtml) {
  const e=escapeHtml;const squat=mapping.action==='duck';const story=mapping.story||{};
+ const pacedChinTuck=mapping.exerciseKey==='chin_tuck';
  const missionTitle=story.title||mapping.title;
  const missionAct=story.act||'BEACON OF THE VALLEY';
  const briefing=story.briefing||mapping.instruction;
@@ -21,8 +22,8 @@ export function adventureMarkup(mapping, targetReps, assignment, escapeHtml) {
   </div>
   <div class="game-how-to" aria-label="How to play this movement game">
     <strong>HOW TO PLAY</strong>
-    <span><i>1</i><b>Move slowly through your prescribed range.</b> The glowing guide follows you; do not chase it.</span>
-    <span><i>2</i><b>Control the world with steady movement.</b> Small camera noise is smoothed so the game stays calm.</span>
+    <span><i>1</i><b>${pacedChinTuck ? `Follow the beam for the ${Number(assignment.game_phase_down_seconds)||3}-second tuck.` : 'Move slowly through your prescribed range.'}</b> ${pacedChinTuck ? 'Keep your eyes level and glide straight back.' : 'The glowing guide follows you; do not chase it.'}</span>
+    <span><i>2</i><b>${pacedChinTuck ? `Return as the beam rises for ${Number(assignment.game_phase_up_seconds)||3} seconds.` : 'Control the world with steady movement.'}</b> ${pacedChinTuck ? 'The therapist-set cadence repeats for every rep.' : 'Small camera noise is smoothed so the game stays calm.'}</span>
     <span><i>3</i><b>Only a valid Axion rep advances therapy.</b> Game score and tokens are optional.</span>
     <span><i>4</i><b>Between sets, rest.</b> A countdown tells you exactly when the next set begins.</span>
   </div>
@@ -33,7 +34,7 @@ export function adventureMarkup(mapping, targetReps, assignment, escapeHtml) {
     <div id="game-feedback" class="game-feedback" role="status">${squat ? "Starting camera and movement calibration…" : "Move slowly when tracking says ready"}</div>
     <div id="game-completion" class="game-completion hidden"><div><small>MISSION RESTORED</small><b>${e(missionTitle)} complete</b><p>${e(completion)}</p><p>${assignment.target_sets || 1} sets · ${targetReps} valid clinical completions</p><strong id="adventure-stars"></strong><p id="adventure-reward"></p><button type="button" class="button button--primary" id="adventure-save">Save journey</button></div></div>
    </div>
-   <div class="game-hud"><div><small>SET</small><b><span id="game-set">1</span> / ${assignment.target_sets||1}</b></div><div><small>REPS THIS SET</small><b><span id="game-set-reps">0</span> / ${assignment.target_repetitions||10}</b></div><div><small>REMAINING</small><b id="game-remaining">${targetReps}</b></div><div class="game-quality"><small>TRACKING</small><b id="game-quality">Waiting for camera</b></div><div><small>GAME SCORE</small><b id="game-score">0</b></div>${squat ? "" : `<div><small>RESTORATION TOKENS</small><b id="game-collectibles">0</b></div>`}<button id="game-pause" type="button">Pause</button></div>
+   <div class="game-hud"><div><small>SET</small><b><span id="game-set">1</span> / ${assignment.target_sets||1}</b></div><div><small>REPS THIS SET</small><b><span id="game-set-reps">0</span> / ${assignment.target_repetitions||10}</b></div><div><small>REMAINING</small><b id="game-remaining">${targetReps}</b></div>${pacedChinTuck ? `<div><small>GUIDED PACE</small><b>${Number(assignment.game_phase_down_seconds)||3}s tuck · ${Number(assignment.game_phase_up_seconds)||3}s return</b></div>` : ''}<div class="game-quality"><small>TRACKING</small><b id="game-quality">Waiting for camera</b></div><div><small>GAME SCORE</small><b id="game-score">0</b></div>${squat ? "" : `<div><small>RESTORATION TOKENS</small><b id="game-collectibles">0</b></div>`}<button id="game-pause" type="button">Pause</button></div>
    <div class="game-mission-progress"><span><i id="game-progress"></i></span><small id="game-status">Move steadily. Valid clinical reps advance the mission; game score never changes your therapy count.</small></div>
   </div></section>`;
 }

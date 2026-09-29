@@ -758,6 +758,8 @@
 .prescription-mode-control select{min-height:36px;padding:.45rem;border:1px solid rgba(139,114,255,.3);border-radius:6px;background:#101824;color:#d8d1ff;font-size:.54rem}
 .prescription-mode-control em{min-height:36px;display:flex;align-items:center;color:#71847d;font-size:.52rem;font-style:normal}
 .prescription-rest-control label{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.35rem}.prescription-rest-control label>input[type="checkbox"]{width:17px!important;height:17px;accent-color:var(--mint)}.prescription-rest-control label>.prescription-rest{min-width:0;padding:.55rem!important}.prescription-rest-control label>em{color:#71847d;font-size:.5rem;font-style:normal}
+.prescription-cadence-control label{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.35rem}.prescription-cadence-control label input{min-width:0}.prescription-cadence-control label em{color:#71847d;font-size:.5rem;font-style:normal}
+.prescription-row[data-prescription-row="chin_tuck"]{grid-template-columns:auto minmax(180px,1fr) 78px 96px 130px 100px 100px 160px}
 .prescription-empty{grid-column:1/-1;min-height:230px;display:grid;place-items:center;align-content:center;gap:.55rem;padding:1.5rem;border:1px dashed var(--line-strong);border-radius:10px;text-align:center}
 .prescription-empty>span{color:#8a7bde}.prescription-empty b{font-size:.85rem}.prescription-empty p{max-width:460px;margin:0;font-size:.62rem}
 .path-plan-summary>em{color:#b5a9ff;font-size:.58rem;font-style:normal;text-align:right}
@@ -819,6 +821,7 @@
 #adventure-canvas{display:block;width:100%;height:100%}
 .adventure-card .game-feedback{font-size:1rem;bottom:5%;padding:.65rem 1rem;white-space:normal;width:max-content;max-width:85%;text-align:center}
 .adventure-card .game-hud{grid-template-columns:1fr 1fr 2fr 1fr 1fr auto;background:#0a1424}
+.adventure-card[data-gameplay="signal_alignment"] .game-hud{grid-template-columns:repeat(4,minmax(0,1fr))}
 .adventure-card .game-hud small{font-size:.72rem;color:#9eb6c9}
 .adventure-card .game-hud b{font-size:1.15rem;color:#e5f5ff}
 .adventure-card .game-hud button,.adventure-card .mode-switch button{min-height:44px;font-size:.88rem}
@@ -831,6 +834,8 @@
 .prescription-row input:focus-visible,.prescription-row select:focus-visible{outline:3px solid #9fcfff;outline-offset:2px}
 .prescription-empty.hidden,.set-rest-overlay.hidden{display:none!important}
 @media(max-width:700px){.adventure-card .game-hud{grid-template-columns:repeat(2,1fr)}.adventure-card .game-quality{grid-column:1/-1}.adventure-card .game-hud small{font-size:.75rem}.adventure-card .movement-game-heading h3{font-size:1.3rem}.adventure-card .movement-game-heading p{font-size:.9rem}.adventure-card .game-story-bar{padding:.75rem}.adventure-card .game-feedback{font-size:.9rem}.adventure-lab .set-rest-overlay{inset:10rem .5rem auto}.adventure-lab .capture-panel>.motion-stage{height:200px}.adventure-card .game-mission-progress{display:block}.adventure-card .game-mission-progress>span{display:block;margin-bottom:.5rem}}
+@media(max-width:1050px){.prescription-row[data-prescription-row="chin_tuck"]{grid-template-columns:auto minmax(0,1fr) 78px 96px}.prescription-cadence-control{grid-column:auto}}
+@media(max-width:680px){.prescription-row[data-prescription-row="chin_tuck"]{grid-template-columns:auto 1fr}.prescription-cadence-control{grid-column:2}}
 /* Isolate the full game from the legacy compact progress-bar selectors. */
 .adventure-card .movement-game-stage>div{height:auto;overflow:visible;border-radius:0;background:transparent}
 .adventure-card .movement-game-stage>.adventure-viewport{height:clamp(320px,50vw,590px);overflow:hidden;background:#101b30}
