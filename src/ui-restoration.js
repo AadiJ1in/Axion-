@@ -4,6 +4,7 @@ import "./ui-restoration-progress.css";
 let fallbackAnimation = 0;
 let trackedLabVideo = null;
 let resumeAfterVisibility = false;
+let cameraWasActiveBeforeVisibility = false;
 let lastFallbackRoot = null;
 
 function controller() {
@@ -171,16 +172,24 @@ function cleanupOrphanedCamera() {
   stopFallbackAnimation();
 }
 
-function recoverLabCameraIfNeeded() {
+function labCameraIsActive(page = document.querySelector(".lab-page")) {
+  if (!page) return false;
+  const video = page.querySelector("#camera");
+  const hasLiveTrack = Boolean(video?.srcObject?.getVideoTracks?.().some((track) => track.readyState === "live"));
+  const captureStatus = page.querySelector("#capture-status")?.textContent || "";
+  return hasLiveTrack || /CAMERA ACTIVE|MOVEMENT TRACKING/i.test(captureStatus);
+}
+
+function recoverLabCameraIfNeeded({ allowStart = false } = {}) {
   const page = document.querySelector(".lab-page");
-  if (!page || document.hidden) return;
+  if (!page || document.hidden || !allowStart) return;
   const video = page.querySelector("#camera");
   const hasLiveTrack = Boolean(video?.srcObject?.getVideoTracks?.().some((track) => track.readyState === "live"));
   if (hasLiveTrack) return;
   const recovery = page.querySelector("#retry-camera");
   const start = page.querySelector("#start-camera");
   window.setTimeout(() => {
-    if (!document.querySelector(".lab-page") || document.hidden) return;
+    if (!document.querySelector(".lab-page") || document.hidden || !allowStart) return;
     if (recovery && !recovery.closest(".hidden")) recovery.click();
     else if (start && !start.disabled) start.click();
   }, 160);
@@ -196,16 +205,18 @@ export function syncUiRestoration() {
   cleanupOrphanedCamera();
 }
 
-/* Capture phase runs before main.js's visibility listener, so we can distinguish an
-   automatic background pause from a pause the patient explicitly chose. */
+/* Capture phase runs before main.js's visibility listener. Only sessions whose
+   camera was already active may automatically resume camera access afterward. */
 document.addEventListener("visibilitychange", () => {
   const lab = document.querySelector(".lab-page");
   if (document.hidden) {
-    resumeAfterVisibility = Boolean(lab && controller()?.getState?.() && !controller().getState().paused);
+    cameraWasActiveBeforeVisibility = labCameraIsActive(lab);
+    resumeAfterVisibility = Boolean(cameraWasActiveBeforeVisibility && lab && controller()?.getState?.() && !controller().getState().paused);
     return;
   }
   if (!lab) {
     resumeAfterVisibility = false;
+    cameraWasActiveBeforeVisibility = false;
     return;
   }
   if (resumeAfterVisibility) {
@@ -216,15 +227,20 @@ document.addEventListener("visibilitychange", () => {
         const resume = document.querySelector("#session-pause,#game-pause");
         if (resume && /resume/i.test(resume.textContent || "")) resume.click();
       }
-      recoverLabCameraIfNeeded();
+      recoverLabCameraIfNeeded({ allowStart: cameraWasActiveBeforeVisibility });
       resumeAfterVisibility = false;
+      cameraWasActiveBeforeVisibility = false;
     }, 120);
-  } else recoverLabCameraIfNeeded();
+    return;
+  }
+  recoverLabCameraIfNeeded({ allowStart: cameraWasActiveBeforeVisibility });
+  cameraWasActiveBeforeVisibility = false;
 }, true);
 
 window.addEventListener("pageshow", () => {
+  // Re-apply presentation only. Camera access still requires a patient start or
+  // a visibility recovery from a session that was already actively using it.
   syncUiRestoration();
-  recoverLabCameraIfNeeded();
 });
 window.addEventListener("pagehide", () => {
   cleanupOrphanedCamera();
