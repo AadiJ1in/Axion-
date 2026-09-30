@@ -110,6 +110,8 @@ jobs:
           python -m py_compile ml/predict_wbf_fingerprint_model.py
           python -m py_compile ml/attach_wbf_feature_reference.py
           python -m py_compile ml/assess_wbf_release_readiness.py
+          python -m py_compile ml/build_wbf_shadow_bundle.py
+          python -m py_compile ml/verify_wbf_shadow_bundle.py
           python -m py_compile ml/test_wbf_release_readiness.py
           python -m py_compile ml/test_wbf_inference_ood_gate.py
           python -m py_compile ml/train_wbf_longitudinal_classifier.py
@@ -129,7 +131,7 @@ jobs:
           python -m py_compile ml/test_wbf_feature_families.py
           python -m py_compile ml/generate_wbf_trainer_smoke_fixture.py
           python -m py_compile ml/assert_wbf_trainer_smoke.py
-      - name: Run participant-balanced trainer smoke
+      - name: Run participant-balanced trainer and deployment-bundle smoke
         run: |
           python -m pip install --disable-pip-version-check --quiet -r ml/requirements-trainer.txt
           python ml/test_wbf_feature_families.py
@@ -162,6 +164,22 @@ jobs:
             --model /tmp/wbf-trainer-smoke.joblib \
             --features-csv /tmp/wbf-trainer-smoke.csv \
             --output /tmp/wbf-smoke-predictions.csv
+          PYTHONPATH=ml python ml/assess_wbf_release_readiness.py \
+            --artifact /tmp/wbf-trainer-smoke.json \
+            --output /tmp/wbf-shadow-readiness.json \
+            --mode research_shadow \
+            --min-participants 8 \
+            --min-folds 3 \
+            --min-relative-participant-mae-improvement 0.0 \
+            --max-null-fraction-at-or-below-observed 1.0 \
+            --coverage-tolerance 0.20
+          PYTHONPATH=ml python ml/build_wbf_shadow_bundle.py \
+            --model /tmp/wbf-trainer-smoke.joblib \
+            --evaluation /tmp/wbf-trainer-smoke.json \
+            --readiness /tmp/wbf-shadow-readiness.json \
+            --output-dir /tmp/wbf-shadow-bundle
+          PYTHONPATH=ml python ml/verify_wbf_shadow_bundle.py \
+            --bundle-dir /tmp/wbf-shadow-bundle
           python ml/test_wbf_group_conformal.py
           python ml/smoke_wbf_longitudinal_classifier.py
       - name: Run existing Axion regressions
