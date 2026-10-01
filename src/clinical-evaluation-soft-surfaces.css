@@ -1,0 +1,149 @@
+/* Softer, lower-glare surface palette for the Clinical Evaluations workspace. */
+.clinical-evaluation-panel{
+  --ce-surface-1:#dfe8e2;
+  --ce-surface-2:#d7e1db;
+  --ce-surface-3:#cfdad3;
+  --ce-surface-4:#c7d4cc;
+  --ce-border-soft:rgba(32,72,58,.16);
+  --ce-border-strong:rgba(27,81,61,.28);
+  --ce-text-soft:#17372d;
+  --ce-muted-soft:#536b61;
+}
+
+.clinical-evaluation-panel .clinical-eval-patient-label select,
+.clinical-evaluation-panel .clinical-eval-controls select,
+.clinical-evaluation-panel .clinical-eval-controls input,
+.clinical-evaluation-panel .clinical-longitudinal select{
+  background:linear-gradient(180deg,#dde7e1,#d4ded8);
+  color:var(--ce-text-soft);
+  border-color:var(--ce-border-soft);
+}
+
+.clinical-evaluation-panel .clinical-eval-card{
+  background:linear-gradient(145deg,#dfe8e2,#d3ddd7);
+  border-color:var(--ce-border-soft);
+  box-shadow:0 10px 24px rgba(0,0,0,.10);
+}
+.clinical-evaluation-panel .clinical-eval-card:hover{
+  background:linear-gradient(145deg,#e3ebe6,#d7e2dc);
+  border-color:var(--ce-border-strong);
+}
+.clinical-evaluation-panel .clinical-eval-card small{color:#3f6b5b}
+.clinical-evaluation-panel .clinical-eval-card b{color:#16382d}
+.clinical-evaluation-panel .clinical-eval-card span{color:#5c7067}
+.clinical-evaluation-panel .clinical-eval-card.active{
+  background:linear-gradient(145deg,#19493a,#10342a);
+  border-color:rgba(89,221,169,.52);
+}
+.clinical-evaluation-panel .clinical-eval-card.active small{color:#8fe1c1}
+.clinical-evaluation-panel .clinical-eval-card.active b{color:#f6fff9}
+.clinical-evaluation-panel .clinical-eval-card.active span{color:#bad0c7}
+
+.clinical-evaluation-panel .clinical-eval-runner,
+.clinical-evaluation-panel .clinical-eval-results,
+.clinical-evaluation-panel .clinical-eval-history,
+.clinical-evaluation-panel .clinical-longitudinal{
+  background:linear-gradient(150deg,var(--ce-surface-1),var(--ce-surface-2));
+  border-color:var(--ce-border-soft);
+  color:var(--ce-text-soft);
+  box-shadow:0 14px 34px rgba(0,0,0,.12);
+}
+.clinical-evaluation-panel .clinical-eval-runner{
+  background:linear-gradient(150deg,#e1e9e4,#d4dfd8);
+}
+.clinical-evaluation-panel .clinical-eval-results{
+  background:linear-gradient(150deg,#dce6e0,#d0dcd5);
+}
+
+.clinical-evaluation-panel .clinical-eval-runner h3,
+.clinical-evaluation-panel .clinical-eval-results h3,
+.clinical-evaluation-panel .clinical-eval-history h3,
+.clinical-evaluation-panel .clinical-longitudinal h3,
+.clinical-evaluation-panel .clinical-eval-section-title h4,
+.clinical-evaluation-panel .clinical-longitudinal-head b{
+  color:#17392e;
+}
+.clinical-evaluation-panel .clinical-eval-protocol,
+.clinical-evaluation-panel .clinical-eval-note,
+.clinical-evaluation-panel .clinical-eval-status,
+.clinical-evaluation-panel .clinical-longitudinal-head p,
+.clinical-evaluation-panel .clinical-eval-history-row small,
+.clinical-evaluation-panel .clinical-timeline-point small,
+.clinical-evaluation-panel .clinical-redistribution p{
+  color:var(--ce-muted-soft);
+}
+
+.clinical-evaluation-panel .clinical-eval-live div,
+.clinical-evaluation-panel .clinical-eval-metric{
+  background:#cad7cf;
+  border-color:rgba(31,73,58,.10);
+}
+.clinical-evaluation-panel .clinical-eval-live small,
+.clinical-evaluation-panel .clinical-eval-metric small{color:#61766c}
+.clinical-evaluation-panel .clinical-eval-live strong,
+.clinical-evaluation-panel .clinical-eval-metric strong{color:#173a2f}
+.clinical-evaluation-panel .clinical-eval-metric--primary{
+  background:linear-gradient(180deg,#cfe0d5,#c5d8cd);
+  border-color:rgba(31,90,66,.16);
+}
+
+.clinical-evaluation-panel .clinical-chain-node,
+.clinical-evaluation-panel .clinical-timeline-point,
+.clinical-evaluation-panel .clinical-longitudinal-card,
+.clinical-evaluation-panel .clinical-longitudinal-meta span{
+  background:var(--ce-surface-3);
+  border-color:rgba(31,73,58,.10);
+  color:var(--ce-text-soft);
+}
+.clinical-evaluation-panel .clinical-chain-node small,
+.clinical-evaluation-panel .clinical-longitudinal-card small{color:#536d62}
+.clinical-evaluation-panel .clinical-chain-node span,
+.clinical-evaluation-panel .clinical-longitudinal-card span{color:#6a7b74}
+.clinical-evaluation-panel .clinical-chain-node strong,
+.clinical-evaluation-panel .clinical-longitudinal-card strong{color:#18392f}
+
+.clinical-evaluation-panel .clinical-longitudinal-card--larger_difference{background:#ddd5cc}
+.clinical-evaluation-panel .clinical-longitudinal-card--smaller_difference{background:#cadbd1}
+.clinical-evaluation-panel .clinical-redistribution{
+  background:#ccd9d1;
+  border-color:rgba(29,85,63,.14);
+}
+
+.clinical-evaluation-panel .clinical-quality-badge{background:#c9d4ce;color:#435c52}
+.clinical-evaluation-panel .clinical-quality-badge--high{background:#c7dfd1;color:#175840}
+.clinical-evaluation-panel .clinical-quality-badge--moderate{background:#ddd9c5;color:#635d2c}
+.clinical-evaluation-panel .clinical-quality-badge--limited,
+.clinical-evaluation-panel .clinical-quality-badge--unavailable{background:#ddcecb;color:#744844}
+
+.clinical-evaluation-panel .clinical-eval-row{border-bottom-color:rgba(31,73,58,.10);color:#334f45}
+.clinical-evaluation-panel .clinical-eval-row span:first-child b{color:#23483a}
+.clinical-evaluation-panel .clinical-eval-row span:first-child small{color:#697b73}
+.clinical-evaluation-panel .clinical-eval-row--header{color:#5f746a}
+
+.clinical-evaluation-panel .clinical-eval-tug-clock{
+  background:#cbdad1;
+  color:#173a2f;
+}
+
+.clinical-evaluation-panel .button--ghost{
+  background:#cbd7d0;
+  color:#31564a;
+  border-color:rgba(20,61,48,.12);
+}
+
+.clinical-evaluation-panel .clinical-eval-boundary{
+  background:linear-gradient(135deg,#14483a,#0f3c31 52%,#123f35);
+  border-color:rgba(104,191,157,.20);
+  color:#edf8f3;
+}
+.clinical-evaluation-panel .clinical-eval-boundary b,
+.clinical-evaluation-panel .clinical-eval-boundary p{color:#edf8f3}
+
+@media(max-width:700px){
+  .clinical-evaluation-panel .clinical-eval-runner,
+  .clinical-evaluation-panel .clinical-eval-results,
+  .clinical-evaluation-panel .clinical-eval-history,
+  .clinical-evaluation-panel .clinical-longitudinal{
+    box-shadow:0 10px 24px rgba(0,0,0,.10);
+  }
+}
