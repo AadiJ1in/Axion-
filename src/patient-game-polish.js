@@ -17,6 +17,7 @@ import { syncClinicalValidationSurface } from "./clinical-validation-surface.js"
 import { syncTodayRoadmapEntry } from "./today-roadmap-entry.js";
 import { syncTherapistReviewCopy } from "./therapist-review-copy.js";
 import { syncUiRestoration } from "./ui-restoration.js";
+import { syncPatientDemoProgress } from "./patient-demo-progress.js";
 import {
   bindExerciseStartContinuity,
   captureCameraRecoveryState,
@@ -90,6 +91,7 @@ function syncLateClinicPresentation() {
   syncTodayRoadmapEntry();
   syncTherapistReviewCopy();
   syncTherapistClinicalEvaluations();
+  syncPatientDemoProgress();
   syncAuthenticatedPatientProgress();
   syncUiRestoration();
 }
