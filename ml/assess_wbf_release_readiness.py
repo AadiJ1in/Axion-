@@ -20,7 +20,7 @@ def parse_args():
     p.add_argument("--output", required=True, type=Path)
     p.add_argument("--mode", choices=("research_shadow", "clinical"), default="research_shadow")
     p.add_argument("--min-participants", type=int, default=20)
-    p.add_argument("--min-fingerprint-schema", type=int, default=8)
+    p.add_argument("--min-fingerprint-schema", type=int, default=9)
     p.add_argument("--min-relative-participant-mae-improvement", type=float, default=0.10)
     p.add_argument("--max-null-fraction-at-or-below-observed", type=float, default=0.10)
     p.add_argument("--coverage-tolerance", type=float, default=0.05)
