@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse, json
 from pathlib import Path
 
-CURRENT_FINGERPRINT_SCHEMA = 8
+CURRENT_FINGERPRINT_SCHEMA = 9
 
 def parse_args():
     p = argparse.ArgumentParser(); p.add_argument("--artifact", required=True, type=Path); return p.parse_args()
