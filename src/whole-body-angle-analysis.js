@@ -81,6 +81,11 @@ export const WHOLE_BODY_CANONICAL_ANGLE_DEFINITIONS = Object.freeze({
     region: "trunk", core: false,
     meaning: "Absolute trunk inclination from image vertical in a verified side view; direction is intentionally omitted.",
   }),
+  trunk_lateral_inclination_front_2d_deg: Object.freeze({
+    source: "image_2d", landmarks: [11,12,23,24], transform: "trunk_vertical_signed", requiredView: "front",
+    region: "trunk", core: false,
+    meaning: "Signed lateral trunk inclination from image vertical in a verified frontal view.",
+  }),
   left_knee_flexion_side_2d_deg: Object.freeze({
     source: "image_2d", landmarks: [23,25,27], transform: "flexion_from_straight_2d", requiredView: "side",
     region: "left_lower_limb", pair: "knee_flexion_side_2d", side: "left", core: false,
@@ -134,18 +139,23 @@ function lineHorizontal(a,b) {
   return !dx&&!dy ? null : Math.atan2(dy,dx)*180/Math.PI;
 }
 
-function trunkVerticalAbs(landmarks) {
+function trunkVerticalSigned(landmarks) {
   const shoulder=midpoint(point(landmarks,11),point(landmarks,12));
   const hip=midpoint(point(landmarks,23),point(landmarks,24));
   if(!shoulder||!hip) return null;
   const dx=shoulder.x-hip.x;
   const up=hip.y-shoulder.y;
-  return !dx&&!up ? null : Math.abs(Math.atan2(dx,up)*180/Math.PI);
+  return !dx&&!up ? null : Math.atan2(dx,up)*180/Math.PI;
+}
+function trunkVerticalAbs(landmarks) {
+  const value=trunkVerticalSigned(landmarks);
+  return Number.isFinite(value) ? Math.abs(value) : null;
 }
 
 function definitionValue(def,imageLandmarks,worldLandmarks) {
   const landmarks=def.source==="world_3d" ? worldLandmarks : imageLandmarks;
   if(def.transform==="trunk_vertical_absolute") return trunkVerticalAbs(landmarks);
+  if(def.transform==="trunk_vertical_signed") return trunkVerticalSigned(landmarks);
   if(def.transform==="line_horizontal_signed") return lineHorizontal(point(landmarks,def.landmarks[0]),point(landmarks,def.landmarks[1]));
   const [a,b,c]=def.landmarks.map((i)=>point(landmarks,i));
   const internal=def.source==="world_3d" ? angleDegrees(a,b,c) : angle2d(a,b,c);
