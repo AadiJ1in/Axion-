@@ -932,16 +932,25 @@ function labView() {
 }
 
 function summaryFor(reps) {
-  if (!reps.length) return { depth: 0, jointAngle: 0, kneeBend: 0, movementRange: 0, tempo: 0, symmetry: 0, consistency: 0 };
-  const depth = Math.round(average(reps.map((r) => r.jointAngle ?? r.depthAngle)));
+  if (!reps.length) return { depth: null, jointAngle: null, kneeBend: null, movementRange: null, tempo: 0, symmetry: null, consistency: 0 };
+  const finiteValues = (values) => values.map(Number).filter(Number.isFinite);
+  const meanOrNull = (values) => {
+    const usable = finiteValues(values);
+    return usable.length ? average(usable) : null;
+  };
+  const depthMean = meanOrNull(reps.map((r) => r.jointAngle ?? r.depthAngle));
+  const depth = Number.isFinite(depthMean) ? Math.round(depthMean) : null;
+  const kneeBendMean = meanOrNull(reps.map((r) => r.kneeBendDegrees));
+  const movementRangeMean = meanOrNull(reps.map((r) => r.movementRangeDegrees));
+  const symmetryMean = meanOrNull(reps.map((r) => r.symmetryDelta));
   return {
     depth,
     jointAngle: depth,
-    kneeBend: Math.round(average(reps.map((r) => Number.isFinite(r.kneeBendDegrees) ? r.kneeBendDegrees : 0))),
-    movementRange: Math.round(average(reps.map((r) => r.movementRangeDegrees ?? Math.abs(180 - (r.jointAngle ?? r.depthAngle))))),
-    tempo: average(reps.map((r) => r.tempo)).toFixed(1),
-    symmetry: average(reps.map((r) => r.symmetryDelta ?? 0)).toFixed(1),
-    consistency: Math.round(average(reps.map((r) => r.consistency ?? Math.max(45, 100 - Math.abs((r.jointAngle ?? depth) - depth) * 2 - (r.symmetryDelta ?? 5))))),
+    kneeBend: Number.isFinite(kneeBendMean) ? Math.round(kneeBendMean) : null,
+    movementRange: Number.isFinite(movementRangeMean) ? Math.round(movementRangeMean) : null,
+    tempo: average(reps.map((r) => r.tempo).filter(Number.isFinite)).toFixed(1),
+    symmetry: Number.isFinite(symmetryMean) ? symmetryMean.toFixed(1) : null,
+    consistency: Math.round(average(reps.map((r) => r.consistency ?? Math.max(45, 100 - Math.abs((r.jointAngle ?? depth ?? 0) - (depth ?? 0)) * 2 - (r.symmetryDelta ?? 5))))),
   };
 }
 
@@ -2097,9 +2106,10 @@ async function initializeLab() {
     onTiming: (trace) => { pendingPerformanceTrace = trace; },
     onTrackingState: handleTrackingState,
     onRep: acceptValidatedRep,
-    onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, symmetryDelta, measurementSide, message, stage, elapsedSeconds }) => {
+    onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, controlMovementRange = null, symmetryDelta, measurementSide, message, stage, elapsedSeconds, angleMeasurementStatus = null }) => {
       if (setRestEndsAt || movementGameController?.getState().safetyFlagged || doseProgress(currentAssignment, sessionReps.length).done) return;
       const sideLabel = measurementSide ? `${measurementSide} ` : "";
+      const controlRange = Number.isFinite(controlMovementRange) ? controlMovementRange : movementRange;
       setText("#live-angle-label", `${sideLabel}${angleLabel || "Joint angle"}`.toUpperCase());
       setText("#twin-target-label", activeProfile.overlayJoint && measurementUnit === "°"
         ? `${measurementSide ? `${measurementSide} ` : ""}${activeProfile.overlayJoint} angle`
@@ -2119,12 +2129,14 @@ async function initializeLab() {
         measurementSide,
         activeProfile.signal,
       );
-      setText("#coach-message", message);
+      setText("#coach-message", angleMeasurementStatus === "withheld"
+        ? `${message} Canonical degree angle is withheld until the required camera geometry is visible.`
+        : message);
       setText("#coach-state", stage === "calibrating" ? "CALIBRATING" : stage === "positioning" ? "POSITIONING" : stage === "hold" ? "HOLDING" : stage === "down" ? "IN MOTION" : "READY");
-      gameTrackingReady = Number.isFinite(movementRange) && !["calibrating", "positioning"].includes(stage);
+      gameTrackingReady = Number.isFinite(controlRange) && !["calibrating", "positioning"].includes(stage);
       movementGameController?.setCameraReady(gameTrackingReady);
       setText("#game-quality", gameTrackingReady ? "Tracking steady" : "Adjust camera");
-      const input = motionInput(activeProfile, { movementRange, stage, measurementSide });
+      const input = motionInput(activeProfile, { movementRange: controlRange, stage, measurementSide });
       const debugTiming = pendingPerformanceTrace;
       pendingPerformanceTrace = null;
       if (input) movementGameController?.consume(debugTiming ? { ...input, debugTiming } : input);
@@ -2585,11 +2597,13 @@ function updateLiveSession() {
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
   if (last) {
-    let message = `Rep ${last.index} captured at ${Math.round(angleValue)}${unit} ${displayedAngleLabel.toLowerCase()}. Keep that rhythm.`;
+    let message = Number.isFinite(angleValue)
+      ? `Rep ${last.index} captured at ${Math.round(angleValue)}${unit} ${displayedAngleLabel.toLowerCase()}. Keep that rhythm.`
+      : `Rep ${last.index} captured. Canonical ${displayedAngleLabel.toLowerCase()} was withheld for this rep; adjust the camera view before using degree measurements.`;
 
 
-    setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${Math.round(angleValue)}${unit}`);
-    updateSyntheticTwin(jointAngleToTwinDepth(angleValue, last.movementRangeDegrees), true);
+    setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", Number.isFinite(angleValue) ? `${Math.round(angleValue)}${unit}` : "—");
+    if (Number.isFinite(angleValue)) updateSyntheticTwin(jointAngleToTwinDepth(angleValue, last.movementRangeDegrees), true);
   }
   const finish = document.querySelector("#finish-session"); if (finish) finish.disabled = sessionReps.length === 0;
   if (stats.tempo) document.documentElement.style.setProperty("--tempo", stats.tempo);
