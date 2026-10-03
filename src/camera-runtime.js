@@ -90,3 +90,60 @@ export function classifyCameraError(error, { secureContext = true } = {}) {
   };
   return { code, message: messages[code] };
 }
+
+
+export function prepareCameraVideoElement(video) {
+  if (!video) return null;
+  try { video.autoplay = true; } catch {}
+  try { video.muted = true; } catch {}
+  try { video.playsInline = true; } catch {}
+  try { video.setAttribute?.("autoplay", ""); } catch {}
+  try { video.setAttribute?.("muted", ""); } catch {}
+  try { video.setAttribute?.("playsinline", ""); } catch {}
+  // Harmless on modern browsers and preserves inline camera playback on older
+  // WebKit-based mobile browsers that still inspect the historical attribute.
+  try { video.setAttribute?.("webkit-playsinline", ""); } catch {}
+  return video;
+}
+
+export async function attachAndPlayCameraStream(video, stream, {
+  metadataTimeoutMs = 5000,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+} = {}) {
+  if (!video) {
+    const error = new Error("Camera preview element is unavailable.");
+    error.name = "NotSupportedError";
+    throw error;
+  }
+  prepareCameraVideoElement(video);
+  video.srcObject = stream;
+
+  if (!(Number(video.readyState) >= 1 && Number(video.videoWidth) > 0 && Number(video.videoHeight) > 0)) {
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        try { video.removeEventListener?.("loadedmetadata", onReady); } catch {}
+        try { video.removeEventListener?.("canplay", onReady); } catch {}
+        if (timer !== null) clearTimer(timer);
+        fn(value);
+      };
+      const onReady = () => finish(resolve);
+      const timer = setTimer(() => {
+        const error = new Error("Camera preview did not become ready.");
+        error.name = "CameraTimeoutError";
+        finish(reject, error);
+      }, Math.max(1000, Number(metadataTimeoutMs) || 5000));
+      try { video.addEventListener?.("loadedmetadata", onReady, { once: true }); } catch {}
+      try { video.addEventListener?.("canplay", onReady, { once: true }); } catch {}
+      // Minimal test doubles and some embedded webviews do not expose media events.
+      if (typeof video.addEventListener !== "function") finish(resolve);
+    });
+  }
+
+  const playback = video.play?.();
+  if (playback && typeof playback.then === "function") await playback;
+  return video;
+}
