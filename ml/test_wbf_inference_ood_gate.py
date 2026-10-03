@@ -9,7 +9,7 @@ artifact = {
     "model": model,
     "featureOrder": ["fp_a", "fp_b"],
     "selectedFeatureOrderAfterFoldSafeFilter": ["fp_a", "fp_b"],
-    "fingerprintSchemaVersion": 8,
+    "fingerprintSchemaVersion": 9,
     "clinicalStatus": "research_only_not_clinically_validated",
     "inferenceRequirements": {
         "researchModelEligibleSessionRequired": True,
@@ -29,9 +29,9 @@ artifact = {
 }
 
 frame = pd.DataFrame([
-    {"session_id": "inside", "fingerprint_schema_version": 8, "fingerprint_coverage": 1.0, "research_model_eligible": 1, "fp_a": 1.6, "fp_b": 11.4},
-    {"session_id": "shifted", "fingerprint_schema_version": 8, "fingerprint_coverage": 1.0, "research_model_eligible": 1, "fp_a": 20.0, "fp_b": 30.0},
-    {"session_id": "partial", "fingerprint_schema_version": 8, "fingerprint_coverage": 1.0, "research_model_eligible": 1, "fp_a": 1.5, "fp_b": None},
+    {"session_id": "inside", "fingerprint_schema_version": 9, "fingerprint_coverage": 1.0, "research_model_eligible": 1, "fp_a": 1.6, "fp_b": 11.4},
+    {"session_id": "shifted", "fingerprint_schema_version": 9, "fingerprint_coverage": 1.0, "research_model_eligible": 1, "fp_a": 20.0, "fp_b": 30.0},
+    {"session_id": "partial", "fingerprint_schema_version": 9, "fingerprint_coverage": 1.0, "research_model_eligible": 1, "fp_a": 1.5, "fp_b": None},
 ])
 result = score_frame(artifact, frame)
 inside = result.loc[result.session_id == "inside"].iloc[0]
