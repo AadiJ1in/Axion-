@@ -14,7 +14,11 @@ import {
   analyzeWholeBodyBilateralCoordinationFrames,
   summarizeWholeBodyBilateralCoordination,
 } from "./whole-body-bilateral-coordination.js";
-import { buildWholeBodyStatisticalFingerprintV8 } from "./whole-body-statistical-fingerprint-v8.js";
+import { buildWholeBodyStatisticalFingerprintV9 } from "./whole-body-statistical-fingerprint-v9.js";
+import {
+  analyzeWholeBodyAngleFrames,
+  summarizeWholeBodyAngleSession,
+} from "./whole-body-angle-analysis.js";
 import { assessWholeBodyAnalysisQuality } from "./whole-body-analysis-quality.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
@@ -67,6 +71,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
         imageLandmarks,
         worldLandmarks,
         timestampMs: performance.now(),
+        cameraView,
       });
       if (!calibrationFrozen && !activeRep && completed.length === 0 && latestFrame) {
         calibrationFrames.push(latestFrame);
@@ -102,8 +107,11 @@ export async function createWholeBodyMovementTracker(options = {}) {
       const bilateralCoordination = activeRepFrames.length
         ? analyzeWholeBodyBilateralCoordinationFrames(activeRepFrames)
         : null;
+      const angleAnalysis = activeRepFrames.length
+        ? analyzeWholeBodyAngleFrames(activeRepFrames)
+        : null;
       const enrichedWholeBody = wholeBody
-        ? { ...wholeBody, bilateralCoordination }
+        ? { ...wholeBody, bilateralCoordination, angleAnalysis }
         : null;
       activeRep = false;
       activeRepFrames.length = 0;
@@ -134,6 +142,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       calibration: noiseCalibration,
     });
     const bilateralCoordination = summarizeWholeBodyBilateralCoordination(completed);
+    const angleAnalysis = summarizeWholeBodyAngleSession(completed);
     const combined = {
       ...summary,
       trackingContext: {
@@ -152,8 +161,9 @@ export async function createWholeBodyMovementTracker(options = {}) {
       movementDistribution,
       bilateralAsymmetry,
       bilateralCoordination,
+      angleAnalysis,
     };
-    const statisticalFingerprint = buildWholeBodyStatisticalFingerprintV8(combined);
+    const statisticalFingerprint = buildWholeBodyStatisticalFingerprintV9(combined);
     const withFingerprint = { ...combined, statisticalFingerprint };
     return {
       ...withFingerprint,
