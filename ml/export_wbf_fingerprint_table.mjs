@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
 import {
-  buildWholeBodyStatisticalFingerprintV8,
-  wholeBodyStatisticalFingerprintColumnsV8,
-} from "../src/whole-body-statistical-fingerprint-v8.js";
+  buildWholeBodyStatisticalFingerprintV9,
+  wholeBodyStatisticalFingerprintColumnsV9,
+} from "../src/whole-body-statistical-fingerprint-v9.js";
 
 function parseArgs(argv) {
   const args = {};
@@ -60,7 +60,7 @@ const records = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).ma
   catch (error) { throw new Error(`Invalid JSON on line ${index + 1}: ${error.message}`); }
 });
 
-const columns = wholeBodyStatisticalFingerprintColumnsV8();
+const columns = wholeBodyStatisticalFingerprintColumnsV9();
 const headers = [
   "participant_id", "session_id", "exercise_id", "camera_view", "prescribed_side", "pose_coordinate_mode",
   "noise_calibration_status", "analysis_quality_schema_version", "research_model_eligible", "analysis_quality_failed_checks",
@@ -70,7 +70,7 @@ const rows = [];
 for (const record of records) {
   const summary = bodySummary(record);
   const stored = summary?.statisticalFingerprint;
-  const fingerprint = stored?.status === "available" && stored?.schemaVersion === 8 ? stored : buildWholeBodyStatisticalFingerprintV8(summary);
+  const fingerprint = stored?.status === "available" && stored?.schemaVersion === 9 ? stored : buildWholeBodyStatisticalFingerprintV9(summary);
   if (fingerprint?.status !== "available") continue;
   const row = {
     ...metadata(record),
@@ -88,7 +88,7 @@ console.log(JSON.stringify({
   exportedRows: rows.length,
   eligibleRows: rows.filter((row) => row.research_model_eligible === 1).length,
   ineligibleRows: rows.filter((row) => row.research_model_eligible === 0).length,
-  fingerprintSchemaVersion: 8,
+  fingerprintSchemaVersion: 9,
   featureColumns: columns.length,
   output: args.output,
 }, null, 2));
