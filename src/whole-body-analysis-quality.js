@@ -3,7 +3,7 @@
 // and capture-stable for research-model inference. It is not a clinical validity or
 // safety score and says nothing about whether a movement is healthy or abnormal.
 
-export const WHOLE_BODY_ANALYSIS_QUALITY_SCHEMA_VERSION = 1;
+export const WHOLE_BODY_ANALYSIS_QUALITY_SCHEMA_VERSION = 2;
 
 const finite = (value) => value === null || value === undefined || value === ""
   ? null
@@ -38,6 +38,7 @@ export function assessWholeBodyAnalysisQuality(sessionSummary, {
   minimumWellAboveNoiseFraction = 0.60,
   minimumCoreAsymmetryPairs = 6,
   minimumCoordinationPairs = 3,
+  minimumCanonicalCore3dAngleFraction = 0.80,
   requireNoiseCalibration = true,
   requireKnownCameraView = true,
   requireWorldLandmarks = true,
@@ -51,6 +52,11 @@ export function assessWholeBodyAnalysisQuality(sessionSummary, {
   const wellAboveNoiseFraction = finite(sessionSummary?.noiseResolution?.wellAboveNoiseFraction);
   const corePairs = finite(sessionSummary?.bilateralAsymmetry?.corePairCount) ?? 0;
   const coordinationPairs = finite(sessionSummary?.bilateralCoordination?.pairCount) ?? 0;
+  const canonicalCoreAngles = finite(sessionSummary?.angleAnalysis?.core3dAngleCount) ?? 0;
+  const canonicalCoreAnglesRequired = finite(sessionSummary?.angleAnalysis?.core3dRequiredCount) ?? 0;
+  const canonicalCoreAngleFraction = canonicalCoreAnglesRequired > 0
+    ? canonicalCoreAngles / canonicalCoreAnglesRequired
+    : null;
   const noiseAvailable = sessionSummary?.noiseCalibration?.status === "available";
   const cameraView = knownCameraView(sessionSummary);
   const worldLandmarksObserved = sessionSummary?.trackingContext?.worldLandmarksObserved === true;
@@ -67,6 +73,8 @@ export function assessWholeBodyAnalysisQuality(sessionSummary, {
     movementResolution: Number.isFinite(wellAboveNoiseFraction) && wellAboveNoiseFraction >= minimumWellAboveNoiseFraction,
     coreBilateralPairs: corePairs >= minimumCoreAsymmetryPairs,
     trajectoryCoordinationPairs: coordinationPairs >= minimumCoordinationPairs,
+    canonicalCore3dAngles: Number.isFinite(canonicalCoreAngleFraction)
+      && canonicalCoreAngleFraction >= minimumCanonicalCore3dAngleFraction,
     cameraView: !requireKnownCameraView || Boolean(cameraView),
     worldLandmarks: !requireWorldLandmarks || worldLandmarksObserved,
   };
@@ -90,6 +98,9 @@ export function assessWholeBodyAnalysisQuality(sessionSummary, {
       wellAboveNoiseFraction: round(wellAboveNoiseFraction),
       coreAsymmetryPairs: corePairs,
       coordinationPairs,
+      canonicalCore3dAngles: canonicalCoreAngles,
+      canonicalCore3dAnglesRequired: canonicalCoreAnglesRequired,
+      canonicalCore3dAngleFraction: round(canonicalCoreAngleFraction),
       noiseCalibrationStatus: sessionSummary?.noiseCalibration?.status || "unavailable",
       cameraView,
       worldLandmarksObserved,
@@ -101,6 +112,7 @@ export function assessWholeBodyAnalysisQuality(sessionSummary, {
       minimumWellAboveNoiseFraction,
       minimumCoreAsymmetryPairs,
       minimumCoordinationPairs,
+      minimumCanonicalCore3dAngleFraction,
       requireNoiseCalibration,
       requireKnownCameraView,
       requireWorldLandmarks,
@@ -108,6 +120,6 @@ export function assessWholeBodyAnalysisQuality(sessionSummary, {
     inferencePolicy: researchModelEligible
       ? "eligible_for_research_model_inference"
       : "withhold_research_model_inference",
-    interpretation: "This gate evaluates capture completeness and engineering measurement resolution only. Failure should withhold research-model inference rather than manufacture a low-confidence score. Passing does not establish clinical validity, diagnostic accuracy, injury risk, or treatment relevance.",
+    interpretation: "This gate evaluates capture completeness and engineering measurement resolution only. Failure should withhold research-model inference rather than manufacture a low-confidence score. Passing does not establish clinical validity, diagnostic accuracy, injury risk, force, loading, or treatment relevance.",
   };
 }
