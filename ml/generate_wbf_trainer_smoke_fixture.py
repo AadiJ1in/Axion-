@@ -14,7 +14,7 @@ import math
 import random
 from pathlib import Path
 
-CURRENT_FINGERPRINT_SCHEMA = 8
+CURRENT_FINGERPRINT_SCHEMA = 9
 NAMED_FEATURES = [
     "fp_primary_share_median",
     "fp_outside_share_median",
@@ -26,6 +26,9 @@ NAMED_FEATURES = [
     "fp_bilateral_coordination_knee_flexion_absoluteLagPhase_median",
     "fp_bilateral_coordination_knee_flexion_zeroLagCorrelation_median",
     "fp_anatomical_balance_left_vs_right_appendicular",
+    "fp_angle_left_knee_flexion_3d_medianDeg_median",
+    "fp_angle_left_knee_flexion_3d_robustRomDeg_median",
+    "fp_angle_pair_knee_flexion_3d_absoluteMedianDifferenceDeg_median",
 ]
 
 
@@ -75,6 +78,8 @@ def main():
                 + 5 * values["fp_asymmetry_shoulder_arm_trunk_timingRms_median"]
                 - 12 * values["fp_bilateral_coordination_knee_flexion_absoluteLagPhase_median"]
                 + 2 * values["fp_bilateral_coordination_knee_flexion_zeroLagCorrelation_median"]
+                - 0.08 * values["fp_angle_pair_knee_flexion_3d_absoluteMedianDifferenceDeg_median"]
+                + 0.03 * values["fp_angle_left_knee_flexion_3d_robustRomDeg_median"]
                 + rng.uniform(-0.25, 0.25)
             )
             eligible = not (participant % 5 == 0 and session == session_count - 1)
