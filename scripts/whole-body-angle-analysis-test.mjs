@@ -74,7 +74,7 @@ assert.equal(session.status, "available");
 assert.equal(session.repsAnalyzed, 3);
 assert.equal(session.core3dAngleCount, WHOLE_BODY_CANONICAL_CORE_3D_ANGLE_NAMES.length);
 assert.ok(session.pairAsymmetry.knee_flexion_3d);
-assert.equal(session.pairAsymmetry.knee_flexion_3d.absoluteMedianDifferenceDeg.median, 0);
+assert.ok(session.pairAsymmetry.knee_flexion_3d.absoluteMedianDifferenceDeg.median > 0, "left-only knee perturbation should produce nonzero canonical knee-angle asymmetry");
 assert.match(session.interpretation, /legacy Axion angle fields remain for backward compatibility/i);
 
 console.log("Canonical WBF angle analysis passed: 3D geometric bends, verified-view 2D angles, per-rep ROM/velocity, and bilateral angle asymmetry are fail-closed and explicitly defined.");
