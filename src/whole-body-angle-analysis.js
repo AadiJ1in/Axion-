@@ -47,12 +47,12 @@ export const WHOLE_BODY_CANONICAL_ANGLE_DEFINITIONS = Object.freeze({
     meaning: "3D bend between ipsilateral trunk and thigh segments. It is not pure sagittal hip flexion.",
   }),
   left_shoulder_trunk_arm_bend_3d_deg: Object.freeze({
-    source: "world_3d", landmarks: [23,11,13], transform: "flexion_from_straight",
+    source: "world_3d", landmarks: [23,11,13], transform: "internal_angle",
     region: "left_upper_limb", pair: "shoulder_trunk_arm_bend_3d", side: "left", core: true,
     meaning: "3D bend between trunk and upper arm. It is an elevation/bend proxy, not isolated shoulder flexion.",
   }),
   right_shoulder_trunk_arm_bend_3d_deg: Object.freeze({
-    source: "world_3d", landmarks: [24,12,14], transform: "flexion_from_straight",
+    source: "world_3d", landmarks: [24,12,14], transform: "internal_angle",
     region: "right_upper_limb", pair: "shoulder_trunk_arm_bend_3d", side: "right", core: true,
     meaning: "3D bend between trunk and upper arm. It is an elevation/bend proxy, not isolated shoulder flexion.",
   }),
