@@ -43,7 +43,7 @@ def assess_mode(source, mode):
         source,
         mode=mode,
         min_participants=20,
-        min_fingerprint_schema=8,
+        min_fingerprint_schema=9,
         min_relative_participant_mae_improvement=0.10,
         max_null_fraction_at_or_below_observed=0.10,
         coverage_tolerance=0.05,
