@@ -1,4 +1,5 @@
 import { angleDegrees, extractBiomechanicsFrame } from "./biomechanics.js";
+import { extractWholeBodyCanonicalAngles } from "./whole-body-angle-analysis.js";
 
 // AxionWBF Whole-Body Feature Engine v1
 //
@@ -244,6 +245,7 @@ export function extractWholeBodyFrame({
   worldLandmarks = null,
   timestampMs = null,
   minimumVisibility = 0.55,
+  cameraView = null,
 } = {}) {
   if (!Array.isArray(imageLandmarks) || imageLandmarks.length < 33) return null;
 
@@ -328,6 +330,13 @@ export function extractWholeBodyFrame({
       : null,
   };
 
+  const angleAnalysis = extractWholeBodyCanonicalAngles({
+    imageLandmarks,
+    worldLandmarks,
+    cameraView,
+    minimumVisibility,
+  });
+
   const regionQualityMap = Object.fromEntries(
     Object.entries(REGION_LANDMARKS).map(([region, indices]) => [
       region,
@@ -349,6 +358,7 @@ export function extractWholeBodyFrame({
     features: Object.fromEntries(
       WHOLE_BODY_FEATURES_V1.map((feature) => [feature, finite(features[feature])]),
     ),
+    angleAnalysis,
   };
 }
 
