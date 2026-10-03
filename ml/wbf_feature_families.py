@@ -14,6 +14,17 @@ def feature_family(column: str) -> str:
     if name.startswith("bilateral_coordination_"):
         return "bilateral_trajectory_coordination"
 
+    if name.startswith("angle_pair_"):
+        return "canonical_angle_asymmetry"
+    if name.startswith("angle_"):
+        if "VelocityDegPerSecond" in name:
+            return "canonical_angle_velocity"
+        if "peakPhase" in name:
+            return "canonical_angle_timing"
+        if "robustRomDeg" in name:
+            return "canonical_angle_rom"
+        return "canonical_angle_position"
+
     if name.startswith("noise_calibration_") or name.startswith("noise_resolution_"):
         return "capture_noise_resolution"
 
