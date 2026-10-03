@@ -20,6 +20,7 @@ import {
   summarizeWholeBodyAngleSession,
 } from "./whole-body-angle-analysis.js";
 import {
+  canonicalAngleContractForSignal,
   canonicalLiveAngleFromFrame,
   canonicalRepAngleFromAnalysis,
 } from "./whole-body-live-angle.js";
@@ -104,6 +105,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
         // Do not finalize here; wait for its onRep callback.
       }
       lastStage = stage;
+      const angleContract = canonicalAngleContractForSignal(movementExpectation?.signal);
       const canonicalAngle = canonicalLiveAngleFromFrame(latestFrame, {
         signal: movementExpectation?.signal,
         prescribedSide,
@@ -115,8 +117,22 @@ export async function createWholeBodyMovementTracker(options = {}) {
         jointAngle: canonicalAngle.valueDeg,
         angleLabel: canonicalAngle.angleLabel,
         measurementUnit: "°",
-        symmetryDelta: canonicalAngle.symmetryDeltaDeg ?? update?.symmetryDelta ?? null,
+        symmetryDelta: canonicalAngle.symmetryDeltaDeg ?? null,
         canonicalAngle,
+        angleMeasurementStatus: "canonical",
+      } : angleContract ? {
+        ...update,
+        angle: null,
+        jointAngle: null,
+        angleLabel: angleContract.label,
+        measurementUnit: "°",
+        symmetryDelta: null,
+        canonicalAngle: {
+          status: "withheld",
+          angleLabel: angleContract.label,
+          geometry: "canonical_wbf_angle",
+        },
+        angleMeasurementStatus: "withheld",
       } : update);
     },
     onRep(rep, history) {
@@ -138,7 +154,8 @@ export async function createWholeBodyMovementTracker(options = {}) {
       activeRep = false;
       activeRepFrames.length = 0;
       accumulator.reset();
-      const legacySignal = canonicalAngle ? {
+      const angleContract = canonicalAngleContractForSignal(movementExpectation?.signal);
+      const legacySignal = angleContract ? {
         jointAngle: rep?.jointAngle ?? null,
         depthAngle: rep?.depthAngle ?? null,
         movementRangeDegrees: rep?.movementRangeDegrees ?? null,
@@ -158,6 +175,23 @@ export async function createWholeBodyMovementTracker(options = {}) {
           : rep?.kneeBendDegrees ?? null,
         canonicalAngle,
         legacySignal,
+        angleMeasurementStatus: "canonical",
+      } : angleContract ? {
+        ...rep,
+        jointAngle: null,
+        depthAngle: null,
+        movementRangeDegrees: null,
+        symmetryDelta: null,
+        angleLabel: angleContract.label,
+        measurementUnit: "°",
+        kneeBendDegrees: null,
+        canonicalAngle: {
+          status: "withheld",
+          angleLabel: angleContract.label,
+          geometry: "canonical_wbf_angle",
+        },
+        legacySignal,
+        angleMeasurementStatus: "withheld",
       } : { ...rep };
       const enriched = enrichedWholeBody ? { ...canonicalizedRep, wholeBody: enrichedWholeBody } : canonicalizedRep;
       completed.push(enriched);
@@ -257,6 +291,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
     },
     getMetrics() {
       const base = tracker.getMetrics?.() || {};
+      const angleContract = canonicalAngleContractForSignal(movementExpectation?.signal);
       const canonicalAngle = canonicalLiveAngleFromFrame(latestFrame, {
         signal: movementExpectation?.signal,
         prescribedSide,
@@ -269,6 +304,19 @@ export async function createWholeBodyMovementTracker(options = {}) {
         measurementUnit: "°",
         symmetryDelta: canonicalAngle.symmetryDeltaDeg ?? base?.symmetryDelta ?? null,
         canonicalAngle,
+        angleMeasurementStatus: "canonical",
+      } : angleContract ? {
+        ...base,
+        jointAngle: null,
+        symmetryDelta: null,
+        angleLabel: angleContract.label,
+        measurementUnit: "°",
+        canonicalAngle: {
+          status: "withheld",
+          angleLabel: angleContract.label,
+          geometry: "canonical_wbf_angle",
+        },
+        angleMeasurementStatus: "withheld",
       } : base;
     },
     getNoiseCalibration() {
