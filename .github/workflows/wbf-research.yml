@@ -34,6 +34,7 @@ jobs:
           node --check src/whole-body-compositional-statistics.js
           node --check src/whole-body-anatomical-balances.js
           node --check src/whole-body-angle-analysis.js
+          node --check src/whole-body-live-angle.js
           node --check src/whole-body-bilateral-asymmetry.js
           node --check src/whole-body-bilateral-coordination.js
           node --check src/whole-body-asymmetry-view.js
@@ -78,6 +79,8 @@ jobs:
           node scripts/whole-body-compositional-statistics-test.mjs
           node scripts/whole-body-anatomical-balances-test.mjs
           node scripts/whole-body-angle-analysis-test.mjs
+          node scripts/whole-body-live-angle-test.mjs
+          node scripts/camera-runtime-test.mjs
           node scripts/whole-body-bilateral-asymmetry-test.mjs
           node scripts/whole-body-bilateral-coordination-test.mjs
           node scripts/whole-body-asymmetry-view-test.mjs
