@@ -37,6 +37,7 @@ assert.equal(front.status, "available");
 assert.equal(front.core3dAvailableCount, WHOLE_BODY_CANONICAL_CORE_3D_ANGLE_NAMES.length);
 assert.ok(front.angles.left_knee_flexion_3d_deg.valueDeg < 1e-6, "straight knee should be approximately zero flexion");
 assert.ok(front.angles.left_elbow_flexion_3d_deg.valueDeg < 1e-6, "straight elbow should be approximately zero flexion");
+assert.ok(front.angles.left_shoulder_trunk_arm_bend_3d_deg.valueDeg < 30, "neutral/downward arm should remain near zero shoulder-trunk bend rather than invert toward 180 degrees");
 assert.equal(front.angles.pelvis_obliquity_front_2d_deg.status, "available");
 assert.equal(front.angles.trunk_inclination_side_2d_deg.status, "withheld");
 assert.ok(front.angles.trunk_inclination_side_2d_deg.withheldReasons.includes("camera_view_mismatch"));
