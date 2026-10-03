@@ -19,6 +19,10 @@ import {
   analyzeWholeBodyAngleFrames,
   summarizeWholeBodyAngleSession,
 } from "./whole-body-angle-analysis.js";
+import {
+  canonicalLiveAngleFromFrame,
+  canonicalRepAngleFromAnalysis,
+} from "./whole-body-live-angle.js";
 import { assessWholeBodyAnalysisQuality } from "./whole-body-analysis-quality.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
@@ -100,7 +104,20 @@ export async function createWholeBodyMovementTracker(options = {}) {
         // Do not finalize here; wait for its onRep callback.
       }
       lastStage = stage;
-      onUpdate(update);
+      const canonicalAngle = canonicalLiveAngleFromFrame(latestFrame, {
+        signal: movementExpectation?.signal,
+        prescribedSide,
+        measurementSide: update?.measurementSide,
+      });
+      onUpdate(canonicalAngle ? {
+        ...update,
+        angle: canonicalAngle.valueDeg,
+        jointAngle: canonicalAngle.valueDeg,
+        angleLabel: canonicalAngle.angleLabel,
+        measurementUnit: "°",
+        symmetryDelta: canonicalAngle.symmetryDeltaDeg ?? update?.symmetryDelta ?? null,
+        canonicalAngle,
+      } : update);
     },
     onRep(rep, history) {
       const wholeBody = activeRep ? accumulator.finish(performance.now()) : null;
@@ -113,10 +130,36 @@ export async function createWholeBodyMovementTracker(options = {}) {
       const enrichedWholeBody = wholeBody
         ? { ...wholeBody, bilateralCoordination, angleAnalysis }
         : null;
+      const canonicalAngle = canonicalRepAngleFromAnalysis(angleAnalysis, {
+        signal: movementExpectation?.signal,
+        prescribedSide,
+        measurementSide: rep?.measurementSide,
+      });
       activeRep = false;
       activeRepFrames.length = 0;
       accumulator.reset();
-      const enriched = enrichedWholeBody ? { ...rep, wholeBody: enrichedWholeBody } : { ...rep };
+      const legacySignal = canonicalAngle ? {
+        jointAngle: rep?.jointAngle ?? null,
+        depthAngle: rep?.depthAngle ?? null,
+        movementRangeDegrees: rep?.movementRangeDegrees ?? null,
+        symmetryDelta: rep?.symmetryDelta ?? null,
+        angleLabel: rep?.angleLabel ?? null,
+      } : null;
+      const canonicalizedRep = canonicalAngle ? {
+        ...rep,
+        jointAngle: canonicalAngle.jointAngleDeg,
+        depthAngle: canonicalAngle.jointAngleDeg,
+        movementRangeDegrees: canonicalAngle.movementRangeDeg ?? rep?.movementRangeDegrees ?? null,
+        symmetryDelta: canonicalAngle.symmetryDeltaDeg ?? rep?.symmetryDelta ?? null,
+        angleLabel: canonicalAngle.angleLabel,
+        measurementUnit: "°",
+        kneeBendDegrees: movementExpectation?.signal === "knee_bend"
+          ? canonicalAngle.jointAngleDeg
+          : rep?.kneeBendDegrees ?? null,
+        canonicalAngle,
+        legacySignal,
+      } : { ...rep };
+      const enriched = enrichedWholeBody ? { ...canonicalizedRep, wholeBody: enrichedWholeBody } : canonicalizedRep;
       completed.push(enriched);
       const enrichedHistory = history.map((item) => {
         const match = completed.find((candidate) => candidate.index === item.index);
@@ -211,6 +254,22 @@ export async function createWholeBodyMovementTracker(options = {}) {
     },
     getWholeBodySessionSummary() {
       return sessionSummary();
+    },
+    getMetrics() {
+      const base = tracker.getMetrics?.() || {};
+      const canonicalAngle = canonicalLiveAngleFromFrame(latestFrame, {
+        signal: movementExpectation?.signal,
+        prescribedSide,
+        measurementSide: base?.measurementSide,
+      });
+      return canonicalAngle ? {
+        ...base,
+        jointAngle: canonicalAngle.valueDeg,
+        angleLabel: canonicalAngle.angleLabel,
+        measurementUnit: "°",
+        symmetryDelta: canonicalAngle.symmetryDeltaDeg ?? base?.symmetryDelta ?? null,
+        canonicalAngle,
+      } : base;
     },
     getNoiseCalibration() {
       return noiseCalibration ? { ...noiseCalibration } : null;
