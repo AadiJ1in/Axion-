@@ -140,3 +140,41 @@ body:has(.adventure-lab),
 @media(prefers-reduced-motion:reduce){
   .game-how-to *{transition:none!important}
 }
+
+/* Mobile camera is a primary clinical input surface. Never hide it on narrow phones.
+   Older game CSS suppressed .camera-pane below 650px; stack the live camera first. */
+@media(max-width:650px){
+  .ruins-runner-lab .motion-stage,
+  .lab-page .motion-stage{
+    grid-template-columns:minmax(0,1fr)!important;
+    height:auto!important;
+  }
+  .ruins-runner-lab .camera-pane,
+  .lab-page .camera-pane{
+    display:block!important;
+    grid-column:1!important;
+    width:100%!important;
+    min-height:260px!important;
+    height:clamp(260px,72vw,380px)!important;
+  }
+  .ruins-runner-lab .camera-pane video,
+  .lab-page .camera-pane video,
+  .ruins-runner-lab .camera-pane canvas,
+  .lab-page .camera-pane canvas{
+    width:100%!important;
+    height:100%!important;
+    object-fit:cover!important;
+  }
+  .ruins-runner-lab .twin-pane,
+  .ruins-runner-lab .buddy-pane{
+    grid-column:1!important;
+    width:100%!important;
+  }
+}
+@media(max-width:900px) and (orientation:landscape){
+  .ruins-runner-lab .camera-pane,
+  .lab-page .camera-pane{
+    min-height:220px!important;
+    height:min(58vh,360px)!important;
+  }
+}
