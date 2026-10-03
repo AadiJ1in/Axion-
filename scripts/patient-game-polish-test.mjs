@@ -18,6 +18,9 @@ assert.ok(js.includes('import "./tab-transition-stability.js";'), 'transition st
 assert.ok(css.includes("REST TIME LEFT"), 'rest overlay must clearly label its countdown');
 assert.ok(css.includes("url('/axion-kingdom-world.webp')"), 'roadmap tail must continue the kingdom artwork');
 assert.ok(css.includes('.camera-pane video{opacity:0'), 'empty camera media is hidden until active');
+assert.ok(css.includes('Mobile camera is a primary clinical input surface'), 'mobile layout must explicitly preserve the camera as a primary input');
+assert.ok(css.includes('.ruins-runner-lab .camera-pane'), 'mobile game layout must override the legacy rule that hid the camera pane');
+assert.ok(css.includes('display:block!important'), 'phone camera pane must remain visibly rendered');
 assert.ok(ui.includes('HOW TO PLAY'), 'movement games must explain their controls');
 assert.ok(index.includes('./src/patient-game-polish.css'), 'polish stylesheet must load last');
 assert.ok(index.includes('./src/patient-game-polish.js'), 'observer-free polish helper must load');
@@ -47,4 +50,4 @@ assert.equal(stable.getState().safetyFlagged,false,'explicit acknowledgement all
 
 await import('./ui-restoration-test.mjs');
 
-console.log('Movement Lab rest clarity, resume recovery, transition stability, visual smoothing, roadmap-tail, and UI restoration checks passed.');
+console.log('Movement Lab rest clarity, mobile camera visibility, resume recovery, transition stability, visual smoothing, roadmap-tail, and UI restoration checks passed.');
