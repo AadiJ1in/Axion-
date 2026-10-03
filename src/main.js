@@ -1,5 +1,5 @@
 import { isConfigured, supabase } from "./supabase.js";
-import { createMovementTracker } from "./pose.js";
+import { createWholeBodyMovementTracker } from "./whole-body-tracker.js";
 import { getMovementProfile } from "./movement-profiles.js";
 import { summarizeSessionBiomechanics } from "./biomechanics.js";
 import { createMovementGameController, getMovementGameMapping, MOVEMENT_EVENT } from "./movement-game.js";
@@ -905,7 +905,7 @@ function labView() {
           </div>
           ${gameMapping ? movementGameMarkup(gameMapping, targetReps, assignment) : ""}
           <div class="motion-stage">
-            <div class="camera-pane"><video id="camera" playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera setup</b><small>${escapeHtml(movementProfile.cameraHint)}</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button>${currentSession?.demo ? `<button id="recovery-demo">View tracker simulation</button>` : ""}</div></div><span class="pane-label">YOU</span></div>
+            <div class="camera-pane"><video id="camera" autoplay playsinline muted></video><canvas id="overlay"></canvas><div class="camera-placeholder"><span>${icon("camera", 26)}</span><b>Camera setup</b><small>${escapeHtml(movementProfile.cameraHint)}</small></div><div id="camera-recovery" class="camera-recovery hidden" role="alert"><span>${icon("camera", 22)}</span><b id="camera-recovery-title">Camera needs attention</b><p id="camera-recovery-copy"></p><div><button id="retry-camera">Try again</button>${currentSession?.demo ? `<button id="recovery-demo">View tracker simulation</button>` : ""}</div></div><span class="pane-label">YOU</span></div>
             <div class="twin-pane"><div class="floor-grid"></div>${twinSvg()}<span class="pane-label">${gameMapping?.action === "duck" ? "YOU · TRACKED BODY" : "MOVEMENT TWIN"}</span><div class="target-label"><i></i> <span id="twin-target-label">${movementProfile.overlayJoint && movementProfile.unit === "°" ? `${escapeHtml(movementProfile.overlayJoint)} angle` : "Movement path"}</span></div></div>
             ${gameMapping?.action === "duck" ? `<div class="buddy-pane"><canvas id="exercise-buddy" width="320" height="210" aria-label="Buddy demonstrating a squat"></canvas><span class="pane-label">BUDDY · EXAMPLE</span><small>Use your prescribed range and pace.</small></div>` : ""}
             <div class="calibration-overlay" id="calibration-overlay"><div class="calibration-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><circle id="calibration-progress" cx="40" cy="40" r="34"/></svg><b id="calibration-percent">0%</b></div><div><b id="calibration-title">BODY CALIBRATION</b><span id="calibration-copy">Stand naturally with your full body in view.</span></div></div>
@@ -2050,6 +2050,17 @@ async function signOutPortal(reason = null) {
   } else homeView();
 }
 
+function inferredCaptureView(profile) {
+  const hint = String(profile?.cameraHint || "").toLowerCase();
+  const hasThreeQuarter = hint.includes("¾") || hint.includes("3/4");
+  const hasFront = hint.includes("front") || hint.includes("face the camera");
+  const hasSide = hint.includes("side") || hint.includes("camera at your side");
+  const hasOverhead = hint.includes("overhead") || hint.includes("above");
+  if (hasSide && !hasFront && !hasThreeQuarter && !hasOverhead) return "side";
+  if (hasFront && !hasSide && !hasThreeQuarter && !hasOverhead) return "front";
+  return null;
+}
+
 async function initializeLab() {
   const video = document.querySelector("#camera");
   const canvas = document.querySelector("#overlay");
@@ -2075,11 +2086,12 @@ async function initializeLab() {
   });
   setText("#calibration-copy", activeProfile.cameraHint);
   let pendingPerformanceTrace = null;
-  tracker = await createMovementTracker({
+  tracker = await createWholeBodyMovementTracker({
     video, canvas,
     exerciseKey: currentAssignment.exercise_key,
     trackingMode: currentAssignment.tracking_mode,
     prescribedSide: currentAssignment?.prescribed_side || "either",
+    cameraView: inferredCaptureView(activeProfile),
     onCalibration: ({ progress, status }) => updateCalibration(progress, status),
     onPose: (points) => { updateTwinFromLandmarks(points); movementGameController?.updateCameraPose(points); },
     onTiming: (trace) => { pendingPerformanceTrace = trace; },
@@ -2740,6 +2752,7 @@ async function saveSessionSummary(reps, feedback = {}) {
   const trackingProfile = getMovementProfile(context.exerciseKey, context.trackingMode);
   const degreeMetric = trackingProfile.unit === "°";
   const biomechanicsSummary = summarizeSessionBiomechanics(reps);
+  const wholeBodySummary = tracker?.getWholeBodySessionSummary?.() || null;
 
   console.info("AXION_OPERATIONAL_EVENT", { event: "session_save_started", release: APP_RELEASE });
   const { data, error } = await supabase
@@ -2771,6 +2784,7 @@ async function saveSessionSummary(reps, feedback = {}) {
         average_symmetry_delta: Number.isFinite(Number(stats.symmetry)) ? Number(stats.symmetry) : null,
         movement_consistency: Number.isFinite(Number(stats.consistency)) ? Number(stats.consistency) : null,
         biomechanics_v1: biomechanicsSummary,
+        whole_body_v1: wholeBodySummary,
         completed_sets: doseProgress(currentAssignment, reps.length).completedSets,
         prescribed_sets: context.prescribedSets,
         prescribed_reps_per_set: context.prescribedReps,
