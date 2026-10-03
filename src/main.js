@@ -2565,7 +2565,8 @@ function updateLiveSession() {
   const trackingProfile = getMovementProfile(currentAssignment?.exercise_key || "bodyweight_squat", currentAssignment?.tracking_mode || "pose_reps");
   const unit = last?.measurementUnit || trackingProfile.unit || "°";
   const angleValue = last ? (last.jointAngle ?? last.depthAngle) : null;
-  setText("#live-angle-label", trackingProfile.label.toUpperCase());
+  const displayedAngleLabel = last?.angleLabel || trackingProfile.label;
+  setText("#live-angle-label", displayedAngleLabel.toUpperCase());
   const repsPerSet = doseProgress(currentAssignment).reps;
   const totalSets = Math.max(1, Number(currentAssignment?.target_sets || 1));
   const totalTarget = repsPerSet * totalSets;
@@ -2584,7 +2585,7 @@ function updateLiveSession() {
   const energy = document.querySelector("#energy-progress"); if (energy) energy.style.strokeDashoffset = String(415 - 415 * Math.min(1, sessionReps.length / targetReps));
   document.querySelectorAll("#rep-dots i").forEach((dot, index) => { dot.classList.toggle("complete", index < sessionReps.length); dot.classList.toggle("best", last && index + 1 === 4 && sessionReps.length >= 4); });
   if (last) {
-    let message = `Rep ${last.index} captured at ${Math.round(angleValue)}${unit} ${trackingProfile.label.toLowerCase()}. Keep that rhythm.`;
+    let message = `Rep ${last.index} captured at ${Math.round(angleValue)}${unit} ${displayedAngleLabel.toLowerCase()}. Keep that rhythm.`;
 
 
     setText("#coach-message", message); setText("#coach-state", "LIVE"); setText("#twin-angle", `${Math.round(angleValue)}${unit}`);
@@ -2771,8 +2772,10 @@ async function saveSessionSummary(reps, feedback = {}) {
         average_depth_angle: degreeMetric ? stats.depth : null,
         tracked_joint: currentAssignment?.joint || exerciseCatalog[context.exerciseKey]?.joint || null,
         tracking_signal: trackingProfile.signal,
-        metric_label: trackingProfile.label,
-        measurement_unit: trackingProfile.unit,
+        metric_label: reps.find((rep) => rep?.canonicalAngle?.status === "available")?.angleLabel || trackingProfile.label,
+        measurement_unit: reps.find((rep) => rep?.canonicalAngle?.status === "available") ? "°" : trackingProfile.unit,
+        angle_geometry: reps.some((rep) => rep?.canonicalAngle?.status === "available") ? "canonical_wbf_angle" : "legacy_profile_metric",
+        canonical_angle_schema_version: wholeBodySummary?.angleAnalysis?.schemaVersion ?? null,
         movement_profile_id: context.movementProfileId,
         average_signal_value: stats.jointAngle,
         average_signal_excursion: stats.movementRange,
