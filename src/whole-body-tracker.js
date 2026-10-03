@@ -118,6 +118,8 @@ export async function createWholeBodyMovementTracker(options = {}) {
         angleLabel: canonicalAngle.angleLabel,
         measurementUnit: "°",
         symmetryDelta: canonicalAngle.symmetryDeltaDeg ?? null,
+        controlMovementRange: update?.movementRange ?? null,
+        movementRange: null,
         canonicalAngle,
         angleMeasurementStatus: "canonical",
       } : angleContract ? {
@@ -127,6 +129,8 @@ export async function createWholeBodyMovementTracker(options = {}) {
         angleLabel: angleContract.label,
         measurementUnit: "°",
         symmetryDelta: null,
+        controlMovementRange: update?.movementRange ?? null,
+        movementRange: null,
         canonicalAngle: {
           status: "withheld",
           angleLabel: angleContract.label,
