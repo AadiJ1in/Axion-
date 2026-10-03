@@ -2,7 +2,7 @@ import { getMovementProfile, measureMovementSignal } from "./movement-profiles.j
 import { createRepBiomechanicsAccumulator, extractBiomechanicsFrame } from "./biomechanics.js";
 import { createLocalPoseRuntime } from "./pose-runtime.js";
 import { createVideoFrameScheduler, resolveCameraVideoConstraints } from "./video-frame-scheduler.js";
-import { classifyCameraError, openCameraStream, stopMediaStream } from "./camera-runtime.js";
+import { attachAndPlayCameraStream, classifyCameraError, openCameraStream, stopMediaStream } from "./camera-runtime.js";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 export const MIN_TRACKING_SCORE = 0.62;
@@ -520,9 +520,9 @@ export async function createMovementTracker(options) {
         { timeoutMs: camera.startTimeoutMs },
       );
       if (generation !== cameraGeneration) { stopMediaStream(openedStream); return; }
-      stream = openedStream; video.srcObject = stream;
+      stream = openedStream;
       stream.getVideoTracks().forEach((track) => { track.addEventListener("ended", () => { if (generation !== cameraGeneration) return; stop(); pauseMeasurement("Camera disconnected. Your completed reps are preserved."); onTrackingState({ code: "camera_disconnected", label: "Camera disconnected", quality: null }); onError("Camera disconnected. Reconnect it and restart the camera scan."); }, { once: true }); });
-      await video.play();
+      await attachAndPlayCameraStream(video, stream, { metadataTimeoutMs: camera.previewTimeoutMs || 5000 });
       if (generation !== cameraGeneration) return;
       lastVideoTime = -1; lastFrameAt = performance.now(); stalled = false; running = true; sessionStart = performance.now(); calibrationStart = null; calibrated = false; baselineAngle = null; baselineLeft = null; baselineRight = null; calibrationSamples = []; calibrationLeftSamples = []; calibrationRightSamples = []; holdElapsedMs = 0; holdLastFrame = null; activeFrames = 0; lastActiveMovementAt = 0; scheduleNextFrame();
     } catch (error) {
