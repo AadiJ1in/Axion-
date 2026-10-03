@@ -5,7 +5,7 @@ from assess_wbf_release_readiness import assess
 def artifact():
     return {
         "clinicalStatus": "research_only_not_clinically_validated",
-        "fingerprintSchemaVersion": 8,
+        "fingerprintSchemaVersion": 9,
         "warnings": [],
         "dataset": {"participantsOrGroups": 24},
         "validation": {
