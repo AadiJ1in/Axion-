@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { classifyCameraError, openCameraStream, stopMediaStream } from "../src/camera-runtime.js";
+import { attachAndPlayCameraStream, classifyCameraError, openCameraStream, prepareCameraVideoElement, stopMediaStream } from "../src/camera-runtime.js";
 
 function makeStream() {
   const stream = { active: true };
@@ -94,4 +94,60 @@ for (const [name, code] of [
 }
 assert.equal(classifyCameraError(new Error("x"), { secureContext: false }).code, "insecure_context");
 
-console.log("Camera runtime: preferred constraints, relaxed fallback, timeout cleanup and actionable errors passed.");
+console.log("Camera runtime: preferred constraints, relaxed fallback, timeout cleanup, actionable errors, and mobile inline preview preparation passed.");
+
+
+// Mobile/browser preview preparation is explicit rather than relying on HTML parsing quirks.
+{
+  const attrs = new Map();
+  let played = 0;
+  const video = {
+    autoplay: false,
+    muted: false,
+    playsInline: false,
+    readyState: 1,
+    videoWidth: 720,
+    videoHeight: 540,
+    setAttribute(name, value) { attrs.set(name, value); },
+    play() { played += 1; return Promise.resolve(); },
+  };
+  prepareCameraVideoElement(video);
+  assert.equal(video.autoplay, true);
+  assert.equal(video.muted, true);
+  assert.equal(video.playsInline, true);
+  assert.equal(attrs.has("playsinline"), true);
+  assert.equal(attrs.has("webkit-playsinline"), true);
+  const stream = makeStream();
+  await attachAndPlayCameraStream(video, stream);
+  assert.equal(video.srcObject, stream);
+  assert.equal(played, 1);
+}
+
+// Metadata readiness is awaited before playback on camera implementations that
+// populate dimensions asynchronously (common on mobile browsers).
+{
+  const listeners = new Map();
+  let played = 0;
+  const video = {
+    readyState: 0,
+    videoWidth: 0,
+    videoHeight: 0,
+    setAttribute() {},
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name) { listeners.delete(name); },
+    play() { played += 1; return Promise.resolve(); },
+  };
+  const stream = makeStream();
+  const pending = attachAndPlayCameraStream(video, stream, {
+    metadataTimeoutMs: 5000,
+    setTimer() { return 9; },
+    clearTimer() {},
+  });
+  await Promise.resolve();
+  video.readyState = 1;
+  video.videoWidth = 640;
+  video.videoHeight = 480;
+  listeners.get("loadedmetadata")?.();
+  await pending;
+  assert.equal(played, 1);
+}
