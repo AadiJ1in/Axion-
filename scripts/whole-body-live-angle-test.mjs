@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { movementProfiles } from "../src/movement-profiles.js";
 import {
   canonicalAngleContractForSignal,
   canonicalLiveAngleFromFrame,
@@ -75,3 +76,14 @@ const anklePlantar = canonicalRepAngleFromAnalysis(repAnalysis, { signal: "ankle
 assert.equal(anklePlantar.jointAngleDeg, 101);
 
 console.log("Canonical live-angle mapping passed: Motion Lab degree readouts use explicit WBF geometry, preserve side asymmetry, and avoid relabeling non-angle proxy signals.");
+
+
+// Every app movement profile that presents degrees must map to an explicitly
+// defined canonical WBF angle. Percentage/path signals are outside this contract.
+const degreeSignals = [...new Set(
+  Object.values(movementProfiles)
+    .filter((profile) => profile.unit === "°")
+    .map((profile) => profile.signal),
+)];
+const unmappedDegreeSignals = degreeSignals.filter((signal) => !canonicalAngleContractForSignal(signal));
+assert.deepEqual(unmappedDegreeSignals, [], `degree-producing app signals missing canonical angle definitions: ${unmappedDegreeSignals.join(", ")}`);
