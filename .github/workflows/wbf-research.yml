@@ -80,6 +80,7 @@ jobs:
           node scripts/whole-body-anatomical-balances-test.mjs
           node scripts/whole-body-angle-analysis-test.mjs
           node scripts/whole-body-live-angle-test.mjs
+          node scripts/wbf-app-integration-test.mjs
           node scripts/camera-runtime-test.mjs
           node scripts/whole-body-bilateral-asymmetry-test.mjs
           node scripts/whole-body-bilateral-coordination-test.mjs
