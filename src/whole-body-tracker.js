@@ -25,6 +25,7 @@ import {
   canonicalRepAngleFromAnalysis,
 } from "./whole-body-live-angle.js";
 import { assessWholeBodyAnalysisQuality } from "./whole-body-analysis-quality.js";
+import { liveWholeBodyAsymmetry } from "./whole-body-live-asymmetry.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -49,6 +50,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
   let lastWorldLandmarks = null;
   let worldLandmarksObserved = false;
   let latestFrame = null;
+  let latestLiveAsymmetry = null;
   let noiseCalibration = null;
   let calibrationFrozen = false;
   const calibrationFrames = [];
@@ -78,6 +80,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
         timestampMs: performance.now(),
         cameraView,
       });
+      latestLiveAsymmetry = liveWholeBodyAsymmetry(latestFrame);
       if (!calibrationFrozen && !activeRep && completed.length === 0 && latestFrame) {
         calibrationFrames.push(latestFrame);
         if (calibrationFrames.length > 90) calibrationFrames.shift();
@@ -112,6 +115,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
         measurementSide: update?.measurementSide,
       });
       onUpdate(canonicalAngle ? {
+        liveBilateralAsymmetry: latestLiveAsymmetry,
         ...update,
         angle: canonicalAngle.valueDeg,
         jointAngle: canonicalAngle.valueDeg,
@@ -124,6 +128,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
         angleMeasurementStatus: "canonical",
       } : angleContract ? {
         ...update,
+        liveBilateralAsymmetry: latestLiveAsymmetry,
         angle: null,
         jointAngle: null,
         angleLabel: angleContract.label,
@@ -137,7 +142,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
           geometry: "canonical_wbf_angle",
         },
         angleMeasurementStatus: "withheld",
-      } : update);
+      } : { ...update, liveBilateralAsymmetry: latestLiveAsymmetry });
     },
     onRep(rep, history) {
       const wholeBody = activeRep ? accumulator.finish(performance.now()) : null;
@@ -258,6 +263,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       activeRep = false;
       lastStage = "up";
       latestFrame = null;
+      latestLiveAsymmetry = null;
       lastImageLandmarks = null;
       lastWorldLandmarks = null;
       worldLandmarksObserved = false;
@@ -284,6 +290,9 @@ export async function createWholeBodyMovementTracker(options = {}) {
     getWholeBodyFrame() {
       return latestFrame;
     },
+    getLiveWholeBodyAsymmetry() {
+      return latestLiveAsymmetry;
+    },
     getWholeBodyReps() {
       return completed.map((rep) => ({ ...rep }));
     },
@@ -303,6 +312,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       });
       return canonicalAngle ? {
         ...base,
+        liveBilateralAsymmetry: latestLiveAsymmetry,
         jointAngle: canonicalAngle.valueDeg,
         angleLabel: canonicalAngle.angleLabel,
         measurementUnit: "°",
@@ -311,6 +321,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
         angleMeasurementStatus: "canonical",
       } : angleContract ? {
         ...base,
+        liveBilateralAsymmetry: latestLiveAsymmetry,
         jointAngle: null,
         symmetryDelta: null,
         angleLabel: angleContract.label,
@@ -321,7 +332,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
           geometry: "canonical_wbf_angle",
         },
         angleMeasurementStatus: "withheld",
-      } : base;
+      } : { ...base, liveBilateralAsymmetry: latestLiveAsymmetry };
     },
     getNoiseCalibration() {
       return noiseCalibration ? { ...noiseCalibration } : null;
