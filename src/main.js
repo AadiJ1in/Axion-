@@ -2141,6 +2141,47 @@ async function initializeLab() {
         }
         if (!rows.length) details.textContent = "Bilateral joint angles unavailable from this camera view.";
         details.title = "Joint-angle asymmetry only. Does not measure weight bearing, force, or pain.";
+        if (!document.querySelector("#wbf-symptom-entry")) {
+          const form = document.createElement("div");
+          form.id = "wbf-symptom-entry";
+          form.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;font-size:12px";
+          const region = document.createElement("select");
+          region.setAttribute("aria-label", "Where do you feel discomfort?");
+          for (const name of ["neck","left_shoulder","right_shoulder","upper_back","lower_back","left_elbow","right_elbow","left_wrist","right_wrist","left_hip","right_hip","pelvis","left_knee","right_knee","left_ankle","right_ankle","left_foot","right_foot"]) {
+            const option = document.createElement("option");
+            option.value = name;
+            option.textContent = name.replaceAll("_", " ");
+            region.appendChild(option);
+          }
+          const intensity = document.createElement("select");
+          intensity.setAttribute("aria-label", "Pain rating from zero to ten");
+          for (let i = 0; i <= 10; i++) {
+            const option = document.createElement("option");
+            option.value = String(i);
+            option.textContent = String(i) + "/10";
+            intensity.appendChild(option);
+          }
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = "Log reported pain";
+          const result = document.createElement("span");
+          result.setAttribute("role", "status");
+          button.addEventListener("click", () => {
+            if (!tracker?.reportWholeBodySymptom) {
+              result.textContent = "Symptom recording unavailable";
+              return;
+            }
+            tracker.reportWholeBodySymptom({ region: region.value, intensity: Number(intensity.value) });
+            const history = tracker.getWholeBodySymptomHistory();
+            result.textContent = "Recorded · " + history.regions.length + " reported regions";
+          });
+          form.append(region, intensity, button, result);
+          const explainer = document.createElement("small");
+          explainer.textContent = "Pain is self-reported, not inferred from movement or camera video.";
+          form.appendChild(explainer);
+          symmetryAnchor.parentElement.appendChild(form);
+        }
+
       }
 
       updateTwinAngleOverlay(
