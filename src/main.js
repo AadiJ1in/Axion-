@@ -2106,7 +2106,7 @@ async function initializeLab() {
     onTiming: (trace) => { pendingPerformanceTrace = trace; },
     onTrackingState: handleTrackingState,
     onRep: acceptValidatedRep,
-    onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, controlMovementRange = null, symmetryDelta, measurementSide, message, stage, elapsedSeconds, angleMeasurementStatus = null }) => {
+    onUpdate: ({ reps, jointAngle, angleLabel, measurementUnit = "°", movementRange, controlMovementRange = null, symmetryDelta, measurementSide, message, stage, elapsedSeconds, angleMeasurementStatus = null, liveBilateralAsymmetry = null }) => {
       if (setRestEndsAt || movementGameController?.getState().safetyFlagged || doseProgress(currentAssignment, sessionReps.length).done) return;
       const sideLabel = measurementSide ? `${measurementSide} ` : "";
       const controlRange = Number.isFinite(controlMovementRange) ? controlMovementRange : movementRange;
@@ -2120,6 +2120,29 @@ async function initializeLab() {
       setText("#live-depth", jointAngle === null ? "—" : `${jointAngle}${measurementUnit}`);
       setText("#live-tempo", movementRange === null ? "—" : `${movementRange}${measurementUnit}`);
       setText("#live-symmetry", symmetryDelta === null ? "—" : `${symmetryDelta}${measurementUnit}`);
+      // Only measured bilateral canonical angles appear here. Never infer force or pain.
+      const symmetryAnchor = document.querySelector("#live-symmetry");
+      if (symmetryAnchor?.parentElement) {
+        let details = document.querySelector("#wbf-live-joint-asymmetry");
+        if (!details) {
+          details = document.createElement("div");
+          details.id = "wbf-live-joint-asymmetry";
+          details.setAttribute("aria-live", "off");
+          details.style.cssText = "font-size:12px;line-height:1.6;max-width:310px;margin-top:8px";
+          symmetryAnchor.parentElement.appendChild(details);
+        }
+        const rows = liveBilateralAsymmetry?.joints?.filter((joint) => joint.status === "available") || [];
+        details.replaceChildren();
+        for (const joint of rows) {
+          const row = document.createElement("div");
+          const label = joint.joint.replaceAll("_", " ");
+          row.textContent = `${label}: L ${joint.leftDeg}° · R ${joint.rightDeg}° · Δ ${joint.magnitudeDeg}°`;
+          details.appendChild(row);
+        }
+        if (!rows.length) details.textContent = "Bilateral joint angles unavailable from this camera view.";
+        details.title = "Joint-angle asymmetry only. Does not measure weight bearing, force, or pain.";
+      }
+
       updateTwinAngleOverlay(
         document.querySelector("#movement-twin"),
         lastTwinPoints,
