@@ -26,6 +26,7 @@ import {
 } from "./whole-body-live-angle.js";
 import { assessWholeBodyAnalysisQuality } from "./whole-body-analysis-quality.js";
 import { liveWholeBodyAsymmetry } from "./whole-body-live-asymmetry.js";
+import { recordWholeBodySymptom, summarizeWholeBodySymptomHistory } from "./whole-body-symptom-map.js";
 
 // Adapter used by AxionWBF research flows. It preserves the existing movement
 // tracker's clinical rep logic and observes the same pose stream for descriptive
@@ -56,6 +57,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
   const calibrationFrames = [];
   const activeRepFrames = [];
   const completed = [];
+  const reportedSymptoms = [];
   const accumulator = createNoiseGatedWholeBodyMotionAccumulator({
     getNoiseCalibration: () => noiseCalibration,
   });
@@ -248,6 +250,8 @@ export async function createWholeBodyMovementTracker(options = {}) {
       bilateralAsymmetry,
       bilateralCoordination,
       angleAnalysis,
+      patientReportedSymptoms: summarizeWholeBodySymptomHistory(reportedSymptoms),
+      patientReportedSymptomEntries: reportedSymptoms.map((item) => ({ ...item })),
     };
     const statisticalFingerprint = buildWholeBodyStatisticalFingerprintV9(combined);
     const withFingerprint = { ...combined, statisticalFingerprint };
@@ -272,6 +276,7 @@ export async function createWholeBodyMovementTracker(options = {}) {
       calibrationFrames.length = 0;
       activeRepFrames.length = 0;
       completed.length = 0;
+      reportedSymptoms.length = 0;
       accumulator.reset();
       tracker.reset();
     },
@@ -286,6 +291,14 @@ export async function createWholeBodyMovementTracker(options = {}) {
       activeRepFrames.length = 0;
       accumulator.reset();
       tracker.destroy();
+    },
+    reportWholeBodySymptom({ region, intensity, note = "" }) {
+      const entry = recordWholeBodySymptom({ region, intensity, note, exerciseKey });
+      reportedSymptoms.push(entry);
+      return entry;
+    },
+    getWholeBodySymptomHistory() {
+      return summarizeWholeBodySymptomHistory(reportedSymptoms);
     },
     getWholeBodyFrame() {
       return latestFrame;
