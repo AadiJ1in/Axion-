@@ -12,6 +12,14 @@ function format(value, suffix = "", digits = 2) {
   return `${Math.round(number * factor) / factor}${suffix}`;
 }
 
+function relativeDifferencePercent(left, right) {
+  const l = Number(left);
+  const r = Number(right);
+  if (!Number.isFinite(l) || !Number.isFinite(r)) return null;
+  const denominator = (Math.abs(l) + Math.abs(r)) / 2;
+  return denominator > 1e-6 ? Math.abs(l - r) / denominator * 100 : 0;
+}
+
 function selectedPatientId() {
   return document.querySelector("[data-clinical-patient]")?.value || null;
 }
@@ -32,7 +40,18 @@ function section() {
 
 function metricCard(label, difference, unit) {
   if (!difference) return "";
-  return `<div class="clinical-longitudinal-card"><small>${html(label)}</small><strong>L ${format(difference.left, unit)} · R ${format(difference.right, unit)}</strong><span>absolute difference ${format(difference.absoluteDifference, unit)} · greater motion: ${html(difference.greaterSide)}</span></div>`;
+  const relative = relativeDifferencePercent(difference.left, difference.right);
+  const sideText = difference.greaterSide === "left"
+    ? "left showed the greater measured motion"
+    : difference.greaterSide === "right"
+      ? "right showed the greater measured motion"
+      : "sides measured similarly";
+  return `<div class="clinical-longitudinal-card" data-bilateral-balance-metric>
+    <small>${html(label)}</small>
+    <div class="clinical-balance-sides"><b>LEFT ${format(difference.left, unit)}</b><b>RIGHT ${format(difference.right, unit)}</b></div>
+    <span class="clinical-balance-delta">Δ ${format(difference.absoluteDifference, unit)}${Number.isFinite(relative) ? ` · ${format(relative, "%", 1)} side-to-side difference` : ""}</span>
+    <span>${html(sideText)}</span>
+  </div>`;
 }
 
 function renderComparison(result) {
@@ -46,10 +65,21 @@ function renderComparison(result) {
     return;
   }
   const motion = result.motion?.differences || {};
+  const holdRelative = relativeDifferencePercent(result.hold?.leftSeconds, result.hold?.rightSeconds);
+  const holdSide = result.hold?.longerSide === "left"
+    ? "Left hold was longer in this matched pair."
+    : result.hold?.longerSide === "right"
+      ? "Right hold was longer in this matched pair."
+      : "Hold times were similar in this matched pair.";
   target.innerHTML = `
     <div class="clinical-longitudinal-meta"><span>paired ${format(result.pairGapMinutes, " min", 1)} apart</span><span>both trials quality-gated</span></div>
+    <div class="clinical-bilateral-balance-overview">
+      <small>LEFT VS RIGHT AT A GLANCE</small>
+      <strong>Left ${format(result.hold?.leftSeconds, " s")} vs Right ${format(result.hold?.rightSeconds, " s")}</strong>
+      <span>Δ ${format(result.hold?.absoluteDifferenceSeconds, " s")}${Number.isFinite(holdRelative) ? ` · ${format(holdRelative, "%", 1)} side-to-side difference` : ""}. ${html(holdSide)}</span>
+    </div>
     <div class="clinical-longitudinal-grid">
-      <div class="clinical-longitudinal-card"><small>Hold time</small><strong>L ${format(result.hold?.leftSeconds, " s")} · R ${format(result.hold?.rightSeconds, " s")}</strong><span>difference ${format(result.hold?.absoluteDifferenceSeconds, " s")} · longer: ${html(result.hold?.longerSide || "—")}</span></div>
+      <div class="clinical-longitudinal-card" data-bilateral-balance-metric><small>Hold time</small><div class="clinical-balance-sides"><b>LEFT ${format(result.hold?.leftSeconds, " s")}</b><b>RIGHT ${format(result.hold?.rightSeconds, " s")}</b></div><span class="clinical-balance-delta">Δ ${format(result.hold?.absoluteDifferenceSeconds, " s")}${Number.isFinite(holdRelative) ? ` · ${format(holdRelative, "%", 1)} difference` : ""}</span><span>${html(holdSide)}</span></div>
       ${metricCard("ML hip motion range", motion.hipMedialLateralRangeTorso, " torso")}
       ${metricCard("Hip path velocity", motion.hipPathVelocityTorsoPerSecond, " torso/s")}
       ${metricCard("ML hip RMS", motion.hipMedialLateralRmsTorso, " torso")}

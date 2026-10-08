@@ -132,41 +132,110 @@ function qualityBadge(quality, label = "Capture quality") {
   return `<span class="clinical-quality-badge clinical-quality-badge--${html(grade)}">${html(label)}: ${html(grade)}</span>`;
 }
 
+function relativeSideDifferencePct(metric) {
+  const direct = Number(metric?.relativeDifferencePct);
+  if (Number.isFinite(direct)) return Math.max(0, direct);
+  const left = Number(metric?.left);
+  const right = Number(metric?.right);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
+  const denominator = (Math.abs(left) + Math.abs(right)) / 2;
+  return denominator > 1e-6 ? Math.abs(left - right) / denominator * 100 : 0;
+}
+
+function comparisonSide(metric) {
+  const consistent = metric?.consistentGreaterSide;
+  if (consistent === "left" || consistent === "right") return consistent;
+  if (consistent === "mixed" || consistent === "similar_or_below_resolution") return consistent;
+  return metric?.greaterSide === "left" || metric?.greaterSide === "right" ? metric.greaterSide : "similar_or_below_resolution";
+}
+
+function sideComparisonNarrative(metric) {
+  const side = comparisonSide(metric);
+  const consistency = Number(metric?.directionConsistency);
+  if (side === "mixed") return "The side with the greater measured value changed across reps.";
+  if (side === "similar_or_below_resolution") return "No stable side direction was resolved across the paired reps.";
+  const label = side === "left" ? "Left" : "Right";
+  return Number.isFinite(consistency)
+    ? `${label} showed the greater measured value in ${Math.round(consistency * 100)}% of directional reps.`
+    : `${label} showed the greater measured value in this comparison.`;
+}
+
+function bilateralBarWidth(metric, side) {
+  const left = Math.abs(Number(metric?.left));
+  const right = Math.abs(Number(metric?.right));
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return 0;
+  const max = Math.max(left, right, 1e-6);
+  const value = side === "left" ? left : right;
+  return Math.max(value > 0 ? 8 : 0, Math.min(100, (value / max) * 100));
+}
+
 function asymmetryMarkup(summary) {
   if (!summary?.bilateral || !Object.keys(summary.bilateral).length) {
-    return `<div class="clinical-eval-asymmetry"><h4>Kinetic-chain profile</h4><p class="clinical-eval-note">No paired bilateral rep profile is available for this trial.</p></div>`;
+    return `<div class="clinical-eval-asymmetry"><h4>Left vs right leg comparison</h4><p class="clinical-eval-note">No paired bilateral rep profile is available for this trial.</p></div>`;
   }
 
   const order = ["kneeFlexion", "frontalKneeProjection", "hipFlexion", "thighInclination", "ankleAngle", "kneePath"];
-  const rows = order.filter((key) => summary.bilateral[key]).map((key) => {
+  const available = order.filter((key) => summary.bilateral[key]);
+  const primaryMetric = summary.bilateral.kneeFlexion || summary.bilateral.hipFlexion || summary.bilateral.ankleAngle || summary.bilateral[available[0]];
+  const primaryPct = relativeSideDifferencePct(primaryMetric);
+  const rows = available.map((key) => {
     const metric = summary.bilateral[key];
-    const direction = metric.consistentGreaterSide && !["mixed", "similar_or_below_resolution"].includes(metric.consistentGreaterSide)
-      ? `${metric.consistentGreaterSide} across ${Math.round((metric.directionConsistency || 0) * 100)}% of directional reps`
-      : metric.consistentGreaterSide === "mixed" ? "direction varied across reps" : "no stable side direction";
+    const pct = relativeSideDifferencePct(metric);
+    const leftWidth = bilateralBarWidth(metric, "left");
+    const rightWidth = bilateralBarWidth(metric, "right");
     return `
-      <div class="clinical-eval-row">
-        <span><b>${html(metric.label || key)}</b><small>${html(direction)}</small></span>
-        <span>L ${formatMetric(metric, metric.left)}</span>
-        <span>R ${formatMetric(metric, metric.right)}</span>
-        <span>Δ ${formatMetric(metric, metric.absoluteDelta)}</span>
-      </div>`;
+      <article class="clinical-bilateral-row" data-bilateral-metric="${html(key)}">
+        <div class="clinical-bilateral-measure">
+          <b>${html(metric.label || key)}</b>
+          <small>${html(sideComparisonNarrative(metric))}</small>
+        </div>
+        <div class="clinical-leg-readout clinical-leg-readout--left">
+          <small>LEFT</small>
+          <strong>${formatMetric(metric, metric.left)}</strong>
+          <span class="clinical-leg-bar" aria-hidden="true"><i style="width:${leftWidth.toFixed(1)}%"></i></span>
+        </div>
+        <div class="clinical-leg-readout clinical-leg-readout--right">
+          <small>RIGHT</small>
+          <strong>${formatMetric(metric, metric.right)}</strong>
+          <span class="clinical-leg-bar" aria-hidden="true"><i style="width:${rightWidth.toFixed(1)}%"></i></span>
+        </div>
+        <div class="clinical-bilateral-difference">
+          <small>SIDE-TO-SIDE</small>
+          <strong>Δ ${formatMetric(metric, metric.absoluteDelta)}</strong>
+          <span>${Number.isFinite(pct) ? `${formatNumber(pct, "%", 1)} difference` : "relative difference unavailable"}</span>
+        </div>
+      </article>`;
   }).join("");
 
   const compensation = summary.compensation || {};
   const pairedCoverage = Number(summary.quality?.pairedRepCoverage);
   return `<div class="clinical-eval-asymmetry">
-    <div class="clinical-eval-section-title"><div><h4>Kinetic-chain profile</h4><p>Same-rep left/right comparisons plus trunk and pelvis context.</p></div>${qualityBadge(summary.quality, "Measurement support")}</div>
-    <div class="clinical-eval-row clinical-eval-row--header"><b>Measure</b><b>Left</b><b>Right</b><b>Difference</b></div>
-    ${rows}
+    <div class="clinical-eval-section-title"><div><h4>Left vs right leg comparison</h4><p>Paired-rep measurements make the side-to-side difference explicit instead of requiring manual comparison.</p></div>${qualityBadge(summary.quality, "Measurement support")}</div>
+    ${primaryMetric ? `<div class="clinical-bilateral-overview">
+      <small>AT A GLANCE · ${html(primaryMetric.label || "Leg comparison")}</small>
+      <div class="clinical-bilateral-overview-values">
+        <span><b>LEFT</b><strong>${formatMetric(primaryMetric, primaryMetric.left)}</strong></span>
+        <i aria-hidden="true">vs</i>
+        <span><b>RIGHT</b><strong>${formatMetric(primaryMetric, primaryMetric.right)}</strong></span>
+      </div>
+      <div class="clinical-bilateral-overview-delta">
+        <strong>Δ ${formatMetric(primaryMetric, primaryMetric.absoluteDelta)}</strong>
+        <span>${Number.isFinite(primaryPct) ? `${formatNumber(primaryPct, "%", 1)} side-to-side difference` : "Relative difference unavailable"}</span>
+      </div>
+      <p>${html(sideComparisonNarrative(primaryMetric))}</p>
+    </div>` : ""}
+    <div class="clinical-bilateral-list">
+      ${rows}
+    </div>
     <div class="clinical-chain-grid">
       <div class="clinical-chain-node"><small>Trunk</small><strong>${formatNumber(compensation.trunkImageTiltDeg, "°")}</strong><span>image-plane tilt</span></div>
       <div class="clinical-chain-node"><small>Shoulder ↔ pelvis</small><strong>${formatNumber(compensation.shoulderPelvisCounterTiltDeg, "°")}</strong><span>counter-tilt</span></div>
       <div class="clinical-chain-node"><small>Pelvis</small><strong>${formatNumber(compensation.pelvisTiltDeg, "°")}</strong><span>line tilt</span></div>
       <div class="clinical-chain-node"><small>Knee path</small><strong>${compensation.kneePathMagnitude ? formatNumber(compensation.kneePathMagnitude.absoluteDelta, "% torso") : "—"}</strong><span>side difference</span></div>
     </div>
-    ${Number.isFinite(pairedCoverage) ? `<p class="clinical-eval-note">Paired-rep coverage: ${formatNumber(pairedCoverage * 100, "%", 0)}. A side difference is calculated only when both sides exist in the same rep.</p>` : ""}
+    ${Number.isFinite(pairedCoverage) ? `<p class="clinical-eval-note"><b>Paired-rep coverage:</b> ${formatNumber(pairedCoverage * 100, "%", 0)}. Axion calculates a side difference only when left and right measurements are present in the same rep.</p>` : ""}
     ${summary.bilateral.frontalKneeProjection ? `<p class="clinical-eval-note"><b>2D knee screen:</b> frontal knee projection is an image-plane descriptor. It should not be treated as a 3D knee-angle measurement.</p>` : ""}
-    <p class="clinical-eval-note">${html(summary.interpretationGuardrail || "Side-to-side camera measurements are descriptive kinematics and require standardized repeated capture for longitudinal interpretation.")}</p>
+    <p class="clinical-eval-note"><b>Interpretation:</b> ${html(summary.interpretationGuardrail || "Side-to-side camera measurements are descriptive kinematics and require standardized repeated capture for longitudinal interpretation.")}</p>
   </div>`;
 }
 
