@@ -619,3 +619,99 @@
   .clinical-eval-history,
   .clinical-longitudinal{padding:17px;border-radius:18px}
 }
+
+/* Bilateral leg comparison: quantify left/right measurements without implying clinical severity. */
+.clinical-bilateral-overview{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:9px 18px;
+  align-items:center;
+  margin:12px 0 14px;
+  padding:15px 16px;
+  border:1px solid rgba(35,112,84,.16);
+  border-radius:15px;
+  background:#e7f1eb;
+}
+.clinical-bilateral-overview>small{
+  grid-column:1/-1;
+  color:#567067;
+  font-size:.62rem;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.clinical-bilateral-overview-values{display:flex;align-items:center;gap:14px;min-width:0}
+.clinical-bilateral-overview-values>span{display:grid;gap:2px;min-width:88px}
+.clinical-bilateral-overview-values b{color:#5f746c;font-size:.61rem;letter-spacing:.08em}
+.clinical-bilateral-overview-values strong{color:#173d31;font-size:1.45rem;font-variant-numeric:tabular-nums}
+.clinical-bilateral-overview-values i{color:#83918c;font-size:.7rem;font-style:normal;font-weight:800}
+.clinical-bilateral-overview-delta{
+  display:grid;
+  justify-items:end;
+  gap:2px;
+  padding-left:18px;
+  border-left:1px solid rgba(31,92,70,.13);
+}
+.clinical-bilateral-overview-delta strong{color:#174a38;font-size:1.12rem;font-variant-numeric:tabular-nums}
+.clinical-bilateral-overview-delta span{color:#62766e;font-size:.69rem;font-weight:800}
+.clinical-bilateral-overview>p{grid-column:1/-1;margin:0;color:#526a61;font-size:.72rem;line-height:1.45}
+
+.clinical-bilateral-list{display:grid;gap:8px;margin-top:8px}
+.clinical-bilateral-row{
+  display:grid;
+  grid-template-columns:minmax(190px,1.35fr) minmax(112px,.7fr) minmax(112px,.7fr) minmax(126px,.78fr);
+  gap:10px;
+  align-items:center;
+  padding:12px;
+  border:1px solid rgba(18,55,45,.09);
+  border-radius:13px;
+  background:#f6f9f7;
+}
+.clinical-bilateral-measure{display:grid;gap:3px;min-width:0}
+.clinical-bilateral-measure b{color:#254a3d;font-size:.79rem}
+.clinical-bilateral-measure small{color:#74847e;font-size:.65rem;line-height:1.35}
+.clinical-leg-readout{display:grid;gap:4px;min-width:0}
+.clinical-leg-readout>small,.clinical-bilateral-difference>small{color:#71827b;font-size:.58rem;font-weight:900;letter-spacing:.08em}
+.clinical-leg-readout>strong,.clinical-bilateral-difference>strong{color:#193e32;font-size:.94rem;font-variant-numeric:tabular-nums}
+.clinical-leg-bar{display:block;width:100%;height:5px;overflow:hidden;border-radius:999px;background:#dce5e0}
+.clinical-leg-bar i{display:block;height:100%;border-radius:inherit;background:#55b98f}
+.clinical-leg-readout--right .clinical-leg-bar i{background:#789f8e}
+.clinical-bilateral-difference{
+  display:grid;
+  gap:3px;
+  justify-items:end;
+  text-align:right;
+  padding-left:10px;
+  border-left:1px solid rgba(18,55,45,.09);
+}
+.clinical-bilateral-difference>span{color:#60736b;font-size:.65rem;font-weight:800}
+
+.clinical-bilateral-balance-overview{
+  display:grid;
+  gap:5px;
+  margin:10px 0 12px;
+  padding:13px 14px;
+  border:1px solid rgba(35,112,84,.14);
+  border-radius:13px;
+  background:#e8f1ec;
+}
+.clinical-bilateral-balance-overview small{color:#5d716a;font-size:.62rem;font-weight:900;letter-spacing:.08em}
+.clinical-bilateral-balance-overview strong{color:#173e31;font-size:1.08rem;font-variant-numeric:tabular-nums}
+.clinical-bilateral-balance-overview span{color:#61736c;font-size:.69rem}
+.clinical-longitudinal-card[data-bilateral-balance-metric] strong{font-variant-numeric:tabular-nums}
+.clinical-longitudinal-card[data-bilateral-balance-metric] .clinical-balance-sides{display:flex;gap:12px;flex-wrap:wrap}
+.clinical-longitudinal-card[data-bilateral-balance-metric] .clinical-balance-sides b{color:#234c3e;font-size:.78rem}
+.clinical-longitudinal-card[data-bilateral-balance-metric] .clinical-balance-delta{color:#5e716a;font-size:.67rem;font-weight:800}
+
+@media(max-width:900px){
+  .clinical-bilateral-row{grid-template-columns:1fr 1fr}
+  .clinical-bilateral-measure{grid-column:1/-1}
+  .clinical-bilateral-difference{justify-items:start;text-align:left;padding:0;border-left:0}
+}
+@media(max-width:620px){
+  .clinical-bilateral-overview{grid-template-columns:1fr}
+  .clinical-bilateral-overview-values{justify-content:space-between}
+  .clinical-bilateral-overview-delta{justify-items:start;padding:9px 0 0;border-left:0;border-top:1px solid rgba(31,92,70,.13)}
+  .clinical-bilateral-row{grid-template-columns:1fr}
+  .clinical-bilateral-measure{grid-column:auto}
+  .clinical-bilateral-difference{padding-top:8px;border-top:1px solid rgba(18,55,45,.09)}
+}
